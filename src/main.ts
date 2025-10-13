@@ -1,20 +1,15 @@
 import { NestFactory, Reflector } from '@nestjs/core';
-import { AppModule } from './app.module';
-import {
-  BadRequestException,
-  ValidationError,
-  ValidationPipe,
-  VersioningType,
-} from '@nestjs/common';
+import { NebengliteModule } from './nebenglite.module';
+import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { ResponseInterceptor } from './app/interceptors/response.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(NebengliteModule);
   const excludedPaths = ['/healthz', '/metrics', '/api/v1/monitoring/file/'];
-  const moduleRef = app.select(AppModule);
+  const moduleRef = app.select(NebengliteModule);
   const reflector = moduleRef.get(Reflector);
   const configService = app.get(ConfigService);
   const serviceName = configService.get<string>('APP_NAME');

@@ -32,4 +32,4 @@ import { LoggingModule } from './infrastructure/modules/logging.module';
   controllers: [AppController],
   providers: [],
 })
-export class AppModule {}
+export class NebengliteModule {}
