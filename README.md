@@ -1,98 +1,117 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Project Nebengjek
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Nebengjek is an application to unite rider/consumer and driver for ride haling service, with following logic
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Nebengjek Logic
 
-## Description
+1. user/rider activate order ⇒ being informed of all drivers within range
+2. driver ⇒ always send location data
+3. user select specific driver
+4. driver being informed if he/she is selected ⇒ driver will be informed about: user/rider location, destination, possibility whether easy or difficult
+5. driver will submit whether he/she accept/agree to take the user
+6. if driver agree driver will pick the user
+7. user and driver go to destination
+8. along the way to destination, both will be informed of rate (3000 / km )
+9. Upon arrive in destination, trx complete and driver will charge the user and apply discount
+10. Nebengjek apps will take 5% fee of trx in no. 9
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Assumption :
 
-## Project setup
+driver can switch on/off of location activation
 
-```bash
-$ npm install
+## Architecture Design Document
+
+1. High-Level Design (HLD)
+
+1.1 Overview
+
+This architecture simplifies the system by using a Monolithic API that connects to:
+• Redis for two purposes:
+• Geospatial indexing (Redis GEO)
+• Event bus (Redis Streams)
+• PostgreSQL / MySQL for persistent relational storage
+• Background Workers that process Redis Streams asynchronously
+• SSE (Server-Sent Events) for notifying clients in real-time
+
+The architecture prioritizes simplicity, fast development, and moderate scalability.
+
+1.2 HLD Diagram (Mermaid)
+
+<!-- prettier-ignore -->
+:::mermaid
+graph TD
+  A[Client Mobile/Web] --> B[Monolith API Service]
+  B --> C[Redis]
+  B --> D[PostgreSQL - MySQL]
+  C --> E[Background Workers]
+  C -->|GEO| B
+  C -->|Stream| E
+  E -->|Stream| C
+  B --> F[SSE Clients]
+:::
+
+⸻
+
+2. Low-Level Design (LLD)
+
+2.1 Components and Responsibilities
+
+2.1.1 Monolith API
+• Handles HTTP requests (e.g., POST /order)
+• Writes geospatial data with GEOADD
+• Emits events to Redis Streams using XADD
+• Maintains SSE connections to push updates to clients
+
+2.1.2 Redis
+• Stores location data using GEOADD, queried via GEORADIUS / GEOSEARCH
+• Streams events like order_created and order_completed
+
+2.1.3 Background Workers
+• Read messages from Redis Streams via XREADGROUP
+• Perform business logic (e.g., match driver, process payments)
+• Write back results to another Redis Stream or Pub/Sub
+
+2.1.4 SSE Manager (in Monolith)
+• Holds client connections in memory (Map<userId, Response>)
+• Pushes messages to clients when events are consumed from Redis Stream
+
+2.2 LLD Diagram (Mermaid)
+
+<!-- prettier-ignore -->
+```mermaid
+graph TD
+  subgraph Client
+    A1[POST /order] --> B1
+    A2[SSE Connected] <-- B4
+  end
+
+  subgraph API (Monolith)
+    B1[Receive Order Request] --> C1[XADD order_created]
+    C2[XREADGROUP order_completed] --> B3[Push to SSE]
+    B3 --> B4[SSE Stream to Client]
+  end
+
+  subgraph Redis
+    C1
+    C2
+  end
+
+  subgraph Worker
+    D1[XREADGROUP order_created] --> D2[Process Order]
+    D2 --> C2[XADD order_completed]
+  end
 ```
 
-## Compile and run the project
+⸻
 
-```bash
-# development
-$ npm run start
+3. Technology Stack
 
-# watch mode
-$ npm run start:dev
+Component Technology
+API Server NestJS / Express
+Event Bus Redis Streams
+Geospatial Index Redis GEO
+Persistence PostgreSQL / MySQL
+Background Jobs Node.js Worker
+Realtime Updates Server-Sent Events
 
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+⸻
