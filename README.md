@@ -19,6 +19,12 @@ Assumption :
 
 driver can switch on/off of location activation
 
+## Environment Variables
+
+| Variable | Description |
+| --- | --- |
+| `SMS_SERVICE_URL` | Base URL for the SMS provider endpoint that delivers OTP messages. |
+
 ## Architecture Design Document
 
 1. High-Level Design (HLD)

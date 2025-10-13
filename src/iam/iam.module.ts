@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { AuthenticationController } from './app/controllers/authentication.controller';
 import { AuthenticationService } from './domain/services/authentication.service';
 import { BcryptService } from './domain/services/bcrypt.service';
@@ -13,10 +14,12 @@ import { APP_GUARD } from '@nestjs/core';
 import { AccessTokenGuard } from './app/guards/access-token/access-token.guard';
 import { AuthenticationGuard } from './app/guards/authentication/authentication.guard';
 import { AccessRoleGuard } from './app/guards/access-role/access-role.guard';
+import { SmsProviderService } from './domain/services/sms-provider.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([NebengjekClient]),
+    HttpModule,
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
   ],
@@ -37,6 +40,7 @@ import { AccessRoleGuard } from './app/guards/access-role/access-role.guard';
     },
     NebengjekClientRepository,
     AccessTokenGuard,
+    SmsProviderService,
   ],
 })
 export class IamModule {}
