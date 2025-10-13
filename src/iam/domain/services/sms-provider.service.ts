@@ -32,8 +32,9 @@ export class SmsProviderService {
         }),
       );
     } catch (error) {
-      const response = (error as { response?: { status?: number; data?: unknown } })
-        ?.response;
+      const response = (
+        error as { response?: { status?: number; data?: unknown } }
+      )?.response;
       const status = response?.status;
       const body = response?.data;
 
