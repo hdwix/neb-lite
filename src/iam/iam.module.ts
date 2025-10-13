@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { AuthenticationController } from './app/controllers/authentication.controller';
 import { AuthenticationService } from './domain/services/authentication.service';
 import { BcryptService } from './domain/services/bcrypt.service';
@@ -18,6 +19,7 @@ import { SmsProviderService } from './domain/services/sms-provider.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([NebengjekClient]),
+    HttpModule,
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
   ],
