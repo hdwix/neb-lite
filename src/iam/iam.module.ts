@@ -9,6 +9,10 @@ import { NebengjekClientRepository } from './infrastructure/repository/nebengjek
 import { JwtModule } from '@nestjs/jwt';
 import jwtConfig from './app/config/jwt.config';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { AccessTokenGuard } from './app/guards/access-token/access-token.guard';
+import { AuthenticationGuard } from './app/guards/authentication/authentication.guard';
+import { AccessRoleGuard } from './app/guards/access-role/access-role.guard';
 
 @Module({
   imports: [
@@ -23,7 +27,16 @@ import { ConfigModule } from '@nestjs/config';
       provide: HashingService,
       useClass: BcryptService,
     },
+    {
+      provide: APP_GUARD,
+      useClass: AuthenticationGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: AccessRoleGuard,
+    },
     NebengjekClientRepository,
+    AccessTokenGuard,
   ],
 })
 export class IamModule {}

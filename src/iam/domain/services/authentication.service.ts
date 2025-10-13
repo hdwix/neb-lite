@@ -36,16 +36,17 @@ export class AuthenticationService {
 
     const otpTtl = this.configService.get<number>('OTP_TTL_SEC');
     await this.cacheManager.set(cachedKey, hashedCode, otpTtl);
-    return otpCode;
 
     // await smsProvider.send
+
+    return otpCode;
   }
 
   async verifyOtp(verifyOtpDto: VerifyOtpDto) {
     const client = await this.nebengjekClientRepo.findUserByPhone(
       verifyOtpDto.phone,
     );
-    console.log(client);
+
     if (!client) {
       this.logger.error(`Client does not exist, phone not found`);
       throw new UnauthorizedException(
@@ -61,7 +62,6 @@ export class AuthenticationService {
         `Otp code not found : ${verifyOtpDto.otpCode}`,
       );
     }
-    console.log(cachedHashedOtpCode);
     const isEqual = await this.hashingService.compare(
       verifyOtpDto.otpCode,
       cachedHashedOtpCode,
@@ -103,30 +103,46 @@ export class AuthenticationService {
   }
 
   private getRefreshTokenCacheKey(phone) {
-    console.log('key refresh', phone);
     return `refresh-token:${phone}`;
   }
 
+  getAccessTokenKey(phone: any) {
+    return `access-token:${phone}`;
+  }
+
   async generateTokens(client: any) {
+    const accessTokenId = randomUUID();
     const refreshTokenId = randomUUID();
-    // const key;
+
     const [accessToken, refreshToken] = await Promise.all([
       this.signToken(client.id, this.jwtConfiguration.accessTokenTtl, {
+        accessTokenId,
         role: client.role,
+        phone_number: client.phone_number,
       }),
       this.signToken(client.id, this.jwtConfiguration.refreshTokenTtl, {
         refreshTokenId,
         role: client.role,
+        phone_number: client.phone_number,
       }),
     ]);
     const getCachedRefreshTokenKey = this.getRefreshTokenCacheKey(
       client.phone_number,
     );
-    await this.cacheManager.set(
-      getCachedRefreshTokenKey,
-      refreshTokenId,
-      this.jwtConfiguration.refreshTokenTtl,
-    );
+    const getAccessTokenKey = this.getAccessTokenKey(client.phone_number);
+    await Promise.all([
+      this.cacheManager.set(
+        getCachedRefreshTokenKey,
+        refreshTokenId,
+        this.jwtConfiguration.refreshTokenTtl,
+      ),
+      this.cacheManager.set(
+        getAccessTokenKey,
+        accessTokenId,
+        this.jwtConfiguration.accessTokenTtl * 1000,
+      ),
+    ]);
+
     return {
       accessToken,
       refreshToken,
@@ -134,8 +150,6 @@ export class AuthenticationService {
   }
 
   private async signToken<T>(clientId: number, expiresIn: number, payload?: T) {
-    console.log(' expiresIn  : ');
-    console.log(expiresIn);
     return await this.jwtService.signAsync(
       {
         sub: clientId,
@@ -156,6 +170,8 @@ export class AuthenticationService {
       refreshTokenId,
     );
     if (isValidRefreshToken) {
+      const getAccessTokenKey = this.getAccessTokenKey(client[0].phone_number);
+      await this.cacheManager.del(getAccessTokenKey);
       return 'successfully logout';
     } else {
       this.logger.error('error validating refresh token');
@@ -171,21 +187,11 @@ export class AuthenticationService {
       cachedRefreshTokenKey,
     );
 
-    console.log('client in refresh toekn :');
-    console.log(client);
-
-    console.log('refreshTokenId : ');
-    console.log(refreshTokenId);
-    console.log('');
-    console.log('refreshTokenIdFromCache : ');
-    console.log(refreshTokenIdFromCache);
-    console.log('');
-
     if (refreshTokenIdFromCache === refreshTokenId) {
       await this.cacheManager.del(cachedRefreshTokenKey);
       return true;
     } else {
-      throw new Error('Refresh token is invalid');
+      this.logger.error('Refresh token is invalid');
       return false;
     }
   }
@@ -198,6 +204,7 @@ export class AuthenticationService {
       },
     );
     const client = await this.nebengjekClientRepo.findUserbyId(sub);
+
     return { client, refreshTokenId };
   }
 }

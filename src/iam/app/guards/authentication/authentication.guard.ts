@@ -1,55 +1,53 @@
-// /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-// /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-// import {
-//   CanActivate,
-//   ExecutionContext,
-//   Injectable,
-//   UnauthorizedException,
-// } from '@nestjs/common';
-// import { Reflector } from '@nestjs/core';
-// import { Observable } from 'rxjs';
-// import { AuthType } from '../../../../app/enums/auth-type.enum';
-// import { AccessTokenGuard } from '../access-token/access-token.guard';
-// import { AUTH_TYPE_KEY } from '../../decorators/auth.decorator';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { Observable } from 'rxjs';
 
-// @Injectable()
-// export class AuthenticationGuard implements CanActivate {
-//   private static readonly defaultAuthType = AuthType.Bearer;
-//   private readonly authTypeGuardMap: Record<
-//     AuthType,
-//     CanActivate | CanActivate[]
-//   >;
+import { AccessTokenGuard } from '../access-token/access-token.guard';
+import { AUTH_TYPE_KEY } from '../../decorators/auth.decorator';
+import { EAuthType } from '../../../../app/enums/auth-type.enum';
 
-//   constructor(
-//     private readonly reflector: Reflector,
-//     private readonly accessTokenGuard: AccessTokenGuard,
-//   ) {
-//     // 👇 initialize the map inside constructor
-//     this.authTypeGuardMap = {
-//       [AuthType.Bearer]: this.accessTokenGuard, // for BearerType then validate using accessTokenGuard
-//       [AuthType.None]: { canActivate: () => true },
-//     };
-//   }
+@Injectable()
+export class AuthenticationGuard implements CanActivate {
+  private static readonly defaultAuthType = EAuthType.Bearer;
+  private readonly authTypeGuardMap: Record<
+    EAuthType,
+    CanActivate | CanActivate[]
+  >;
 
-//   async canActivate(context: ExecutionContext): Promise<boolean> {
-//     const authTypes = this.reflector.getAllAndOverride<AuthType[]>(
-//       AUTH_TYPE_KEY,
-//       [context.getHandler(), context.getClass()],
-//     ) ?? [AuthenticationGuard.defaultAuthType];
-//     const guards = authTypes.map((type) => this.authTypeGuardMap[type]).flat();
-//     let error = new UnauthorizedException();
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly accessTokenGuard: AccessTokenGuard,
+  ) {
+    this.authTypeGuardMap = {
+      [EAuthType.Bearer]: this.accessTokenGuard,
+      [EAuthType.None]: { canActivate: () => true },
+    };
+  }
 
-//     for (const instance of guards) {
-//       const canActivate = await Promise.resolve(
-//         instance.canActivate(context),
-//       ).catch((err) => {
-//         error = err;
-//       });
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const authTypes = this.reflector.getAllAndOverride<EAuthType[]>(
+      AUTH_TYPE_KEY,
+      [context.getHandler(), context.getClass()],
+    ) ?? [AuthenticationGuard.defaultAuthType];
+    const guards = authTypes.map((type) => this.authTypeGuardMap[type]).flat();
+    let error = new UnauthorizedException();
 
-//       if (canActivate) {
-//         return true;
-//       }
-//     }
-//     throw error;
-//   }
-// }
+    for (const instance of guards) {
+      const canActivate = await Promise.resolve(
+        instance.canActivate(context),
+      ).catch((err) => {
+        error = err;
+      });
+
+      if (canActivate) {
+        return true;
+      }
+    }
+    throw error;
+  }
+}

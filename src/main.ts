@@ -1,15 +1,21 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import {
+  BadRequestException,
+  ValidationError,
+  ValidationPipe,
+  VersioningType,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
+import { ResponseInterceptor } from './app/interceptors/response.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const excludedPaths = ['/healthz', '/metrics', '/api/v1/monitoring/file/'];
-  // const moduleRef = app.select(AppModule);
-  // const reflector = moduleRef.get(Reflector);
+  const moduleRef = app.select(AppModule);
+  const reflector = moduleRef.get(Reflector);
   const configService = app.get(ConfigService);
   const serviceName = configService.get<string>('APP_NAME');
   const logger = app.get(Logger);
@@ -30,7 +36,7 @@ async function bootstrap() {
       forbidNonWhitelisted: false,
     }),
   );
-  // app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths));
+  app.useGlobalInterceptors(new ResponseInterceptor(reflector, excludedPaths));
   // app.useGlobalFilters(new CustomExceptionFilter());
   // app.useGlobalPipes(
   //   new ValidationPipe({

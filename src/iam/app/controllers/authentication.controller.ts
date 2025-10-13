@@ -11,8 +11,11 @@ import { GetOtpDto } from '../../../app/dto/get-otp.dto';
 import { VerifyOtpDto } from '../../../app/dto/verify-otp.dto';
 import { Response } from 'express';
 import { RefreshTokenDto } from '../../../app/dto/refresh-token.dto';
+import { EAuthType } from '../../../app/enums/auth-type.enum';
+import { Auth } from '../decorators/auth.decorator';
 
-@Controller('authentication')
+@Controller({ path: 'authentication', version: '1' })
+@Auth(EAuthType.None)
 export class AuthenticationController {
   constructor(private readonly authService: AuthenticationService) {}
 
@@ -63,8 +66,9 @@ export class AuthenticationController {
     });
   }
 
-  // POST / auth / logout → revoke current refresh token
+  // POST / auth / logout → revoke current acces token & refresh token
   @Post('logout')
+  @HttpCode(HttpStatus.OK)
   async logout(@Body() refreshTokenDto: RefreshTokenDto) {
     return await this.authService.logout(refreshTokenDto);
   }
