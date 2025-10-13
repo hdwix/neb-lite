@@ -15,6 +15,7 @@ import jwtConfig from '../../app/config/jwt.config';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'crypto';
 import { RefreshTokenDto } from '../../../app/dto/refresh-token.dto';
+import { SmsProviderService } from './sms-provider.service';
 
 @Injectable()
 export class AuthenticationService {
@@ -27,6 +28,7 @@ export class AuthenticationService {
     private readonly jwtService: JwtService,
     @Inject(jwtConfig.KEY)
     private readonly jwtConfiguration: ConfigType<typeof jwtConfig>,
+    private readonly smsProviderService: SmsProviderService,
   ) {}
   async getOtp(getOtpDto: GetOtpDto) {
     const cachedKey = this.getOtpCachedKey(getOtpDto.phone);
@@ -37,7 +39,7 @@ export class AuthenticationService {
     const otpTtl = this.configService.get<number>('OTP_TTL_SEC');
     await this.cacheManager.set(cachedKey, hashedCode, otpTtl);
 
-    // await smsProvider.send
+    await this.smsProviderService.sendOtp(getOtpDto.phone, otpCode);
 
     return otpCode;
   }

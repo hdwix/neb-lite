@@ -13,6 +13,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { AccessTokenGuard } from './app/guards/access-token/access-token.guard';
 import { AuthenticationGuard } from './app/guards/authentication/authentication.guard';
 import { AccessRoleGuard } from './app/guards/access-role/access-role.guard';
+import { SmsProviderService } from './domain/services/sms-provider.service';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AccessRoleGuard } from './app/guards/access-role/access-role.guard';
     },
     NebengjekClientRepository,
     AccessTokenGuard,
+    SmsProviderService,
   ],
 })
 export class IamModule {}
