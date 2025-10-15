@@ -16,7 +16,7 @@ import { RiderProfileRepository } from './infrastructure/repository/rider-profil
 import { DriverProfileRepository } from './infrastructure/repository/driver-profile.repository';
 import { RiderProfile } from './domain/entities/rider-profile.entity';
 import { DriverProfile } from './domain/entities/driver-profile.entity';
-import { HttpModule } from '@nestjs/axios';
+import { HttpModule, HttpService } from '@nestjs/axios';
 
 @Module({
   imports: [
@@ -44,6 +44,8 @@ import { HttpModule } from '@nestjs/axios';
     RiderProfileRepository,
     DriverProfileRepository,
     SmsProviderService,
+    HttpService,
   ],
+  exports: [SmsProviderService, HttpService],
 })
 export class IamModule {}

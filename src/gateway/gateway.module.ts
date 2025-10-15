@@ -18,7 +18,7 @@ import { RiderProfileRepository } from '../iam/infrastructure/repository/rider-p
 import { DriverProfileRepository } from '../iam/infrastructure/repository/driver-profile.repository';
 import { DatabaseModule } from '../infrastructure/modules/database.module';
 import { SmsProviderService } from '../iam/domain/services/sms-provider.service';
-import { HttpModule, HttpService } from '@nestjs/axios';
+import { HttpService } from '@nestjs/axios';
 
 @Module({
   imports: [
@@ -27,7 +27,6 @@ import { HttpModule, HttpService } from '@nestjs/axios';
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
     TypeOrmModule.forFeature([RiderProfile, DriverProfile]),
-    HttpModule,
   ],
   controllers: [GatewayController],
   providers: [
@@ -49,7 +48,6 @@ import { HttpModule, HttpService } from '@nestjs/axios';
     RiderProfileRepository,
     DriverProfileRepository,
     SmsProviderService,
-    HttpService,
   ],
 })
 export class GatewayModule {}
