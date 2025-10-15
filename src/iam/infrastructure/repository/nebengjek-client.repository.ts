@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Repository, DataSource } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
 import { NebengjekClient } from '../../domain/entities/nebengjek-client.entity';
 
 @Injectable()
 export class NebengjekClientRepository extends Repository<NebengjekClient> {
   private readonly logger = new Logger(NebengjekClientRepository.name);
 
-  constructor(private readonly dataSource: DataSource) {
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {
     super(NebengjekClient, dataSource.createEntityManager());
   }
 

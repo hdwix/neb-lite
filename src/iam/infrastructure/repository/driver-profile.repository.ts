@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Repository, DataSource } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
 import { DriverProfile } from '../../domain/entities/driver-profile.entity';
 
 @Injectable()
 export class DriverProfileRepository extends Repository<DriverProfile> {
   private readonly logger = new Logger(DriverProfileRepository.name);
 
-  constructor(private readonly dataSource: DataSource) {
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {
     super(DriverProfile, dataSource.createEntityManager());
   }
   async upsertDriverByPhone(msisdn: string) {

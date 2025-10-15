@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Repository, DataSource } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
 import { RiderProfile } from '../../domain/entities/rider-profile.entity';
 
 @Injectable()
 export class RiderProfileRepository extends Repository<RiderProfile> {
   private readonly logger = new Logger(RiderProfileRepository.name);
 
-  constructor(private readonly dataSource: DataSource) {
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {
     super(RiderProfile, dataSource.createEntityManager());
   }
 
