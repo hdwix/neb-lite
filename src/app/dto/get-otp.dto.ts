@@ -1,10 +1,15 @@
-import { IsString, Validate } from 'class-validator';
+import { IsEnum, IsString, Validate } from 'class-validator';
 import { IsPhoneNumberFormatted } from '../../common/isPhoneNumber.validator';
+import { EClientType } from '../enums/client-type.enum';
 
 export class GetOtpDto {
   @IsString()
   @Validate(IsPhoneNumberFormatted, {
     message: 'phone must be valid Telkomsel number and in E164 format',
   })
-  phone: string;
+  msisdn: string;
+
+  @IsString()
+  @IsEnum(EClientType)
+  clientType: EClientType;
 }

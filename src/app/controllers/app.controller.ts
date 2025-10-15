@@ -18,7 +18,7 @@ export class AppController {
   }
 
   @Get('customer-only')
-  @Roles(EClientType.CUSTOMER)
+  @Roles(EClientType.RIDER)
   async getCustomerHello() {
     return 'Hello Customer from controller';
   }

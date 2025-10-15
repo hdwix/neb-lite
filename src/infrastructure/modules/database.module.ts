@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { NebengjekClient } from '../../iam/domain/entities/nebengjek-client.entity';
+import { RiderProfile } from '../../iam/domain/entities/rider-profile.entity';
+import { DriverProfile } from '../../iam/domain/entities/driver-profile.entity';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { NebengjekClient } from '../../iam/domain/entities/nebengjek-client.enti
         logging: false,
         autoLoadEntities: true,
         synchronize: configService.get<boolean>('DB_SYNCHRONIZE') || false,
-        entities: [NebengjekClient],
+        entities: [RiderProfile, DriverProfile],
       }),
     }),
   ],

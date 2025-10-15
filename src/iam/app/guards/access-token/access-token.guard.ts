@@ -40,7 +40,7 @@ export class AccessTokenGuard implements CanActivate {
       );
 
       // get accessTokenId from redis
-      const phoneNumber = payload.phone_number;
+      const phoneNumber = payload.msisdn;
 
       const cachedAcessTokenId = await this.cacheManager.get(
         `access-token:${phoneNumber}`,

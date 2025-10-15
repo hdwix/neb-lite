@@ -5,7 +5,6 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { NebengjekClientRepository } from '../../infrastructure/repository/nebengjek-client.repository';
 import { GetOtpDto } from '../../../app/dto/get-otp.dto';
 import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 import { HashingService } from './hashing.service';
@@ -16,47 +15,55 @@ import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'crypto';
 import { RefreshTokenDto } from '../../../app/dto/refresh-token.dto';
 import { SmsProviderService } from './sms-provider.service';
+import { RiderProfileRepository } from '../../infrastructure/repository/rider-profile.repository';
+import { DriverProfileRepository } from '../../infrastructure/repository/driver-profile.repository';
+import { EClientType } from '../../../app/enums/client-type.enum';
 
 @Injectable()
 export class AuthenticationService {
   private readonly logger = new Logger(AuthenticationService.name);
   constructor(
-    private readonly nebengjekClientRepo: NebengjekClientRepository,
     private readonly hashingService: HashingService,
     private readonly configService: ConfigService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private readonly jwtService: JwtService,
     @Inject(jwtConfig.KEY)
     private readonly jwtConfiguration: ConfigType<typeof jwtConfig>,
-    private readonly smsProviderService: SmsProviderService,
+    private readonly riderProfileRepo: RiderProfileRepository,
+    private readonly driverProfileRepo: DriverProfileRepository,
   ) {}
   async getOtp(getOtpDto: GetOtpDto) {
-    const cachedKey = this.getOtpCachedKey(getOtpDto.phone);
-    await this.nebengjekClientRepo.upsertUserByPhone(getOtpDto.phone);
+    const cachedKey = this.getOtpCachedKey(getOtpDto.msisdn);
+    const client = await this.getClientData(
+      getOtpDto.msisdn,
+      getOtpDto.clientType,
+    );
+    if (!client || client.length === 0) {
+      this.logger.error('Unauthorized: client not found');
+      throw new BadRequestException('Client not found');
+    }
     const otpCode = this.generateOtp();
     const hashedCode = await this.hashingService.hash(otpCode);
 
     const otpTtl = this.configService.get<number>('OTP_TTL_SEC');
     await this.cacheManager.set(cachedKey, hashedCode, otpTtl);
 
-    await this.smsProviderService.sendOtp(getOtpDto.phone, otpCode);
+    // await smsProvider.send
 
     return otpCode;
   }
 
   async verifyOtp(verifyOtpDto: VerifyOtpDto) {
-    const client = await this.nebengjekClientRepo.findUserByPhone(
-      verifyOtpDto.phone,
+    const client = await this.getClientData(
+      verifyOtpDto.msisdn,
+      verifyOtpDto.clientType,
     );
-
-    if (!client) {
-      this.logger.error(`Client does not exist, phone not found`);
-      throw new UnauthorizedException(
-        `Unauthorized resource access for phone : ${verifyOtpDto.phone}`,
-      );
+    if (!client || client.length === 0) {
+      this.logger.error('Unauthorized: client not found');
+      throw new BadRequestException('Client not found');
     }
 
-    const cachedKey = this.getOtpCachedKey(verifyOtpDto.phone);
+    const cachedKey = this.getOtpCachedKey(verifyOtpDto.msisdn);
     const cachedHashedOtpCode = await this.cacheManager.get<string>(cachedKey);
     if (!cachedHashedOtpCode) {
       this.logger.error(`Otp code not found`);
@@ -69,7 +76,8 @@ export class AuthenticationService {
       cachedHashedOtpCode,
     );
     if (!isEqual) {
-      throw new UnauthorizedException('OTP code does not match');
+      this.logger.error(`invalid otp-code`);
+      throw new UnauthorizedException('invalid otp-code');
     }
     await this.cacheManager.del(cachedKey);
     return await this.generateTokens(client[0]);
@@ -120,18 +128,18 @@ export class AuthenticationService {
       this.signToken(client.id, this.jwtConfiguration.accessTokenTtl, {
         accessTokenId,
         role: client.role,
-        phone_number: client.phone_number,
+        msisdn: client.msisdn,
       }),
       this.signToken(client.id, this.jwtConfiguration.refreshTokenTtl, {
         refreshTokenId,
         role: client.role,
-        phone_number: client.phone_number,
+        msisdn: client.msisdn,
       }),
     ]);
     const getCachedRefreshTokenKey = this.getRefreshTokenCacheKey(
-      client.phone_number,
+      client.msisdn,
     );
-    const getAccessTokenKey = this.getAccessTokenKey(client.phone_number);
+    const getAccessTokenKey = this.getAccessTokenKey(client.msisdn);
     await Promise.all([
       this.cacheManager.set(
         getCachedRefreshTokenKey,
@@ -172,7 +180,7 @@ export class AuthenticationService {
       refreshTokenId,
     );
     if (isValidRefreshToken) {
-      const getAccessTokenKey = this.getAccessTokenKey(client[0].phone_number);
+      const getAccessTokenKey = this.getAccessTokenKey(client[0].msisdn);
       await this.cacheManager.del(getAccessTokenKey);
       return 'successfully logout';
     } else {
@@ -183,7 +191,7 @@ export class AuthenticationService {
 
   private async validateRefreshToken(client: any, refreshTokenId: string) {
     const cachedRefreshTokenKey = this.getRefreshTokenCacheKey(
-      client[0].phone_number,
+      client[0].msisdn,
     );
     const refreshTokenIdFromCache = await this.cacheManager.get(
       cachedRefreshTokenKey,
@@ -199,14 +207,21 @@ export class AuthenticationService {
   }
 
   async getClientAndTokenIdInfo(refreshTokenDto: RefreshTokenDto) {
-    const { sub, refreshTokenId } = await this.jwtService.verifyAsync(
-      refreshTokenDto.refreshToken,
-      {
+    const { sub, refreshTokenId, role, msisdn } =
+      await this.jwtService.verifyAsync(refreshTokenDto.refreshToken, {
         secret: this.jwtConfiguration.secret,
-      },
-    );
-    const client = await this.nebengjekClientRepo.findUserbyId(sub);
+      });
+    const client = await this.getClientData(msisdn, role);
 
     return { client, refreshTokenId };
+  }
+
+  private async getClientData(msisdn: string, clientType: EClientType) {
+    console;
+    if (clientType === EClientType.RIDER) {
+      return await this.riderProfileRepo.findRiderByPhone(msisdn);
+    } else {
+      return await this.driverProfileRepo.findDriverByPhone(msisdn);
+    }
   }
 }

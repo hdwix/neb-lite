@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { GatewayController } from './app/controllers/gateway.controller';
 import { IamModule } from '../iam/iam.module';
 import { AuthenticationService } from '../iam/domain/services/authentication.service';
-import { NebengjekClientRepository } from '../iam/infrastructure/repository/nebengjek-client.repository';
 import { HashingService } from '../iam/domain/services/hashing.service';
 import { BcryptService } from '../iam/domain/services/bcrypt.service';
 import { APP_GUARD } from '@nestjs/core';
@@ -42,7 +41,6 @@ import { DatabaseModule } from '../infrastructure/modules/database.module';
       provide: APP_GUARD,
       useClass: AccessRoleGuard,
     },
-    NebengjekClientRepository,
     AccessTokenGuard,
     JwtService,
     RiderProfileRepository,

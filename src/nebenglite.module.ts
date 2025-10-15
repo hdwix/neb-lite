@@ -7,6 +7,7 @@ import { RedisWorkerModule } from './redis-worker/redis-worker.module';
 import KeyvRedis, { Keyv } from '@keyv/redis';
 import { CacheModule } from '@nestjs/cache-manager';
 import { LoggingModule } from './infrastructure/modules/logging.module';
+import { GatewayModule } from './gateway/gateway.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { LoggingModule } from './infrastructure/modules/logging.module';
     IamModule,
     RedisWorkerModule,
     LoggingModule,
+    GatewayModule,
   ],
   controllers: [AppController],
   providers: [],
