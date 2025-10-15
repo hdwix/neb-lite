@@ -31,6 +31,7 @@ export class AuthenticationService {
     private readonly jwtConfiguration: ConfigType<typeof jwtConfig>,
     private readonly riderProfileRepo: RiderProfileRepository,
     private readonly driverProfileRepo: DriverProfileRepository,
+    private readonly smsProviderService: SmsProviderService,
   ) {}
   async getOtp(getOtpDto: GetOtpDto) {
     const cachedKey = this.getOtpCachedKey(getOtpDto.msisdn);
@@ -48,9 +49,13 @@ export class AuthenticationService {
     const otpTtl = this.configService.get<number>('OTP_TTL_SEC');
     await this.cacheManager.set(cachedKey, hashedCode, otpTtl);
 
+    const isSkipSmsNotif = this.configService.get<boolean>('SKIP_SMS_NOTIF');
+    if (isSkipSmsNotif) {
+      return otpCode;
+    }
     // await smsProvider.send
-
-    return otpCode;
+    await this.smsProviderService.sendOtp(client[0].msisdn, otpCode);
+    return 'otp code sent';
   }
 
   async verifyOtp(verifyOtpDto: VerifyOtpDto) {

@@ -16,12 +16,12 @@ import { RiderProfileRepository } from './infrastructure/repository/rider-profil
 import { DriverProfileRepository } from './infrastructure/repository/driver-profile.repository';
 import { RiderProfile } from './domain/entities/rider-profile.entity';
 import { DriverProfile } from './domain/entities/driver-profile.entity';
-// import { HttpModule } from '@nestjs/axios';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([RiderProfile, DriverProfile]),
-    // HttpModule,
+    HttpModule,
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
   ],
@@ -43,6 +43,7 @@ import { DriverProfile } from './domain/entities/driver-profile.entity';
     AccessTokenGuard,
     RiderProfileRepository,
     DriverProfileRepository,
+    SmsProviderService,
   ],
 })
 export class IamModule {}

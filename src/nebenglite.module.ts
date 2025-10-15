@@ -8,6 +8,7 @@ import KeyvRedis, { Keyv } from '@keyv/redis';
 import { CacheModule } from '@nestjs/cache-manager';
 import { LoggingModule } from './infrastructure/modules/logging.module';
 import { GatewayModule } from './gateway/gateway.module';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { GatewayModule } from './gateway/gateway.module';
     RedisWorkerModule,
     LoggingModule,
     GatewayModule,
+    HttpModule,
   ],
   controllers: [AppController],
   providers: [],
