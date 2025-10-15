@@ -45,5 +45,6 @@ import { HttpModule } from '@nestjs/axios';
     DriverProfileRepository,
     SmsProviderService,
   ],
+  exports: [SmsProviderService],
 })
 export class IamModule {}
