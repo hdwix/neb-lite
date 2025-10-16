@@ -9,6 +9,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { LoggingModule } from './infrastructure/modules/logging.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { HttpModule } from '@nestjs/axios';
+import { LocationModule } from './location/location.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { HttpModule } from '@nestjs/axios';
     LoggingModule,
     GatewayModule,
     HttpModule,
+    LocationModule,
   ],
   controllers: [AppController],
   providers: [],
