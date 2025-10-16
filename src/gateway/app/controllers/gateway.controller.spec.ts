@@ -66,12 +66,16 @@ describe('GatewayController', () => {
         accuracyMeters: 5,
       };
 
-      await controller.upsertDriverLocation(request, dto);
+      const response = await controller.upsertDriverLocation(request, dto);
 
       expect(locationServiceMock.upsertDriverLocation).toHaveBeenCalledWith(
         'driver-123',
         dto,
       );
+      expect(response).toEqual({
+        data: {},
+        messageResponse: 'processing update location',
+      });
     });
 
     it('should throw UnauthorizedException when driver id missing', async () => {

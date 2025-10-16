@@ -1,30 +1,40 @@
-import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Test, TestingModule } from '@nestjs/testing';
 import { LocationService } from './location.service';
+import { getQueueToken } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import {
+  LOCATION_QUEUE_NAME,
+  LocationQueueJob,
+  LocationUpdateJobData,
+} from './location.types';
+import { GeolocationRepository } from './geolocation.repository';
 
 describe('LocationService', () => {
   let service: LocationService;
-  let cacheManager: jest.Mocked<Cache>;
-  let cacheStore: { keys: jest.Mock };
+  let queue: jest.Mocked<Queue<LocationUpdateJobData>>;
+  let repository: jest.Mocked<GeolocationRepository>;
 
   beforeEach(async () => {
-    cacheStore = {
-      keys: jest.fn(),
-    };
-    cacheManager = {
-      get: jest.fn(),
-      set: jest.fn(),
-      del: jest.fn(),
-      reset: jest.fn(),
-      store: cacheStore,
-    } as unknown as jest.Mocked<Cache>;
+    queue = {
+      name: LOCATION_QUEUE_NAME,
+      add: jest.fn(),
+    } as unknown as jest.Mocked<Queue<LocationUpdateJobData>>;
+
+    repository = {
+      storeDriverLocation: jest.fn(),
+      getNearbyDrivers: jest.fn(),
+    } as unknown as jest.Mocked<GeolocationRepository>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LocationService,
         {
-          provide: CACHE_MANAGER,
-          useValue: cacheManager,
+          provide: getQueueToken(LOCATION_QUEUE_NAME),
+          useValue: queue,
+        },
+        {
+          provide: GeolocationRepository,
+          useValue: repository,
         },
       ],
     }).compile();
@@ -40,9 +50,14 @@ describe('LocationService', () => {
     expect(service).toBeDefined();
   });
 
-  it('upserts driver location and stores it in cache', async () => {
-    cacheManager.get.mockResolvedValueOnce(undefined);
-    cacheManager.set.mockResolvedValueOnce(undefined);
+  it('queues driver location updates', async () => {
+    queue.add.mockResolvedValueOnce({
+      id: 'job-1',
+      name: LocationQueueJob.UpsertDriverLocation,
+      data: { driverId: 'driver-1', location: { lon: 0, lat: 0 } },
+      timestamp: Date.now(),
+      attemptsMade: 0,
+    });
 
     const result = await service.upsertDriverLocation('driver-1', {
       lon: 106.8272,
@@ -53,56 +68,52 @@ describe('LocationService', () => {
     expect(result.lon).toBe(106.8272);
     expect(result.lat).toBe(-6.1754);
     expect(result.accuracyMeters).toBe(12);
-    expect(cacheManager.set).toHaveBeenCalledWith(
-      'location:driver:driver-1',
-      expect.objectContaining({
-        lon: 106.8272,
-        lat: -6.1754,
-        accuracyMeters: 12,
-      }),
+    expect(result.updatedAt).toEqual(expect.any(String));
+    expect(queue.add).toHaveBeenCalledWith(
+      LocationQueueJob.UpsertDriverLocation,
+      {
+        driverId: 'driver-1',
+        location: {
+          lon: 106.8272,
+          lat: -6.1754,
+          accuracyMeters: 12,
+        },
+        eventTimestamp: result.updatedAt,
+      },
     );
   });
 
   it('returns nearby drivers ordered by distance and limited', async () => {
-    const keys = [
-      'location:driver:driver-1',
-      'location:driver:driver-2',
-      'location:driver:driver-3',
-    ];
-
-    cacheStore.keys.mockResolvedValueOnce(keys);
-    cacheManager.get.mockImplementation(async (key: string) => {
-      switch (key) {
-        case 'location:driver:driver-1':
-          return {
-            lon: 106.8272,
-            lat: -6.1754,
-            updatedAt: new Date().toISOString(),
-          };
-        case 'location:driver:driver-2':
-          return {
-            lon: 106.8,
-            lat: -6.2,
-            updatedAt: new Date().toISOString(),
-          };
-        case 'location:driver:driver-3':
-          return {
-            lon: 107.0,
-            lat: -6.3,
-            updatedAt: new Date().toISOString(),
-          };
-        default:
-          return undefined;
-      }
-    });
+    repository.getNearbyDrivers.mockResolvedValueOnce([
+      {
+        driverId: 'driver-1',
+        distanceMeters: 50,
+        location: { lon: 106.8272, lat: -6.1754 },
+        metadata: { accuracyMeters: 5, updatedAt: 'now' },
+      },
+      {
+        driverId: 'driver-2',
+        distanceMeters: 150,
+        location: { lon: 106.8, lat: -6.2 },
+        metadata: { accuracyMeters: 8, updatedAt: 'later' },
+      },
+    ]);
 
     const results = await service.getNearbyDrivers(106.8272, -6.1754, 20000, 2);
 
     expect(results).toHaveLength(2);
     expect(results[0].driverId).toBe('driver-1');
-    expect(results[0].distanceMeters).toBeCloseTo(0, 5);
+    expect(results[0].distanceMeters).toBe(50);
+    expect(results[0].accuracyMeters).toBe(5);
+    expect(results[0].etaSeconds).toBe(Math.round(50 / 6));
     expect(results[1].driverId).toBe('driver-2');
-    expect(results[1].distanceMeters).toBeLessThan(20000);
-    expect(results[0].etaSeconds).toBeGreaterThanOrEqual(0);
+    expect(results[1].distanceMeters).toBe(150);
+    expect(results[1].accuracyMeters).toBe(8);
+    expect(repository.getNearbyDrivers).toHaveBeenCalledWith(
+      106.8272,
+      -6.1754,
+      20000,
+      2,
+    );
   });
 });
