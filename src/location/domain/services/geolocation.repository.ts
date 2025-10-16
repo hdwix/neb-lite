@@ -1,7 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, Logger } from '@nestjs/common';
 import Redis from 'ioredis';
 import { DriverLocationEntry, DriverLocationInput } from './location.types';
+import { RedisService } from '../../../redis/redis.service';
 
 interface GeospatialQueryResult {
   driverId: string;
@@ -14,28 +14,14 @@ interface GeospatialQueryResult {
 }
 
 @Injectable()
-export class GeolocationRepository implements OnModuleDestroy {
+export class GeolocationRepository {
   private readonly logger = new Logger(GeolocationRepository.name);
   private readonly redis: Redis;
   private readonly driverGeoKey = 'geo:drivers';
   private readonly driverMetadataKey = 'geo:drivers:metadata';
 
-  constructor(private readonly configService: ConfigService) {
-    const host = this.configService.get<string>('REDIS_HOST', 'localhost');
-    const port = this.configService.get<number>('REDIS_PORT', 6379);
-
-    this.redis = new Redis({ host, port });
-    this.redis.on('error', (error) =>
-      this.logger.error(`Redis connection error: ${error}`),
-    );
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    try {
-      await this.redis.quit();
-    } catch (error) {
-      this.logger.warn(`Failed to close redis connection: ${error}`);
-    }
+  constructor(redisService: RedisService) {
+    this.redis = redisService.getClient();
   }
 
   async storeDriverLocation(
