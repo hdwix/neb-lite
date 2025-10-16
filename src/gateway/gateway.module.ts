@@ -19,11 +19,13 @@ import { DriverProfileRepository } from '../iam/infrastructure/repository/driver
 import { DatabaseModule } from '../infrastructure/modules/database.module';
 import { SmsProviderService } from '../iam/domain/services/sms-provider.service';
 import { HttpService } from '@nestjs/axios';
+import { LocationModule } from '../location/location.module';
 
 @Module({
   imports: [
     DatabaseModule,
     IamModule,
+    LocationModule,
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
     TypeOrmModule.forFeature([RiderProfile, DriverProfile]),

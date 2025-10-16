@@ -1,12 +1,48 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GatewayController } from './gateway.controller';
+import { AuthenticationService } from '../../../iam/domain/services/authentication.service';
+import { LocationService } from '../../../location/domain/services/location.service';
+import { REQUEST_CLIENT_KEY } from '../../../app/constants/request-client-key';
+import { UnauthorizedException } from '@nestjs/common';
 
-describe('ApiGatewayController', () => {
+describe('GatewayController', () => {
   let controller: GatewayController;
+  type AuthServiceMock = jest.Mocked<
+    Pick<
+      AuthenticationService,
+      'getOtp' | 'verifyOtp' | 'getRefreshToken' | 'logout'
+    >
+  >;
+  const authServiceMock = {
+    getOtp: jest.fn(),
+    verifyOtp: jest.fn(),
+    getRefreshToken: jest.fn(),
+    logout: jest.fn(),
+  } as AuthServiceMock;
+
+  type LocationServiceMock = jest.Mocked<
+    Pick<LocationService, 'upsertDriverLocation' | 'getNearbyDrivers'>
+  >;
+  const locationServiceMock = {
+    upsertDriverLocation: jest.fn(),
+    getNearbyDrivers: jest.fn(),
+  } as LocationServiceMock;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [GatewayController],
+      providers: [
+        {
+          provide: AuthenticationService,
+          useValue: authServiceMock as unknown as AuthenticationService,
+        },
+        {
+          provide: LocationService,
+          useValue: locationServiceMock as unknown as LocationService,
+        },
+      ],
     }).compile();
 
     controller = module.get<GatewayController>(GatewayController);
@@ -14,5 +50,66 @@ describe('ApiGatewayController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('upsertDriverLocation', () => {
+    it('should call location service with authenticated driver id', async () => {
+      const request = {
+        [REQUEST_CLIENT_KEY]: {
+          sub: 'driver-123',
+        },
+      } as any;
+
+      const dto = {
+        lon: 10,
+        lat: -6,
+        accuracyMeters: 5,
+      };
+
+      await controller.upsertDriverLocation(request, dto);
+
+      expect(locationServiceMock.upsertDriverLocation).toHaveBeenCalledWith(
+        'driver-123',
+        dto,
+      );
+    });
+
+    it('should throw UnauthorizedException when driver id missing', async () => {
+      const request = {
+        [REQUEST_CLIENT_KEY]: {},
+      } as any;
+
+      await expect(
+        controller.upsertDriverLocation(request, {
+          lon: 1,
+          lat: 2,
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
+  describe('getNearbyDrivers', () => {
+    it('should forward parameters to location service and wrap result', async () => {
+      const items = [
+        { driverId: '1', distanceMeters: 100 },
+        { driverId: '2', distanceMeters: 200 },
+      ];
+      locationServiceMock.getNearbyDrivers.mockResolvedValue(items);
+
+      const result = await controller.getNearbyDrivers({
+        lon: 106.8,
+        lat: -6.1,
+        radiusMeters: 500,
+        limit: 5,
+      });
+
+      expect(locationServiceMock.getNearbyDrivers).toHaveBeenCalledWith(
+        106.8,
+        -6.1,
+        500,
+        5,
+      );
+      expect(result).toEqual({ data: { items } });
+    });
   });
 });
