@@ -43,19 +43,35 @@ export class LocationService {
       );
     }
 
-    await this.locationQueue.add(
-      LocationQueueJob.UpsertDriverLocation,
-      {
-        driverId,
-        location,
-        eventTimestamp,
-      },
-      {
-        jobId: driverId,
-        removeOnComplete: true,
-        removeOnFail: 25,
-      },
-    );
+    try {
+      await this.locationQueue.add(
+        LocationQueueJob.UpsertDriverLocation,
+        {
+          driverId,
+          location,
+          eventTimestamp,
+        },
+        {
+          jobId: driverId,
+          removeOnComplete: true,
+          removeOnFail: 25,
+        },
+      );
+    } catch (error) {
+      if (this.isJobIdAlreadyExistsError(error)) {
+        const existingJob = await this.locationQueue.getJob(driverId);
+        const existingJobState = await existingJob?.getState();
+
+        if (existingJobState === 'active') {
+          this.logger.debug(
+            `Driver ${driverId} already has an active location update job; keeping the in-flight job and skipping requeue.`,
+          );
+          return entry;
+        }
+      }
+
+      throw error;
+    }
     this.logger.log(`Queued location update for driver ${driverId}`);
     return entry;
   }
@@ -87,5 +103,18 @@ export class LocationService {
       return undefined;
     }
     return Math.round(distanceMeters / this.averageDriverSpeedMetersPerSecond);
+  }
+
+  private isJobIdAlreadyExistsError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const message = 'message' in error ? String(error.message) : '';
+    const name = 'name' in error ? String(error.name) : '';
+
+    return (
+      name === 'JobIdAlreadyExistsError' || message.includes('JobIdAlreadyExists')
+    );
   }
 }
