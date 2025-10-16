@@ -12,7 +12,9 @@ import {
 export class LocationProcessor extends WorkerHost {
   private readonly logger = new Logger(LocationProcessor.name);
 
-  constructor(private readonly geolocationRepository: GeolocationRepository) {}
+  constructor(private readonly geolocationRepository: GeolocationRepository) {
+    super();
+  }
 
   async process(job: Job<LocationUpdateJobData>): Promise<void> {
     switch (job.name) {
