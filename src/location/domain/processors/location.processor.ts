@@ -1,12 +1,12 @@
 import { Logger } from '@nestjs/common';
-import { Process, Processor } from '@nestjs/bull';
+import { Process, Processor } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { GeolocationRepository } from '../services/geolocation.repository';
 import {
   LOCATION_QUEUE_NAME,
   LocationQueueJob,
   LocationUpdateJobData,
 } from '../services/location.types';
-import { Job } from '@nestjs/bull';
 
 @Processor(LOCATION_QUEUE_NAME)
 export class LocationProcessor {
@@ -16,8 +16,12 @@ export class LocationProcessor {
 
   @Process({ name: LocationQueueJob.UpsertDriverLocation, concurrency: 5 })
   async handleUpsertLocation(job: Job<LocationUpdateJobData>): Promise<void> {
-    const { driverId, location } = job.data;
-    await this.geolocationRepository.storeDriverLocation(driverId, location);
+    const { driverId, location, eventTimestamp } = job.data;
+    await this.geolocationRepository.storeDriverLocation(
+      driverId,
+      location,
+      eventTimestamp,
+    );
     this.logger.debug(`Processed location update job for driver ${driverId}`);
   }
 }

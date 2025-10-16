@@ -93,7 +93,7 @@ export class GatewayController {
   }
 
   @Post('location/driver')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.ACCEPTED)
   @Auth(EAuthType.Bearer)
   @Roles(EClientType.DRIVER)
   async upsertDriverLocation(
@@ -110,7 +110,7 @@ export class GatewayController {
 
     return {
       data: {},
-      messageResponse: 'Driver location updated',
+      messageResponse: 'processing update location',
     };
   }
 

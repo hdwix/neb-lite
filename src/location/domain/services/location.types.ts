@@ -24,4 +24,5 @@ export const enum LocationQueueJob {
 export interface LocationUpdateJobData {
   driverId: string;
   location: DriverLocationInput;
+  eventTimestamp: string;
 }

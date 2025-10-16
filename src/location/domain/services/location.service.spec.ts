@@ -1,19 +1,24 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LocationService } from './location.service';
-import { Queue, getQueueToken } from '@nestjs/bull';
-import { LOCATION_QUEUE_NAME, LocationQueueJob } from './location.types';
+import { getQueueToken } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import {
+  LOCATION_QUEUE_NAME,
+  LocationQueueJob,
+  LocationUpdateJobData,
+} from './location.types';
 import { GeolocationRepository } from './geolocation.repository';
 
 describe('LocationService', () => {
   let service: LocationService;
-  let queue: jest.Mocked<Queue>;
+  let queue: jest.Mocked<Queue<LocationUpdateJobData>>;
   let repository: jest.Mocked<GeolocationRepository>;
 
   beforeEach(async () => {
     queue = {
       name: LOCATION_QUEUE_NAME,
       add: jest.fn(),
-    } as unknown as jest.Mocked<Queue>;
+    } as unknown as jest.Mocked<Queue<LocationUpdateJobData>>;
 
     repository = {
       storeDriverLocation: jest.fn(),
@@ -63,6 +68,7 @@ describe('LocationService', () => {
     expect(result.lon).toBe(106.8272);
     expect(result.lat).toBe(-6.1754);
     expect(result.accuracyMeters).toBe(12);
+    expect(result.updatedAt).toEqual(expect.any(String));
     expect(queue.add).toHaveBeenCalledWith(
       LocationQueueJob.UpsertDriverLocation,
       {
@@ -72,6 +78,7 @@ describe('LocationService', () => {
           lat: -6.1754,
           accuracyMeters: 12,
         },
+        eventTimestamp: result.updatedAt,
       },
     );
   });

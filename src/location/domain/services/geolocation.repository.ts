@@ -41,32 +41,63 @@ export class GeolocationRepository implements OnModuleDestroy {
   async storeDriverLocation(
     driverId: string,
     location: DriverLocationInput,
+    eventTimestamp?: string,
   ): Promise<DriverLocationEntry> {
+    const timestamp = eventTimestamp ?? new Date().toISOString();
     const entry: DriverLocationEntry = {
       lon: location.lon,
       lat: location.lat,
       accuracyMeters: location.accuracyMeters,
-      updatedAt: new Date().toISOString(),
+      updatedAt: timestamp,
     };
 
-    const pipelineResult = await this.redis
-      .multi()
-      .geoadd(this.driverGeoKey, entry.lon, entry.lat, driverId)
-      .hset(this.driverMetadataKey, driverId, JSON.stringify(entry))
-      .exec();
-
-    if (!pipelineResult) {
-      throw new Error('Failed to persist driver location');
+    if (!Number.isFinite(entry.lon) || !Number.isFinite(entry.lat)) {
+      throw new Error('Invalid driver coordinates');
     }
 
-    for (const [error] of pipelineResult) {
-      if (error) {
-        throw error;
-      }
+    const result = (await this.redis.eval(
+      `
+      local metadataKey = KEYS[1]
+      local geoKey = KEYS[2]
+      local driverId = ARGV[1]
+      local lon = tonumber(ARGV[2])
+      local lat = tonumber(ARGV[3])
+      local metadataValue = ARGV[4]
+      local updatedAt = ARGV[5]
+
+      local existing = redis.call('HGET', metadataKey, driverId)
+      if existing then
+        local ok, decoded = pcall(cjson.decode, existing)
+        if ok and decoded and decoded.updatedAt and decoded.updatedAt >= updatedAt then
+          return 0
+        end
+      end
+
+      redis.call('GEOADD', geoKey, lon, lat, driverId)
+      redis.call('HSET', metadataKey, driverId, metadataValue)
+      return 1
+    `,
+      2,
+      this.driverMetadataKey,
+      this.driverGeoKey,
+      driverId,
+      entry.lon.toString(),
+      entry.lat.toString(),
+      JSON.stringify(entry),
+      entry.updatedAt,
+    )) as number | string | null;
+
+    if (Number(result) === 1) {
+      this.logger.debug(`Stored geospatial location for driver ${driverId}`);
+      return entry;
     }
 
-    this.logger.debug(`Stored geospatial location for driver ${driverId}`);
-    return entry;
+    this.logger.debug(
+      `Skipped outdated location update for driver ${driverId} (event timestamp: ${entry.updatedAt})`,
+    );
+
+    const existingEntry = await this.getDriverMetadata(driverId);
+    return existingEntry ?? entry;
   }
 
   async getNearbyDrivers(
@@ -160,6 +191,28 @@ export class GeolocationRepository implements OnModuleDestroy {
       },
       metadata: metadataMap.get(driverIdRaw),
     };
+  }
+
+  private async getDriverMetadata(
+    driverId: string,
+  ): Promise<DriverLocationEntry | null> {
+    const metadataValue = await this.redis.hget(
+      this.driverMetadataKey,
+      driverId,
+    );
+
+    if (!metadataValue) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(metadataValue) as DriverLocationEntry;
+    } catch (error) {
+      this.logger.warn(
+        `Unable to parse metadata for driver ${driverId}: ${error}`,
+      );
+      return null;
+    }
   }
 }
 

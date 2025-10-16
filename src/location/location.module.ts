@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { BullModule } from '@nestjs/bull';
+import { BullModule } from '@nestjs/bullmq';
 import { LocationService } from './domain/services/location.service';
 import { GeolocationRepository } from './domain/services/geolocation.repository';
 import { LocationProcessor } from './domain/processors/location.processor';

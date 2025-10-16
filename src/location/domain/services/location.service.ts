@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectQueue, Queue } from '@nestjs/bull';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { GeolocationRepository } from './geolocation.repository';
 import {
   DriverLocationEntry,
@@ -25,16 +26,18 @@ export class LocationService {
     driverId: string,
     location: DriverLocationInput,
   ): Promise<DriverLocationEntry> {
+    const eventTimestamp = new Date().toISOString();
     const entry: DriverLocationEntry = {
       lon: location.lon,
       lat: location.lat,
       accuracyMeters: location.accuracyMeters,
-      updatedAt: new Date().toISOString(),
+      updatedAt: eventTimestamp,
     };
 
     await this.locationQueue.add(LocationQueueJob.UpsertDriverLocation, {
       driverId,
       location,
+      eventTimestamp,
     });
     this.logger.debug(`Queued location update for driver ${driverId}`);
     return entry;
