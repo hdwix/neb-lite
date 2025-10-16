@@ -30,7 +30,7 @@ interface AuthenticatedClientPayload {
   msisdn?: string;
 }
 
-@Controller({ path: '', version: '1' })
+@Controller({ path: 'gateway', version: '1' })
 export class GatewayController {
   constructor(
     private readonly authService: AuthenticationService,
@@ -39,14 +39,14 @@ export class GatewayController {
 
   @HttpCode(HttpStatus.OK)
   @Auth(EAuthType.None)
-  @Post('gateway/auth/request-otp')
+  @Post('auth/request-otp')
   async getOtp(@Body() getOtpDto: GetOtpDto) {
     return await this.authService.getOtp(getOtpDto);
   }
 
   @HttpCode(HttpStatus.OK)
   @Auth(EAuthType.None)
-  @Post('gateway/auth/verify-otp')
+  @Post('auth/verify-otp')
   async verifyOtp(
     @Body() verifyOtpDto: VerifyOtpDto,
     @Res({ passthrough: true }) response: Response,
@@ -64,7 +64,7 @@ export class GatewayController {
     });
   }
 
-  @Post('gateway/auth/refresh-token')
+  @Post('auth/refresh-token')
   @Auth(EAuthType.None)
   @HttpCode(HttpStatus.OK)
   async getRefreshToken(
@@ -85,7 +85,7 @@ export class GatewayController {
     });
   }
 
-  @Post('gateway/auth/logout')
+  @Post('auth/logout')
   @Auth(EAuthType.None)
   @HttpCode(HttpStatus.OK)
   async logout(@Body() refreshTokenDto: RefreshTokenDto) {

@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { AuthenticationController } from './app/controllers/authentication.controller';
 import { AuthenticationService } from './domain/services/authentication.service';
 import { BcryptService } from './domain/services/bcrypt.service';
 import { HashingService } from './domain/services/hashing.service';
@@ -25,7 +24,7 @@ import { HttpModule } from '@nestjs/axios';
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
   ],
-  controllers: [AuthenticationController],
+  controllers: [],
   providers: [
     AuthenticationService,
     {
