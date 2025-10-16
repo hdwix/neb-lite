@@ -5,14 +5,18 @@ import { LocationService } from './location.service';
 describe('LocationService', () => {
   let service: LocationService;
   let cacheManager: jest.Mocked<Cache>;
+  let cacheStore: { keys: jest.Mock };
 
   beforeEach(async () => {
+    cacheStore = {
+      keys: jest.fn(),
+    };
     cacheManager = {
       get: jest.fn(),
       set: jest.fn(),
       del: jest.fn(),
       reset: jest.fn(),
-      store: {},
+      store: cacheStore,
     } as unknown as jest.Mocked<Cache>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -50,34 +54,46 @@ describe('LocationService', () => {
     expect(result.lat).toBe(-6.1754);
     expect(result.accuracyMeters).toBe(12);
     expect(cacheManager.set).toHaveBeenCalledWith(
-      'location:drivers',
+      'location:driver:driver-1',
       expect.objectContaining({
-        'driver-1': expect.objectContaining({
-          lon: 106.8272,
-          lat: -6.1754,
-          accuracyMeters: 12,
-        }),
+        lon: 106.8272,
+        lat: -6.1754,
+        accuracyMeters: 12,
       }),
     );
   });
 
   it('returns nearby drivers ordered by distance and limited', async () => {
-    cacheManager.get.mockResolvedValueOnce({
-      'driver-1': {
-        lon: 106.8272,
-        lat: -6.1754,
-        updatedAt: new Date().toISOString(),
-      },
-      'driver-2': {
-        lon: 106.8,
-        lat: -6.2,
-        updatedAt: new Date().toISOString(),
-      },
-      'driver-3': {
-        lon: 107.0,
-        lat: -6.3,
-        updatedAt: new Date().toISOString(),
-      },
+    const keys = [
+      'location:driver:driver-1',
+      'location:driver:driver-2',
+      'location:driver:driver-3',
+    ];
+
+    cacheStore.keys.mockResolvedValueOnce(keys);
+    cacheManager.get.mockImplementation(async (key: string) => {
+      switch (key) {
+        case 'location:driver:driver-1':
+          return {
+            lon: 106.8272,
+            lat: -6.1754,
+            updatedAt: new Date().toISOString(),
+          };
+        case 'location:driver:driver-2':
+          return {
+            lon: 106.8,
+            lat: -6.2,
+            updatedAt: new Date().toISOString(),
+          };
+        case 'location:driver:driver-3':
+          return {
+            lon: 107.0,
+            lat: -6.3,
+            updatedAt: new Date().toISOString(),
+          };
+        default:
+          return undefined;
+      }
     });
 
     const results = await service.getNearbyDrivers(106.8272, -6.1754, 20000, 2);
