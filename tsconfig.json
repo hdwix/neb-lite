@@ -11,6 +11,9 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "moduleResolution": "node",
+    "paths": {
+      "@nestjs/bull": ["src/external/nest-bull"]
+    },
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": true,

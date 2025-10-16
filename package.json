@@ -106,6 +106,9 @@
       "text",
       "text-summary",
       "cobertura"
-    ]
+    ],
+    "moduleNameMapper": {
+      "^@nestjs/bull$": "<rootDir>/../src/external/nest-bull"
+    }
   }
 }
