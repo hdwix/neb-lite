@@ -34,11 +34,28 @@ export class LocationService {
       updatedAt: eventTimestamp,
     };
 
-    await this.locationQueue.add(LocationQueueJob.UpsertDriverLocation, {
-      driverId,
-      location,
-      eventTimestamp,
-    });
+    try {
+      // Ensure we do not accumulate redundant waiting jobs for the same driver
+      await this.locationQueue.removeJobs(driverId);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to prune existing queue jobs for driver ${driverId}: ${error}`,
+      );
+    }
+
+    await this.locationQueue.add(
+      LocationQueueJob.UpsertDriverLocation,
+      {
+        driverId,
+        location,
+        eventTimestamp,
+      },
+      {
+        jobId: driverId,
+        removeOnComplete: true,
+        removeOnFail: 25,
+      },
+    );
     this.logger.log(`Queued location update for driver ${driverId}`);
     return entry;
   }
