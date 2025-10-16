@@ -35,6 +35,6 @@ export class LocationProcessor extends WorkerHost {
       location,
       eventTimestamp,
     );
-    this.logger.debug(`Processed location update job for driver ${driverId}`);
+    this.logger.log(`Processed location update job for driver ${driverId}`);
   }
 }

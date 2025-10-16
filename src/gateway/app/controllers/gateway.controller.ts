@@ -93,8 +93,8 @@ export class GatewayController {
   }
 
   @Post('location/driver')
-  @HttpCode(HttpStatus.ACCEPTED)
-  @Auth(EAuthType.Bearer)
+  @HttpCode(HttpStatus.OK)
+  // @Auth(EAuthType.Bearer)
   @Roles(EClientType.DRIVER)
   async upsertDriverLocation(
     @Req() request: Request,
@@ -115,8 +115,9 @@ export class GatewayController {
   }
 
   @Get('matching/nearby-drivers')
-  @Auth(EAuthType.Bearer)
+  // @Auth(EAuthType.Bearer)
   @Roles(EClientType.RIDER)
+  @HttpCode(HttpStatus.OK)
   async getNearbyDrivers(@Query() nearbyDriversDto: GetNearbyDriversDto) {
     const items = await this.locationService.getNearbyDrivers(
       nearbyDriversDto.lon,

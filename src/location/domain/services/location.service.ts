@@ -39,7 +39,7 @@ export class LocationService {
       location,
       eventTimestamp,
     });
-    this.logger.debug(`Queued location update for driver ${driverId}`);
+    this.logger.log(`Queued location update for driver ${driverId}`);
     return entry;
   }
 

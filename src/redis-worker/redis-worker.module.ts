@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { ExpressAdapter } from '@bull-board/express';
+import { GatewayModule } from '../gateway/gateway.module';
+import { LocationModule } from '../location/location.module';
 
 @Module({
   imports: [
@@ -14,6 +18,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         },
       }),
     }),
+    BullBoardModule.forRoot({
+      route: '/queues',
+      adapter: ExpressAdapter,
+    }),
+    GatewayModule,
+    LocationModule,
   ],
 })
 export class RedisWorkerModule {}

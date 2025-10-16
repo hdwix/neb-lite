@@ -88,11 +88,11 @@ export class GeolocationRepository implements OnModuleDestroy {
     )) as number | string | null;
 
     if (Number(result) === 1) {
-      this.logger.debug(`Stored geospatial location for driver ${driverId}`);
+      this.logger.log(`Stored geospatial location for driver ${driverId}`);
       return entry;
     }
 
-    this.logger.debug(
+    this.logger.log(
       `Skipped outdated location update for driver ${driverId} (event timestamp: ${entry.updatedAt})`,
     );
 
@@ -152,9 +152,7 @@ export class GeolocationRepository implements OnModuleDestroy {
 
     return rawResults
       .map((entry) => this.mapGeoradiusEntry(entry, metadataMap))
-      .filter(
-        (result): result is GeospatialQueryResult => result !== null,
-      );
+      .filter((result): result is GeospatialQueryResult => result !== null);
   }
 
   private mapGeoradiusEntry(
