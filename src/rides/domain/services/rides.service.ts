@@ -255,10 +255,7 @@ export class RidesService {
       return;
     }
 
-    if (
-      requester.role === EClientType.RIDER &&
-      ride.riderId !== requester.id
-    ) {
+    if (requester.role === EClientType.RIDER && ride.riderId !== requester.id) {
       throw new NotFoundException('Ride not found');
     }
 
@@ -297,7 +294,7 @@ export class RidesService {
     const queueEvents = await this.createQueueEvents();
 
     try {
-      const job = await this.rideQueue.add<RideRouteEstimationJobData>(
+      const job = await this.rideQueue.add(
         RideQueueJob.EstimateRoute,
         {
           rideId,
@@ -312,7 +309,9 @@ export class RidesService {
       );
 
       try {
-        const result = (await job.waitUntilFinished(queueEvents)) as RouteEstimates;
+        const result = (await job.waitUntilFinished(
+          queueEvents,
+        )) as RouteEstimates;
         return result;
       } catch (error) {
         this.logRouteEstimationJobError(error, rideId);
@@ -360,14 +359,8 @@ export class RidesService {
     const apiKey = this.configService.get<string>('ORS_APIKEY');
     const requestUrl = new URL(baseUrl);
 
-    requestUrl.searchParams.set(
-      'start',
-      `${pickup.lon},${pickup.lat}`,
-    );
-    requestUrl.searchParams.set(
-      'end',
-      `${dropoff.lon},${dropoff.lat}`,
-    );
+    requestUrl.searchParams.set('start', `${pickup.lon},${pickup.lat}`);
+    requestUrl.searchParams.set('end', `${dropoff.lon},${dropoff.lat}`);
 
     if (apiKey) {
       requestUrl.searchParams.set('api_key', apiKey);
@@ -417,7 +410,9 @@ export class RidesService {
     const durationSeconds = Number(durationRaw);
 
     if (!Number.isFinite(distanceMeters) || !Number.isFinite(durationSeconds)) {
-      throw new Error('OpenRouteService response summary is missing distance or duration');
+      throw new Error(
+        'OpenRouteService response summary is missing distance or duration',
+      );
     }
 
     return {
@@ -438,9 +433,13 @@ export class RidesService {
         `Failed to fetch route summary from OpenRouteService: ${status ?? 'unknown status'} ${statusText ?? ''} ${error.message}`,
       );
     } else if (error instanceof Error) {
-      this.logger.error(`Failed to parse OpenRouteService response: ${error.message}`);
+      this.logger.error(
+        `Failed to parse OpenRouteService response: ${error.message}`,
+      );
     } else {
-      this.logger.error('Unknown error occurred while estimating route via OpenRouteService');
+      this.logger.error(
+        'Unknown error occurred while estimating route via OpenRouteService',
+      );
     }
 
     throw new BadRequestException(
@@ -522,7 +521,10 @@ export class RidesService {
     pickup: RideCoordinate,
     dropoff: RideCoordinate,
   ): void {
-    if (!this.areValidCoordinates(pickup) || !this.areValidCoordinates(dropoff)) {
+    if (
+      !this.areValidCoordinates(pickup) ||
+      !this.areValidCoordinates(dropoff)
+    ) {
       throw new BadRequestException(
         'Invalid coordinates provided for route estimation',
       );
@@ -530,9 +532,7 @@ export class RidesService {
   }
 
   private areValidCoordinates(coordinates: RideCoordinate): boolean {
-    return (
-      Number.isFinite(coordinates.lon) && Number.isFinite(coordinates.lat)
-    );
+    return Number.isFinite(coordinates.lon) && Number.isFinite(coordinates.lat);
   }
 
   private getBooleanConfig(key: string): boolean {
@@ -554,7 +554,11 @@ export class RidesService {
   }
 
   private calculateEstimatedFare(distanceKm?: number | null): string | null {
-    if (distanceKm === undefined || distanceKm === null || Number.isNaN(distanceKm)) {
+    if (
+      distanceKm === undefined ||
+      distanceKm === null ||
+      Number.isNaN(distanceKm)
+    ) {
       return null;
     }
     const fare = distanceKm * this.fareRatePerKm;
@@ -578,7 +582,9 @@ export class RidesService {
       await this.rideQueue.remove(this.buildSelectionJobId(rideId));
       await this.rideQueue.remove(this.buildRouteEstimationJobId(rideId));
     } catch (error) {
-      this.logger.warn(`Failed to remove queue job for ride ${rideId}: ${error}`);
+      this.logger.warn(
+        `Failed to remove queue job for ride ${rideId}: ${error}`,
+      );
     }
   }
 }
