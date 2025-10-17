@@ -264,6 +264,8 @@ export class GatewayController {
       status: ride.status,
       fareEstimated: ride.fareEstimated ?? null,
       fareFinal: ride.fareFinal ?? null,
+      distanceEstimatedKm: ride.distanceEstimatedKm ?? null,
+      durationEstimatedSeconds: ride.durationEstimatedSeconds ?? null,
       createdAt: ride.createdAt?.toISOString?.() ?? ride.createdAt,
     };
   }

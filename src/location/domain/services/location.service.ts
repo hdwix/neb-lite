@@ -36,7 +36,7 @@ export class LocationService {
 
     try {
       // Ensure we do not accumulate redundant waiting jobs for the same driver
-      await this.locationQueue.removeJobs(driverId);
+      await this.locationQueue.remove(driverId);
     } catch (error) {
       this.logger.warn(
         `Failed to prune existing queue jobs for driver ${driverId}: ${error}`,

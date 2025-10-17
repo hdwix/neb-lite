@@ -5,28 +5,41 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { RIDE_QUEUE_NAME, RideQueueJob, RideQueueJobData } from '../types/ride-queue.types';
+import { Queue, QueueEvents } from 'bullmq';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { AxiosError } from 'axios';
+import { lastValueFrom } from 'rxjs';
+import {
+  RIDE_QUEUE_NAME,
+  RideCoordinate,
+  RideQueueJob,
+  RideQueueJobData,
+  RideRouteEstimationJobData,
+} from '../types/ride-queue.types';
 import { RideRepository } from '../../infrastructure/repositories/ride.repository';
 import { Ride } from '../entities/ride.entity';
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
 import { RideStatusHistoryRepository } from '../../infrastructure/repositories/ride-status-history.repository';
 import { EClientType } from '../../../app/enums/client-type.enum';
-import { GeolocationRepository } from '../../../location/domain/services/geolocation.repository';
+interface RouteSummary {
+  distanceMeters: number;
+  durationSeconds: number;
+}
+
+export interface RouteEstimates {
+  distanceKm: number;
+  durationSeconds: number;
+}
 
 interface RequestingClient {
   id: string;
   role?: EClientType;
 }
 
-interface RideCoordinateInput {
-  lon: number;
-  lat: number;
-}
-
 interface CreateRideInput {
-  pickup: RideCoordinateInput;
-  dropoff: RideCoordinateInput;
+  pickup: RideCoordinate;
+  dropoff: RideCoordinate;
   note?: string;
   driverId: string;
 }
@@ -45,13 +58,16 @@ export class RidesService {
     private readonly rideQueue: Queue<RideQueueJobData>,
     private readonly rideRepository: RideRepository,
     private readonly rideStatusHistoryRepository: RideStatusHistoryRepository,
-    private readonly geolocationRepository: GeolocationRepository,
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
   ) {}
 
   async createRide(riderId: string, payload: CreateRideInput): Promise<Ride> {
     if (!payload.driverId) {
       throw new BadRequestException('driverId is required for ride creation');
     }
+
+    this.ensureValidCoordinates(payload.pickup, payload.dropoff);
 
     const ride = this.rideRepository.create({
       riderId,
@@ -64,13 +80,33 @@ export class RidesService {
       status: ERideStatus.REQUESTED,
     });
 
-    ride.distanceEstimatedKm = await this.calculateDistanceKm(
-      payload.pickup,
-      payload.dropoff,
-    );
-    ride.fareEstimated = this.calculateEstimatedFare(ride.distanceEstimatedKm);
-
     const savedRide = await this.rideRepository.save(ride);
+
+    let routeEstimates: RouteEstimates | null = null;
+    try {
+      routeEstimates = await this.requestRouteEstimatesThroughQueue(
+        savedRide.id,
+        payload.pickup,
+        payload.dropoff,
+      );
+    } catch (error) {
+      await this.rollbackRideCreation(savedRide);
+      throw error;
+    }
+
+    if (!routeEstimates) {
+      throw new BadRequestException(
+        'Unable to calculate route distance at this time. Please try again later.',
+      );
+    }
+
+    savedRide.distanceEstimatedKm = routeEstimates.distanceKm;
+    savedRide.durationEstimatedSeconds = routeEstimates.durationSeconds;
+    savedRide.fareEstimated = this.calculateEstimatedFare(
+      savedRide.distanceEstimatedKm,
+    );
+
+    await this.rideRepository.save(savedRide);
     await this.recordStatusChange(savedRide, null, ERideStatus.REQUESTED, {
       context: 'Ride requested by rider',
     });
@@ -204,7 +240,7 @@ export class RidesService {
         driverId: ride.driverId,
       },
       {
-        jobId: this.buildQueueJobId(ride.id),
+        jobId: this.buildSelectionJobId(ride.id),
         removeOnComplete: true,
         removeOnFail: 25,
       },
@@ -249,42 +285,272 @@ export class RidesService {
     await this.rideStatusHistoryRepository.save(history);
   }
 
-  private async calculateDistanceKm(
-    pickup: RideCoordinateInput,
-    dropoff: RideCoordinateInput,
-  ): Promise<number> {
-    const distanceFromRedis = await this.geolocationRepository.calculateDistanceKm(
-      pickup,
-      dropoff,
-    );
+  private async requestRouteEstimatesThroughQueue(
+    rideId: string,
+    pickup: RideCoordinate,
+    dropoff: RideCoordinate,
+  ): Promise<RouteEstimates> {
+    const jobId = this.buildRouteEstimationJobId(rideId);
 
-    if (distanceFromRedis !== null) {
-      return this.roundDistanceKm(distanceFromRedis);
+    await this.rideQueue.remove(jobId).catch(() => undefined);
+
+    const queueEvents = await this.createQueueEvents();
+
+    try {
+      const job = await this.rideQueue.add<RideRouteEstimationJobData>(
+        RideQueueJob.EstimateRoute,
+        {
+          rideId,
+          pickup,
+          dropoff,
+        },
+        {
+          jobId,
+          removeOnComplete: true,
+          removeOnFail: 25,
+        },
+      );
+
+      try {
+        const result = (await job.waitUntilFinished(queueEvents)) as RouteEstimates;
+        return result;
+      } catch (error) {
+        this.logRouteEstimationJobError(error, rideId);
+        throw new BadRequestException(
+          'Unable to calculate route distance at this time. Please try again later.',
+        );
+      }
+    } finally {
+      await queueEvents
+        .close()
+        .catch((error) =>
+          this.logger.error(
+            `Failed to close queue events for ride ${rideId}: ${error}`,
+          ),
+        );
+    }
+  }
+
+  async fetchRouteEstimates(
+    pickup: RideCoordinate,
+    dropoff: RideCoordinate,
+  ): Promise<RouteEstimates> {
+    const summary = await this.requestRouteSummary(pickup, dropoff);
+
+    return {
+      distanceKm: this.roundDistanceKm(summary.distanceMeters / 1000),
+      durationSeconds: Math.round(summary.durationSeconds),
+    };
+  }
+
+  private async requestRouteSummary(
+    pickup: RideCoordinate,
+    dropoff: RideCoordinate,
+  ): Promise<RouteSummary> {
+    this.ensureValidCoordinates(pickup, dropoff);
+
+    const skipOrsCall = this.getBooleanConfig('SKIP_ORS_CALL');
+    const baseUrlKey = skipOrsCall ? 'MOCK_ORS_URL' : 'ORS_URL';
+    const baseUrl = this.configService.get<string>(baseUrlKey);
+
+    if (!baseUrl) {
+      throw new Error(`Missing configuration for ${baseUrlKey}`);
     }
 
-    return this.roundDistanceKm(
-      this.calculateHaversineDistanceKm(pickup, dropoff),
+    const apiKey = this.configService.get<string>('ORS_APIKEY');
+    const requestUrl = new URL(baseUrl);
+
+    requestUrl.searchParams.set(
+      'start',
+      `${pickup.lon},${pickup.lat}`,
+    );
+    requestUrl.searchParams.set(
+      'end',
+      `${dropoff.lon},${dropoff.lat}`,
+    );
+
+    if (apiKey) {
+      requestUrl.searchParams.set('api_key', apiKey);
+    }
+
+    const headers: Record<string, string> = {};
+    if (apiKey) {
+      headers.Authorization = apiKey;
+    }
+
+    try {
+      const response = await lastValueFrom(
+        this.httpService.get(requestUrl.toString(), {
+          headers: Object.keys(headers).length ? headers : undefined,
+        }),
+      );
+
+      return this.parseRouteSummary(response.data);
+    } catch (error) {
+      this.handleRouteEstimationError(error);
+    }
+  }
+
+  private parseRouteSummary(payload: unknown): RouteSummary {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('OpenRouteService response is empty or invalid');
+    }
+
+    const features = (payload as { features?: unknown[] }).features;
+    if (!Array.isArray(features) || features.length === 0) {
+      throw new Error('OpenRouteService response does not contain features');
+    }
+
+    const firstFeature = features[0];
+    const summary =
+      (firstFeature as { properties?: { summary?: unknown } })?.properties
+        ?.summary ?? null;
+
+    if (!summary || typeof summary !== 'object') {
+      throw new Error('OpenRouteService response summary is missing');
+    }
+
+    const distanceRaw = (summary as { distance?: unknown }).distance;
+    const durationRaw = (summary as { duration?: unknown }).duration;
+
+    const distanceMeters = Number(distanceRaw);
+    const durationSeconds = Number(durationRaw);
+
+    if (!Number.isFinite(distanceMeters) || !Number.isFinite(durationSeconds)) {
+      throw new Error('OpenRouteService response summary is missing distance or duration');
+    }
+
+    return {
+      distanceMeters,
+      durationSeconds,
+    };
+  }
+
+  private handleRouteEstimationError(error: unknown): never {
+    if (error instanceof BadRequestException) {
+      throw error;
+    }
+
+    if (this.isAxiosError(error)) {
+      const status = error.response?.status;
+      const statusText = error.response?.statusText;
+      this.logger.error(
+        `Failed to fetch route summary from OpenRouteService: ${status ?? 'unknown status'} ${statusText ?? ''} ${error.message}`,
+      );
+    } else if (error instanceof Error) {
+      this.logger.error(`Failed to parse OpenRouteService response: ${error.message}`);
+    } else {
+      this.logger.error('Unknown error occurred while estimating route via OpenRouteService');
+    }
+
+    throw new BadRequestException(
+      'Unable to calculate route distance at this time. Please try again later.',
     );
   }
 
-  private calculateHaversineDistanceKm(
-    pickup: RideCoordinateInput,
-    dropoff: RideCoordinateInput,
-  ): number {
-    const earthRadiusKm = 6371;
-    const dLat = this.toRad(dropoff.lat - pickup.lat);
-    const dLon = this.toRad(dropoff.lon - pickup.lon);
+  private isAxiosError(error: unknown): error is AxiosError {
+    return !!error && typeof error === 'object' && 'isAxiosError' in error;
+  }
 
-    const lat1 = this.toRad(pickup.lat);
-    const lat2 = this.toRad(dropoff.lat);
+  private async createQueueEvents(): Promise<QueueEvents> {
+    const queueEvents = new QueueEvents(this.rideQueue.name, {
+      connection: this.rideQueue.opts.connection,
+    });
 
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.sin(dLon / 2) * Math.sin(dLon / 2) *
-        Math.cos(lat1) *
-        Math.cos(lat2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return earthRadiusKm * c;
+    try {
+      await queueEvents.waitUntilReady();
+      return queueEvents;
+    } catch (error) {
+      await queueEvents.close().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async rollbackRideCreation(ride: Ride): Promise<void> {
+    try {
+      await this.rideRepository.remove(ride);
+    } catch (error) {
+      this.logger.error(
+        `Failed to rollback ride ${ride.id} after route estimation failure: ${error}`,
+      );
+    }
+
+    await this.rideQueue
+      .remove(this.buildRouteEstimationJobId(ride.id))
+      .catch(() => undefined);
+  }
+
+  private logRouteEstimationJobError(error: unknown, rideId: string): void {
+    if (!error) {
+      this.logger.error(
+        `Route estimation job for ride ${rideId} failed with an unknown error`,
+      );
+      return;
+    }
+
+    if (typeof error === 'object') {
+      const failedReason = (error as { failedReason?: unknown }).failedReason;
+      if (failedReason instanceof Error) {
+        this.logger.error(
+          `Route estimation job for ride ${rideId} failed: ${failedReason.message}`,
+        );
+        return;
+      }
+      if (typeof failedReason === 'string') {
+        this.logger.error(
+          `Route estimation job for ride ${rideId} failed: ${failedReason}`,
+        );
+        return;
+      }
+    }
+
+    if (error instanceof Error) {
+      this.logger.error(
+        `Route estimation job for ride ${rideId} failed: ${error.message}`,
+      );
+      return;
+    }
+
+    this.logger.error(
+      `Route estimation job for ride ${rideId} failed with unexpected error: ${String(
+        error,
+      )}`,
+    );
+  }
+
+  private ensureValidCoordinates(
+    pickup: RideCoordinate,
+    dropoff: RideCoordinate,
+  ): void {
+    if (!this.areValidCoordinates(pickup) || !this.areValidCoordinates(dropoff)) {
+      throw new BadRequestException(
+        'Invalid coordinates provided for route estimation',
+      );
+    }
+  }
+
+  private areValidCoordinates(coordinates: RideCoordinate): boolean {
+    return (
+      Number.isFinite(coordinates.lon) && Number.isFinite(coordinates.lat)
+    );
+  }
+
+  private getBooleanConfig(key: string): boolean {
+    const value = this.configService.get(key);
+
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'number') {
+      return value === 1;
+    }
+
+    if (typeof value === 'string') {
+      return ['true', '1', 'yes', 'y'].includes(value.toLowerCase());
+    }
+
+    return false;
   }
 
   private calculateEstimatedFare(distanceKm?: number | null): string | null {
@@ -295,21 +561,22 @@ export class RidesService {
     return fare.toFixed(2);
   }
 
-  private toRad(degree: number): number {
-    return (degree * Math.PI) / 180;
-  }
-
   private roundDistanceKm(distanceKm: number): number {
     return Number(distanceKm.toFixed(3));
   }
 
-  private buildQueueJobId(rideId: string): string {
-    return `ride-${rideId}`;
+  private buildSelectionJobId(rideId: string): string {
+    return `ride-${rideId}:selection`;
+  }
+
+  private buildRouteEstimationJobId(rideId: string): string {
+    return `ride-${rideId}:route-estimation`;
   }
 
   private async removePendingJobs(rideId: string): Promise<void> {
     try {
-      await this.rideQueue.removeJobs(this.buildQueueJobId(rideId));
+      await this.rideQueue.remove(this.buildSelectionJobId(rideId));
+      await this.rideQueue.remove(this.buildRouteEstimationJobId(rideId));
     } catch (error) {
       this.logger.warn(`Failed to remove queue job for ride ${rideId}: ${error}`);
     }

@@ -18,6 +18,10 @@ export class RideRepository {
     return this.repository.save(ride);
   }
 
+  remove(ride: Ride): Promise<Ride> {
+    return this.repository.remove(ride);
+  }
+
   async findById(id: string): Promise<Ride | null> {
     return this.repository.findOne({ where: { id } });
   }
