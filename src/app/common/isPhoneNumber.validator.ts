@@ -3,9 +3,9 @@ import {
   ValidatorConstraintInterface,
   ValidationArguments,
 } from 'class-validator';
-import { ALLOWED_TELKOMSEL_PREFIXES } from '../app/constants/phone-prefix.constant';
 import { CountryCode, parsePhoneNumberFromString } from 'libphonenumber-js';
 import { BadRequestException } from '@nestjs/common';
+import { ALLOWED_TELKOMSEL_PREFIXES } from '../constants/phone-prefix.constant';
 
 @ValidatorConstraint({ name: 'IsPhoneNumberFormatted', async: false })
 export class IsPhoneNumberFormatted implements ValidatorConstraintInterface {

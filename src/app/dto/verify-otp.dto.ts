@@ -1,6 +1,6 @@
 import { IsEnum, IsString, Length, Validate } from 'class-validator';
-import { IsPhoneNumberFormatted } from '../../common/isPhoneNumber.validator';
 import { EClientType } from '../enums/client-type.enum';
+import { IsPhoneNumberFormatted } from '../common/isPhoneNumber.validator';
 
 export class VerifyOtpDto {
   @IsString()
