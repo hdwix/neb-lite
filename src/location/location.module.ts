@@ -16,7 +16,6 @@ import { LocationQueueMaintenanceService } from './location-queue.maintenance';
       name: LOCATION_QUEUE_NAME,
       defaultJobOptions: {
         removeOnComplete: true,
-        // Keep a small buffer of failed jobs for debugging instead of growing unbounded
         removeOnFail: 100,
       },
     }),
