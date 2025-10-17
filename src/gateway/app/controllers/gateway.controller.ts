@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Query,
   Req,
@@ -23,6 +24,10 @@ import { REQUEST_CLIENT_KEY } from '../../../app/constants/request-client-key';
 import { UpsertDriverLocationDto } from '../../../location/app/dto/upsert-driver-location.dto';
 import { LocationService } from '../../../location/domain/services/location.service';
 import { GetNearbyDriversDto } from '../../../location/app/dto/get-nearby-drivers.dto';
+import { RidesService } from '../../../rides/domain/services/rides.service';
+import { CreateRideDto } from '../../../rides/app/dto/create-ride.dto';
+import { CancelRideDto } from '../../../rides/app/dto/cancel-ride.dto';
+import { Ride } from '../../../rides/domain/entities/ride.entity';
 
 interface AuthenticatedClientPayload {
   sub?: string | number;
@@ -35,6 +40,7 @@ export class GatewayController {
   constructor(
     private readonly authService: AuthenticationService,
     private readonly locationService: LocationService,
+    private readonly ridesService: RidesService,
   ) {}
 
   @HttpCode(HttpStatus.OK)
@@ -133,6 +139,91 @@ export class GatewayController {
     };
   }
 
+  @Post('rides')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.RIDER)
+  @HttpCode(HttpStatus.CREATED)
+  async createRide(
+    @Req() request: Request,
+    @Body() createRideDto: CreateRideDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const riderId = this.getClientId(client);
+
+    const ride = await this.ridesService.createRide(riderId, createRideDto);
+
+    return {
+      statusCode: HttpStatus.CREATED,
+      message: 'Ride requested',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Get('rides/:id')
+  @Auth(EAuthType.Bearer)
+  @HttpCode(HttpStatus.OK)
+  async getRide(@Req() request: Request, @Param('id') rideId: string) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.getRideById(rideId, {
+      id: this.getClientId(client),
+      role: client.role,
+    });
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride retrieved',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Post('rides/:id/cancel')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.RIDER)
+  @HttpCode(HttpStatus.OK)
+  async cancelRide(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() cancelRideDto: CancelRideDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.cancelRide(
+      rideId,
+      {
+        id: this.getClientId(client),
+        role: client.role,
+      },
+      cancelRideDto,
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride cancelled',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Post('rides/:id/complete')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER)
+  @HttpCode(HttpStatus.OK)
+  async completeRide(@Req() request: Request, @Param('id') rideId: string) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.completeRide(rideId, {
+      id: this.getClientId(client),
+      role: client.role,
+    });
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride completed',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
   private getAuthenticatedClient(request: Request): AuthenticatedClientPayload {
     return request[REQUEST_CLIENT_KEY] as AuthenticatedClientPayload;
   }
@@ -143,5 +234,25 @@ export class GatewayController {
       throw new UnauthorizedException('Client identifier not found in request');
     }
     return String(id);
+  }
+
+  private toRideResponse(ride: Ride) {
+    return {
+      id: ride.id,
+      riderId: ride.riderId,
+      driverId: ride.driverId,
+      pickup: {
+        lon: ride.pickupLon,
+        lat: ride.pickupLat,
+      },
+      dropoff: {
+        lon: ride.dropoffLon,
+        lat: ride.dropoffLat,
+      },
+      status: ride.status,
+      fareEstimated: ride.fareEstimated ?? null,
+      fareFinal: ride.fareFinal ?? null,
+      createdAt: ride.createdAt?.toISOString?.() ?? ride.createdAt,
+    };
   }
 }

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
+import { randomUUID } from 'crypto';
 import { DriverLocationEntry, DriverLocationInput } from './location.types';
 
 interface GeospatialQueryResult {
@@ -19,6 +20,7 @@ export class GeolocationRepository implements OnModuleDestroy {
   private readonly redis: Redis;
   private readonly driverGeoKey = 'geo:drivers';
   private readonly driverMetadataKey = 'geo:drivers:metadata';
+  private readonly temporaryDistanceKeyPrefix = 'geo:distance:temp';
 
   constructor(private readonly configService: ConfigService) {
     const host = this.configService.get<string>('REDIS_HOST', 'localhost');
@@ -153,6 +155,59 @@ export class GeolocationRepository implements OnModuleDestroy {
     return rawResults
       .map((entry) => this.mapGeoradiusEntry(entry, metadataMap))
       .filter((result): result is GeospatialQueryResult => result !== null);
+  }
+
+  async calculateDistanceKm(
+    origin: Pick<DriverLocationInput, 'lon' | 'lat'>,
+    destination: Pick<DriverLocationInput, 'lon' | 'lat'>,
+  ): Promise<number | null> {
+    const key = `${this.temporaryDistanceKeyPrefix}:${randomUUID()}`;
+
+    try {
+      const result = (await this.redis.eval(
+        `
+          local key = KEYS[1]
+          local originMember = ARGV[1]
+          local originLon = tonumber(ARGV[2])
+          local originLat = tonumber(ARGV[3])
+          local destinationMember = ARGV[4]
+          local destinationLon = tonumber(ARGV[5])
+          local destinationLat = tonumber(ARGV[6])
+          local unit = ARGV[7]
+
+          if not originLon or not originLat or not destinationLon or not destinationLat then
+            return nil
+          end
+
+          redis.call('DEL', key)
+          redis.call('GEOADD', key, originLon, originLat, originMember)
+          redis.call('GEOADD', key, destinationLon, destinationLat, destinationMember)
+          local distance = redis.call('GEODIST', key, originMember, destinationMember, unit)
+          redis.call('DEL', key)
+
+          return distance
+        `,
+        1,
+        key,
+        'origin',
+        origin.lon.toString(),
+        origin.lat.toString(),
+        'destination',
+        destination.lon.toString(),
+        destination.lat.toString(),
+        'km',
+      )) as number | string | null;
+
+      if (result === null) {
+        return null;
+      }
+
+      const distance = Number(result);
+      return Number.isFinite(distance) ? distance : null;
+    } catch (error) {
+      this.logger.warn(`Failed to calculate distance via Redis GEO operations: ${error}`);
+      return null;
+    }
   }
 
   private mapGeoradiusEntry(
