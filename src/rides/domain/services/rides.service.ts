@@ -12,6 +12,7 @@ import { Ride } from '../entities/ride.entity';
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
 import { RideStatusHistoryRepository } from '../../infrastructure/repositories/ride-status-history.repository';
 import { EClientType } from '../../../app/enums/client-type.enum';
+import { GeolocationRepository } from '../../../location/domain/services/geolocation.repository';
 
 interface RequestingClient {
   id: string;
@@ -44,6 +45,7 @@ export class RidesService {
     private readonly rideQueue: Queue<RideQueueJobData>,
     private readonly rideRepository: RideRepository,
     private readonly rideStatusHistoryRepository: RideStatusHistoryRepository,
+    private readonly geolocationRepository: GeolocationRepository,
   ) {}
 
   async createRide(riderId: string, payload: CreateRideInput): Promise<Ride> {
@@ -62,7 +64,7 @@ export class RidesService {
       status: ERideStatus.REQUESTED,
     });
 
-    ride.distanceEstimatedKm = this.calculateDistanceKm(
+    ride.distanceEstimatedKm = await this.calculateDistanceKm(
       payload.pickup,
       payload.dropoff,
     );
@@ -247,7 +249,25 @@ export class RidesService {
     await this.rideStatusHistoryRepository.save(history);
   }
 
-  private calculateDistanceKm(
+  private async calculateDistanceKm(
+    pickup: RideCoordinateInput,
+    dropoff: RideCoordinateInput,
+  ): Promise<number> {
+    const distanceFromRedis = await this.geolocationRepository.calculateDistanceKm(
+      pickup,
+      dropoff,
+    );
+
+    if (distanceFromRedis !== null) {
+      return this.roundDistanceKm(distanceFromRedis);
+    }
+
+    return this.roundDistanceKm(
+      this.calculateHaversineDistanceKm(pickup, dropoff),
+    );
+  }
+
+  private calculateHaversineDistanceKm(
     pickup: RideCoordinateInput,
     dropoff: RideCoordinateInput,
   ): number {
@@ -264,7 +284,7 @@ export class RidesService {
         Math.cos(lat1) *
         Math.cos(lat2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return Number((earthRadiusKm * c).toFixed(3));
+    return earthRadiusKm * c;
   }
 
   private calculateEstimatedFare(distanceKm?: number | null): string | null {
@@ -277,6 +297,10 @@ export class RidesService {
 
   private toRad(degree: number): number {
     return (degree * Math.PI) / 180;
+  }
+
+  private roundDistanceKm(distanceKm: number): number {
+    return Number(distanceKm.toFixed(3));
   }
 
   private buildQueueJobId(rideId: string): string {

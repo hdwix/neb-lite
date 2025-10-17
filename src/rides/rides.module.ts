@@ -10,6 +10,7 @@ import { RIDE_QUEUE_NAME } from './domain/types/ride-queue.types';
 import { RideProcessor } from './domain/processors/ride.processor';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import { GeolocationRepository } from '../location/domain/services/geolocation.repository';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
     RideRepository,
     RideStatusHistoryRepository,
     RideProcessor,
+    GeolocationRepository,
   ],
   exports: [RidesService],
 })
