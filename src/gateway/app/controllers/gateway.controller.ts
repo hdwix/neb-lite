@@ -43,6 +43,10 @@ export class GatewayController {
     private readonly ridesService: RidesService,
   ) {}
 
+  /*
+   * api for iam-module
+   */
+
   @HttpCode(HttpStatus.OK)
   @Auth(EAuthType.None)
   @Post('auth/request-otp')
@@ -98,6 +102,10 @@ export class GatewayController {
     return await this.authService.logout(refreshTokenDto);
   }
 
+  /*
+   * api for location-module
+   */
+
   @Post('location/driver')
   @HttpCode(HttpStatus.OK)
   // @Auth(EAuthType.Bearer)
@@ -138,6 +146,10 @@ export class GatewayController {
       },
     };
   }
+
+  /*
+   * api for rides-module
+   */
 
   @Post('rides')
   @Auth(EAuthType.Bearer)
