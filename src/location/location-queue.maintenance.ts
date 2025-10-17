@@ -73,8 +73,8 @@ export class LocationQueueMaintenanceService
   private async pruneQueueHistory(): Promise<void> {
     try {
       // Immediately remove completed jobs and aggressively prune failed ones
-      await this.locationQueue.clean(0, 'completed');
-      await this.locationQueue.clean(24 * 60 * 60 * 1000, 'failed', 100);
+      await this.locationQueue.clean(0, 1000, 'completed');
+      await this.locationQueue.clean(24 * 60 * 60 * 1000, 100, 'failed');
     } catch (error) {
       this.logger.warn(`Unable to prune driver location jobs: ${error}`);
     }

@@ -70,6 +70,8 @@ export class Ride {
   })
   distanceEstimatedKm?: number | null;
 
+  durationEstimatedSeconds?: number | null;
+
   @Column({ name: 'note', type: 'varchar', length: 255, nullable: true })
   note?: string | null;
 
