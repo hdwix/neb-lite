@@ -5,6 +5,7 @@ import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
 import { GatewayModule } from '../gateway/gateway.module';
 import { LocationModule } from '../location/location.module';
+import { RidesModule } from '../rides/rides.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { LocationModule } from '../location/location.module';
     }),
     GatewayModule,
     LocationModule,
+    RidesModule,
   ],
 })
 export class RedisWorkerModule {}

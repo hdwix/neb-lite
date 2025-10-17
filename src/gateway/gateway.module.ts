@@ -20,12 +20,14 @@ import { DatabaseModule } from '../infrastructure/modules/database.module';
 import { SmsProviderService } from '../iam/domain/services/sms-provider.service';
 import { HttpService } from '@nestjs/axios';
 import { LocationModule } from '../location/location.module';
+import { RidesModule } from '../rides/rides.module';
 
 @Module({
   imports: [
     DatabaseModule,
     IamModule,
     LocationModule,
+    RidesModule,
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
     TypeOrmModule.forFeature([RiderProfile, DriverProfile]),
