@@ -26,6 +26,8 @@ export class LocationService {
     driverId: string,
     location: DriverLocationInput,
   ): Promise<DriverLocationEntry> {
+    console.log(' THIS');
+    console.log(driverId);
     const eventTimestamp = new Date().toISOString();
     const entry: DriverLocationEntry = {
       lon: location.lon,
@@ -51,13 +53,15 @@ export class LocationService {
           location,
           eventTimestamp,
         },
-        {
-          jobId: driverId,
-          removeOnComplete: true,
-          removeOnFail: 25,
-        },
+        // {
+        //   jobId: driverId,
+        //   removeOnComplete: true,
+        //   removeOnFail: 25,
+        // },
       );
     } catch (error) {
+      console.log('Error upsert driver loc');
+      console.log(error);
       if (this.isJobIdAlreadyExistsError(error)) {
         const existingJob = await this.locationQueue.getJob(driverId);
         const existingJobState = await existingJob?.getState();
@@ -114,7 +118,8 @@ export class LocationService {
     const name = 'name' in error ? String(error.name) : '';
 
     return (
-      name === 'JobIdAlreadyExistsError' || message.includes('JobIdAlreadyExists')
+      name === 'JobIdAlreadyExistsError' ||
+      message.includes('JobIdAlreadyExists')
     );
   }
 }
