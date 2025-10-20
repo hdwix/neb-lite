@@ -5,7 +5,7 @@ import {
   DRIVER_LOC_GEO_KEY,
   DRIVER_LOC_HASH_PREFIX,
   JOB_CLEANUP_IDLE_LOC_EVERY_MS,
-  MAINTENANCE_QUEUE_NAME,
+  MAINTENANCE_CLEANUP_IDLE_DRIVERS,
   MaintenanceJob,
   THRESHOLD_DRIVER_IDLE_MS,
 } from './location.types';
@@ -17,7 +17,7 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class MaintenanceSchedulerService {
   constructor(
-    @InjectQueue(MAINTENANCE_QUEUE_NAME)
+    @InjectQueue(MAINTENANCE_CLEANUP_IDLE_DRIVERS)
     private readonly maintenanceQueue: Queue,
   ) {}
 

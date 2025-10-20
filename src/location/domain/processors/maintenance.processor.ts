@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { Job } from 'bullmq';
 import Redis from 'ioredis';
 import {
-  MAINTENANCE_QUEUE_NAME,
+  MAINTENANCE_CLEANUP_IDLE_DRIVERS,
   MaintenanceJob,
   THRESHOLD_DRIVER_IDLE_MS,
   ACTIVE_DRIVER_LOC_ZSET,
@@ -13,7 +13,7 @@ import {
   DRIVER_LOC_HASH_PREFIX,
 } from '../services/location.types';
 
-@Processor(MAINTENANCE_QUEUE_NAME)
+@Processor(MAINTENANCE_CLEANUP_IDLE_DRIVERS)
 class MaintenanceProcessor extends WorkerHost {
   private readonly logger = new Logger(MaintenanceProcessor.name);
   private readonly redis: Redis;

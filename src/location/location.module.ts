@@ -6,11 +6,10 @@ import { GeolocationRepository } from './domain/services/geolocation.repository'
 import { LocationProcessor } from './domain/processors/location.processor';
 import {
   LOCATION_QUEUE_NAME,
-  MAINTENANCE_QUEUE_NAME,
+  MAINTENANCE_CLEANUP_IDLE_DRIVERS,
 } from './domain/services/location.types';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
-import { RedisWorkerModule } from '../redis-worker/redis-worker.module';
 
 @Module({
   imports: [
@@ -20,7 +19,7 @@ import { RedisWorkerModule } from '../redis-worker/redis-worker.module';
         name: LOCATION_QUEUE_NAME,
       },
       {
-        name: MAINTENANCE_QUEUE_NAME,
+        name: MAINTENANCE_CLEANUP_IDLE_DRIVERS,
       },
     ),
     BullBoardModule.forFeature(
@@ -29,7 +28,7 @@ import { RedisWorkerModule } from '../redis-worker/redis-worker.module';
         adapter: BullMQAdapter,
       },
       {
-        name: MAINTENANCE_QUEUE_NAME,
+        name: MAINTENANCE_CLEANUP_IDLE_DRIVERS,
         adapter: BullMQAdapter,
       },
     ),

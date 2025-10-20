@@ -66,7 +66,7 @@ export class GeolocationRepository implements OnModuleDestroy {
         accuracyMeters: String(location.accuracyMeters ?? 0),
         updatedAt: eventTimestamp,
       })
-      .expire(`driver:loc:${driverId}`, 10) // set ttl for driver loc hash to 10 sec
+      .expire(`driver:loc:${driverId}`, 60) // set ttl for driver loc hash to 60 sec
       .zadd('drivers:active', Date.now(), driverId) // This gives a quick way to list recently active drivers
       .publish(
         'drivers:loc:updates', // Sends a Pub/Sub message to the channel drivers:loc:updates
