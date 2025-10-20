@@ -42,3 +42,4 @@ export const CLEANUP_DRIVER_IDLE_LOC_BATCH = 1000; // remove in chunks
 export const DRIVER_LOC_GEO_KEY = 'drivers:geo';
 export const ACTIVE_DRIVER_LOC_ZSET = 'drivers:active';
 export const DRIVER_LOC_HASH_PREFIX = 'driver:loc:';
+export const DRIVER_METADATA_HASH_KEY = 'geo:drivers:metadata';

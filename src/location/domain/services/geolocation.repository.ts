@@ -3,9 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { randomUUID } from 'crypto';
 import {
+  ACTIVE_DRIVER_LOC_ZSET,
   DRIVER_LOC_GEO_KEY,
+  DRIVER_LOC_HASH_PREFIX,
+  DRIVER_METADATA_HASH_KEY,
   DriverLocationEntry,
   DriverLocationInput,
+  THRESHOLD_DRIVER_IDLE_MS,
 } from './location.types';
 
 interface GeospatialQueryResult {
@@ -22,7 +26,6 @@ interface GeospatialQueryResult {
 export class GeolocationRepository implements OnModuleDestroy {
   private readonly logger = new Logger(GeolocationRepository.name);
   private readonly redis: Redis;
-  private readonly driverMetadataKey = 'geo:drivers:metadata';
   private readonly temporaryDistanceKeyPrefix = 'geo:distance:temp';
 
   constructor(private readonly configService: ConfigService) {
@@ -56,18 +59,21 @@ export class GeolocationRepository implements OnModuleDestroy {
       updatedAt: timestamp,
     };
 
+    const driverLocationKey = `${DRIVER_LOC_HASH_PREFIX}${driverId}`;
+
     await this.redis
       .multi()
       .geoadd(DRIVER_LOC_GEO_KEY, location.lon, location.lat, driverId) // Adds/updates the driver’s coordinate in a GEO sorted set and This enables GEOSEARCH radius/box queries to find nearby drivers.
-      .hset(`driver:loc:${driverId}`, {
+      .hset(driverLocationKey, {
         // Writes the driver’s latest location metadata to a hash at a stable per-driver key. Any service can later HGETALL driver:loc:<id> to fetch the latest snapshot.
         lon: String(location.lon),
         lat: String(location.lat),
         accuracyMeters: String(location.accuracyMeters ?? 0),
-        updatedAt: eventTimestamp,
+        updatedAt: timestamp,
       })
-      .expire(`driver:loc:${driverId}`, 60) // set ttl for driver loc hash to 60 sec
-      .zadd('drivers:active', Date.now(), driverId) // This gives a quick way to list recently active drivers
+      .hset(DRIVER_METADATA_HASH_KEY, driverId, JSON.stringify(entry))
+      .expire(driverLocationKey, 60) // set ttl for driver loc hash to 60 sec
+      .zadd(ACTIVE_DRIVER_LOC_ZSET, Date.now(), driverId) // This gives a quick way to list recently active drivers
       .publish(
         'drivers:loc:updates', // Sends a Pub/Sub message to the channel drivers:loc:updates
         JSON.stringify({
@@ -109,12 +115,38 @@ export class GeolocationRepository implements OnModuleDestroy {
       .map((entry) => entry?.[0])
       .filter((value): value is string => typeof value === 'string');
 
-    const metadataResults = driverIds.length
-      ? await this.redis.hmget(this.driverMetadataKey, ...driverIds)
+    const cutoff = Date.now() - THRESHOLD_DRIVER_IDLE_MS;
+    const scoreResults = driverIds.length
+      ? await this.redis.zmscore(ACTIVE_DRIVER_LOC_ZSET, ...driverIds)
+      : [];
+
+    const activeDriverIds: string[] = [];
+    driverIds.forEach((driverId, index) => {
+      const scoreRaw = scoreResults[index];
+      if (scoreRaw === null || scoreRaw === undefined) {
+        return;
+      }
+
+      const score = Number(scoreRaw);
+      if (!Number.isFinite(score) || score < cutoff) {
+        return;
+      }
+
+      activeDriverIds.push(driverId);
+    });
+
+    if (activeDriverIds.length === 0) {
+      return [];
+    }
+
+    const activeDriverSet = new Set(activeDriverIds);
+
+    const metadataResults = activeDriverIds.length
+      ? await this.redis.hmget(DRIVER_METADATA_HASH_KEY, ...activeDriverIds)
       : [];
 
     const metadataMap = new Map<string, GeospatialQueryResult['metadata']>();
-    driverIds.forEach((driverId, index) => {
+    activeDriverIds.forEach((driverId, index) => {
       const metadataValue = metadataResults[index];
       if (!metadataValue) {
         return;
@@ -133,7 +165,9 @@ export class GeolocationRepository implements OnModuleDestroy {
     });
 
     return rawResults
-      .map((entry) => this.mapGeoradiusEntry(entry, metadataMap))
+      .map((entry) =>
+        this.mapGeoradiusEntry(entry, metadataMap, activeDriverSet),
+      )
       .filter((result): result is GeospatialQueryResult => result !== null);
   }
 
@@ -195,6 +229,7 @@ export class GeolocationRepository implements OnModuleDestroy {
   private mapGeoradiusEntry(
     entry: unknown,
     metadataMap: Map<string, GeospatialQueryResult['metadata']>,
+    activeDriverSet: Set<string>,
   ): GeospatialQueryResult | null {
     if (!Array.isArray(entry) || entry.length < 3) {
       return null;
@@ -202,6 +237,10 @@ export class GeolocationRepository implements OnModuleDestroy {
 
     const [driverIdRaw, distanceRaw, coordinatesRaw] = entry;
     if (typeof driverIdRaw !== 'string') {
+      return null;
+    }
+
+    if (!activeDriverSet.has(driverIdRaw)) {
       return null;
     }
 

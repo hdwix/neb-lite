@@ -11,6 +11,7 @@ import {
   CLEANUP_DRIVER_IDLE_LOC_BATCH,
   DRIVER_LOC_GEO_KEY,
   DRIVER_LOC_HASH_PREFIX,
+  DRIVER_METADATA_HASH_KEY,
 } from '../services/location.types';
 
 @Processor(MAINTENANCE_CLEANUP_IDLE_DRIVERS)
@@ -51,6 +52,7 @@ class MaintenanceProcessor extends WorkerHost {
       m.zrem(ACTIVE_DRIVER_LOC_ZSET, ...staleIds);
       m.zrem(DRIVER_LOC_GEO_KEY, ...staleIds);
       for (const id of staleIds) m.del(`${DRIVER_LOC_HASH_PREFIX}${id}`);
+      m.hdel(DRIVER_METADATA_HASH_KEY, ...staleIds);
       await m.exec();
 
       if (staleIds.length < CLEANUP_DRIVER_IDLE_LOC_BATCH) break; // finished this pass
