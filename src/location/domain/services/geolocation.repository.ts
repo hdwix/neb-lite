@@ -2,7 +2,11 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { randomUUID } from 'crypto';
-import { DriverLocationEntry, DriverLocationInput } from './location.types';
+import {
+  DRIVER_GEO_KEY,
+  DriverLocationEntry,
+  DriverLocationInput,
+} from './location.types';
 
 interface GeospatialQueryResult {
   driverId: string;
@@ -18,7 +22,6 @@ interface GeospatialQueryResult {
 export class GeolocationRepository implements OnModuleDestroy {
   private readonly logger = new Logger(GeolocationRepository.name);
   private readonly redis: Redis;
-  private readonly driverGeoKey = 'geo:drivers';
   private readonly driverMetadataKey = 'geo:drivers:metadata';
   private readonly temporaryDistanceKeyPrefix = 'geo:distance:temp';
 
@@ -44,7 +47,7 @@ export class GeolocationRepository implements OnModuleDestroy {
     driverId: string,
     location: DriverLocationInput,
     eventTimestamp?: string,
-  ): Promise<DriverLocationEntry> {
+  ): Promise<void> {
     const timestamp = eventTimestamp ?? new Date().toISOString();
     const entry: DriverLocationEntry = {
       lon: location.lon,
@@ -53,53 +56,30 @@ export class GeolocationRepository implements OnModuleDestroy {
       updatedAt: timestamp,
     };
 
-    if (!Number.isFinite(entry.lon) || !Number.isFinite(entry.lat)) {
-      throw new Error('Invalid driver coordinates');
-    }
-
-    const result = (await this.redis.eval(
-      `
-      local metadataKey = KEYS[1]
-      local geoKey = KEYS[2]
-      local driverId = ARGV[1]
-      local lon = tonumber(ARGV[2])
-      local lat = tonumber(ARGV[3])
-      local metadataValue = ARGV[4]
-      local updatedAt = ARGV[5]
-
-      local existing = redis.call('HGET', metadataKey, driverId)
-      if existing then
-        local ok, decoded = pcall(cjson.decode, existing)
-        if ok and decoded and decoded.updatedAt and decoded.updatedAt >= updatedAt then
-          return 0
-        end
-      end
-
-      redis.call('GEOADD', geoKey, lon, lat, driverId)
-      redis.call('HSET', metadataKey, driverId, metadataValue)
-      return 1
-    `,
-      2,
-      this.driverMetadataKey,
-      this.driverGeoKey,
-      driverId,
-      entry.lon.toString(),
-      entry.lat.toString(),
-      JSON.stringify(entry),
-      entry.updatedAt,
-    )) as number | string | null;
-
-    if (Number(result) === 1) {
-      this.logger.log(`Stored geospatial location for driver ${driverId}`);
-      return entry;
-    }
+    await this.redis
+      .multi()
+      .geoadd(DRIVER_GEO_KEY, location.lon, location.lat, driverId) // Adds/updates the driver’s coordinate in a GEO sorted set and This enables GEOSEARCH radius/box queries to find nearby drivers.
+      .hset(`driver:loc:${driverId}`, {
+        // Writes the driver’s latest location metadata to a hash at a stable per-driver key. Any service can later HGETALL driver:loc:<id> to fetch the latest snapshot.
+        lon: String(location.lon),
+        lat: String(location.lat),
+        accuracyMeters: String(location.accuracyMeters ?? 0),
+        updatedAt: eventTimestamp,
+      })
+      .expire(`driver:loc:${driverId}`, 10) // set ttl for driver loc hash to 10 sec
+      .zadd('drivers:active', Date.now(), driverId) // This gives a quick way to list recently active drivers
+      .publish(
+        'drivers:loc:updates', // Sends a Pub/Sub message to the channel drivers:loc:updates
+        JSON.stringify({
+          driverId,
+          ...entry,
+        }),
+      )
+      .exec();
 
     this.logger.log(
-      `Skipped outdated location update for driver ${driverId} (event timestamp: ${entry.updatedAt})`,
+      `success store update location data for driverId: ${driverId}`,
     );
-
-    const existingEntry = await this.getDriverMetadata(driverId);
-    return existingEntry ?? entry;
   }
 
   async getNearbyDrivers(
@@ -109,7 +89,7 @@ export class GeolocationRepository implements OnModuleDestroy {
     limit: number,
   ): Promise<GeospatialQueryResult[]> {
     const rawResults = await this.redis.georadius(
-      this.driverGeoKey,
+      DRIVER_GEO_KEY,
       lon,
       lat,
       radiusMeters,
@@ -157,58 +137,60 @@ export class GeolocationRepository implements OnModuleDestroy {
       .filter((result): result is GeospatialQueryResult => result !== null);
   }
 
-  async calculateDistanceKm(
-    origin: Pick<DriverLocationInput, 'lon' | 'lat'>,
-    destination: Pick<DriverLocationInput, 'lon' | 'lat'>,
-  ): Promise<number | null> {
-    const key = `${this.temporaryDistanceKeyPrefix}:${randomUUID()}`;
+  // async calculateDistanceKm(
+  //   origin: Pick<DriverLocationInput, 'lon' | 'lat'>,
+  //   destination: Pick<DriverLocationInput, 'lon' | 'lat'>,
+  // ): Promise<number | null> {
+  //   const key = `${this.temporaryDistanceKeyPrefix}:${randomUUID()}`;
 
-    try {
-      const result = (await this.redis.eval(
-        `
-          local key = KEYS[1]
-          local originMember = ARGV[1]
-          local originLon = tonumber(ARGV[2])
-          local originLat = tonumber(ARGV[3])
-          local destinationMember = ARGV[4]
-          local destinationLon = tonumber(ARGV[5])
-          local destinationLat = tonumber(ARGV[6])
-          local unit = ARGV[7]
+  //   try {
+  //     const result = (await this.redis.eval(
+  //       `
+  //         local key = KEYS[1]
+  //         local originMember = ARGV[1]
+  //         local originLon = tonumber(ARGV[2])
+  //         local originLat = tonumber(ARGV[3])
+  //         local destinationMember = ARGV[4]
+  //         local destinationLon = tonumber(ARGV[5])
+  //         local destinationLat = tonumber(ARGV[6])
+  //         local unit = ARGV[7]
 
-          if not originLon or not originLat or not destinationLon or not destinationLat then
-            return nil
-          end
+  //         if not originLon or not originLat or not destinationLon or not destinationLat then
+  //           return nil
+  //         end
 
-          redis.call('DEL', key)
-          redis.call('GEOADD', key, originLon, originLat, originMember)
-          redis.call('GEOADD', key, destinationLon, destinationLat, destinationMember)
-          local distance = redis.call('GEODIST', key, originMember, destinationMember, unit)
-          redis.call('DEL', key)
+  //         redis.call('DEL', key)
+  //         redis.call('GEOADD', key, originLon, originLat, originMember)
+  //         redis.call('GEOADD', key, destinationLon, destinationLat, destinationMember)
+  //         local distance = redis.call('GEODIST', key, originMember, destinationMember, unit)
+  //         redis.call('DEL', key)
 
-          return distance
-        `,
-        1,
-        key,
-        'origin',
-        origin.lon.toString(),
-        origin.lat.toString(),
-        'destination',
-        destination.lon.toString(),
-        destination.lat.toString(),
-        'km',
-      )) as number | string | null;
+  //         return distance
+  //       `,
+  //       1,
+  //       key,
+  //       'origin',
+  //       origin.lon.toString(),
+  //       origin.lat.toString(),
+  //       'destination',
+  //       destination.lon.toString(),
+  //       destination.lat.toString(),
+  //       'km',
+  //     )) as number | string | null;
 
-      if (result === null) {
-        return null;
-      }
+  //     if (result === null) {
+  //       return null;
+  //     }
 
-      const distance = Number(result);
-      return Number.isFinite(distance) ? distance : null;
-    } catch (error) {
-      this.logger.warn(`Failed to calculate distance via Redis GEO operations: ${error}`);
-      return null;
-    }
-  }
+  //     const distance = Number(result);
+  //     return Number.isFinite(distance) ? distance : null;
+  //   } catch (error) {
+  //     this.logger.warn(
+  //       `Failed to calculate distance via Redis GEO operations: ${error}`,
+  //     );
+  //     return null;
+  //   }
+  // }
 
   private mapGeoradiusEntry(
     entry: unknown,
@@ -246,27 +228,27 @@ export class GeolocationRepository implements OnModuleDestroy {
     };
   }
 
-  private async getDriverMetadata(
-    driverId: string,
-  ): Promise<DriverLocationEntry | null> {
-    const metadataValue = await this.redis.hget(
-      this.driverMetadataKey,
-      driverId,
-    );
+  //   private async getDriverMetadata(
+  //     driverId: string,
+  //   ): Promise<DriverLocationEntry | null> {
+  //     const metadataValue = await this.redis.hget(
+  //       this.driverMetadataKey,
+  //       driverId,
+  //     );
 
-    if (!metadataValue) {
-      return null;
-    }
+  //     if (!metadataValue) {
+  //       return null;
+  //     }
 
-    try {
-      return JSON.parse(metadataValue) as DriverLocationEntry;
-    } catch (error) {
-      this.logger.warn(
-        `Unable to parse metadata for driver ${driverId}: ${error}`,
-      );
-      return null;
-    }
-  }
+  //     try {
+  //       return JSON.parse(metadataValue) as DriverLocationEntry;
+  //     } catch (error) {
+  //       this.logger.warn(
+  //         `Unable to parse metadata for driver ${driverId}: ${error}`,
+  //       );
+  //       return null;
+  //     }
+  //   }
 }
 
 export type { GeospatialQueryResult };

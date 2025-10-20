@@ -7,29 +7,19 @@ import { LocationProcessor } from './domain/processors/location.processor';
 import { LOCATION_QUEUE_NAME } from './domain/services/location.types';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
-import { LocationQueueMaintenanceService } from './location-queue.maintenance';
 
 @Module({
   imports: [
     ConfigModule,
     BullModule.registerQueue({
       name: LOCATION_QUEUE_NAME,
-      defaultJobOptions: {
-        removeOnComplete: true,
-        removeOnFail: 100,
-      },
     }),
     BullBoardModule.forFeature({
       name: LOCATION_QUEUE_NAME,
       adapter: BullMQAdapter,
     }),
   ],
-  providers: [
-    LocationService,
-    GeolocationRepository,
-    LocationProcessor,
-    LocationQueueMaintenanceService,
-  ],
+  providers: [LocationService, GeolocationRepository, LocationProcessor],
   exports: [LocationService],
 })
 export class LocationModule {}

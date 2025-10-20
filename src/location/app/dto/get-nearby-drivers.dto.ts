@@ -16,11 +16,5 @@ export class GetNearbyDriversDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  radiusMeters?: number;
-
-  @Type(() => Number)
-  @IsOptional()
-  @IsInt()
-  @Min(1)
   limit?: number;
 }

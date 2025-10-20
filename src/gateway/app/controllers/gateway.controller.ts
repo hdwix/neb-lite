@@ -136,7 +136,6 @@ export class GatewayController {
     const items = await this.locationService.getNearbyDrivers(
       nearbyDriversDto.lon,
       nearbyDriversDto.lat,
-      nearbyDriversDto.radiusMeters,
       nearbyDriversDto.limit,
     );
 

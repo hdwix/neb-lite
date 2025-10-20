@@ -10,6 +10,7 @@ import {
   LocationUpdateJobData,
   NearbyDriver,
 } from './location.types';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class LocationService {
@@ -20,14 +21,16 @@ export class LocationService {
     @InjectQueue(LOCATION_QUEUE_NAME)
     private readonly locationQueue: Queue<LocationUpdateJobData>,
     private readonly geolocationRepository: GeolocationRepository,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    const defaultSearchRange =
+      this.configService.get<number>('DEFAULT_SEARCH_RANGE') ?? 3000;
+  }
 
   async upsertDriverLocation(
     driverId: string,
     location: DriverLocationInput,
   ): Promise<DriverLocationEntry> {
-    console.log(' THIS');
-    console.log(driverId);
     const eventTimestamp = new Date().toISOString();
     const entry: DriverLocationEntry = {
       lon: location.lon,
@@ -35,15 +38,7 @@ export class LocationService {
       accuracyMeters: location.accuracyMeters,
       updatedAt: eventTimestamp,
     };
-
-    try {
-      // Ensure we do not accumulate redundant waiting jobs for the same driver
-      await this.locationQueue.remove(driverId);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to prune existing queue jobs for driver ${driverId}: ${error}`,
-      );
-    }
+    const jobId = `driver-${driverId}`;
 
     try {
       await this.locationQueue.add(
@@ -53,17 +48,15 @@ export class LocationService {
           location,
           eventTimestamp,
         },
-        // {
-        //   jobId: driverId,
-        //   removeOnComplete: true,
-        //   removeOnFail: 25,
-        // },
+        {
+          jobId,
+          removeOnComplete: true, // set to true to immediate update drivers loc to redis
+          removeOnFail: { count: 200 },
+        },
       );
     } catch (error) {
-      console.log('Error upsert driver loc');
-      console.log(error);
       if (this.isJobIdAlreadyExistsError(error)) {
-        const existingJob = await this.locationQueue.getJob(driverId);
+        const existingJob = await this.locationQueue.getJob(jobId);
         const existingJobState = await existingJob?.getState();
 
         if (existingJobState === 'active') {
