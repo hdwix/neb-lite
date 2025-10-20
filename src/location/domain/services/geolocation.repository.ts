@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { randomUUID } from 'crypto';
 import {
-  DRIVER_GEO_KEY,
+  DRIVER_LOC_GEO_KEY,
   DriverLocationEntry,
   DriverLocationInput,
 } from './location.types';
@@ -58,7 +58,7 @@ export class GeolocationRepository implements OnModuleDestroy {
 
     await this.redis
       .multi()
-      .geoadd(DRIVER_GEO_KEY, location.lon, location.lat, driverId) // Adds/updates the driver’s coordinate in a GEO sorted set and This enables GEOSEARCH radius/box queries to find nearby drivers.
+      .geoadd(DRIVER_LOC_GEO_KEY, location.lon, location.lat, driverId) // Adds/updates the driver’s coordinate in a GEO sorted set and This enables GEOSEARCH radius/box queries to find nearby drivers.
       .hset(`driver:loc:${driverId}`, {
         // Writes the driver’s latest location metadata to a hash at a stable per-driver key. Any service can later HGETALL driver:loc:<id> to fetch the latest snapshot.
         lon: String(location.lon),
@@ -89,7 +89,7 @@ export class GeolocationRepository implements OnModuleDestroy {
     limit: number,
   ): Promise<GeospatialQueryResult[]> {
     const rawResults = await this.redis.georadius(
-      DRIVER_GEO_KEY,
+      DRIVER_LOC_GEO_KEY,
       lon,
       lat,
       radiusMeters,

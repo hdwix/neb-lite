@@ -27,8 +27,7 @@ export interface LocationUpdateJobData {
   eventTimestamp: string;
 }
 
-// maintenance.types.ts
-export const MAINTENANCE_QUEUE = 'maintenance';
+export const MAINTENANCE_CLEANUP_IDLE_DRIVERS = 'cleanup-idle-drivers';
 export const MaintenanceJob = {
   CleanupIdleDrivers: 'cleanup-idle-drivers',
 } as const;
@@ -37,9 +36,9 @@ export type MaintenanceJobName =
   (typeof MaintenanceJob)[keyof typeof MaintenanceJob];
 
 // tune these to your needs
-export const IDLE_MS = 3 * 60 * 1000; // 3 minutes idle threshold
-export const CLEANUP_EVERY_MS = 60_000; // run every 60s
-export const CLEANUP_BATCH = 1000; // remove in chunks
-export const DRIVER_GEO_KEY = 'drivers:geo';
-export const ACTIVE_ZSET = 'drivers:active';
-export const LOC_HASH_PREFIX = 'driver:loc:';
+export const THRESHOLD_DRIVER_IDLE_MS = 3 * 60 * 1000; // 3 minutes idle threshold
+export const JOB_CLEANUP_IDLE_LOC_EVERY_MS = 60_000; // run every 60s
+export const CLEANUP_DRIVER_IDLE_LOC_BATCH = 1000; // remove in chunks
+export const DRIVER_LOC_GEO_KEY = 'drivers:geo';
+export const ACTIVE_DRIVER_LOC_ZSET = 'drivers:active';
+export const DRIVER_LOC_HASH_PREFIX = 'driver:loc:';
