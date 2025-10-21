@@ -23,7 +23,8 @@ export class LocationService {
     private readonly geolocationRepository: GeolocationRepository,
     private readonly configService: ConfigService,
   ) {
-    this.searchRadiusMeters = this.resolveSearchRadius();
+    this.searchRadiusMeters =
+      configService.get<number>('SEARCH_RADIUS_METERS') || 3000;
   }
 
   async upsertDriverLocation(
@@ -104,29 +105,5 @@ export class LocationService {
       name === 'JobIdAlreadyExistsError' ||
       message.includes('JobIdAlreadyExists')
     );
-  }
-
-  private resolveSearchRadius(): number {
-    const candidateValues: Array<string | number | undefined> = [
-      this.configService.get<number>('SEARCH_RADIUS_METERS'),
-      this.configService.get<number>('SEARCH_RADIUS'),
-      this.configService.get<number>('searchRadius'),
-      this.configService.get<number>('DEFAULT_SEARCH_RANGE'),
-    ];
-
-    for (const value of candidateValues) {
-      const parsed =
-        typeof value === 'string' ? Number.parseFloat(value) : value;
-
-      if (
-        typeof parsed === 'number' &&
-        Number.isFinite(parsed) &&
-        parsed > 0
-      ) {
-        return parsed;
-      }
-    }
-
-    return 3000;
   }
 }
