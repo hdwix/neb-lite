@@ -52,10 +52,6 @@ interface CancelRideInput {
 export class RidesService {
   private readonly logger = new Logger(RidesService.name);
   private readonly fareRatePerKm = 3000;
-  private readonly routeEstimationPerMinuteLimit = 20;
-  private readonly routeEstimationPerDayLimit = 1000;
-  private readonly routeEstimationMinuteWindowMs = 60_000;
-  private readonly routeEstimationDailyWindowMs = 86_400_000;
   private readonly routeEstimationJobTimeoutMs = 30_000;
 
   constructor(
@@ -297,13 +293,12 @@ export class RidesService {
     const queueEvents = await this.createQueueEvents();
 
     try {
-      const jobOptions = {
+      const jobOptions: JobsOptions = {
         jobId,
         removeOnComplete: true,
         removeOnFail: 25,
         timeout: this.routeEstimationJobTimeoutMs,
-        rateLimiter: this.buildRouteEstimationRateLimiter(),
-      } as JobsOptions;
+      };
 
       const job = await this.rideQueue.add(
         RideQueueJob.EstimateRoute,
@@ -347,19 +342,6 @@ export class RidesService {
     return {
       distanceKm: this.roundDistanceKm(summary.distanceMeters / 1000),
       durationSeconds: Math.round(summary.durationSeconds),
-    };
-  }
-
-  private buildRouteEstimationRateLimiter(): Record<string, unknown> {
-    return {
-      key: 'route-estimation',
-      limiter: {
-        max: this.routeEstimationPerMinuteLimit,
-        duration: this.routeEstimationMinuteWindowMs,
-        reservoir: this.routeEstimationPerDayLimit,
-        reservoirRefreshAmount: this.routeEstimationPerDayLimit,
-        reservoirRefreshInterval: this.routeEstimationDailyWindowMs,
-      },
     };
   }
 
