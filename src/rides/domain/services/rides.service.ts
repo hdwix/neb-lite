@@ -370,6 +370,9 @@ export class RidesService {
     if (apiKey) {
       headers.Authorization = apiKey;
     }
+    if (skipOrsCall) {
+      headers.xmock = 'true';
+    }
 
     try {
       const response = await lastValueFrom(
@@ -377,6 +380,12 @@ export class RidesService {
           headers: Object.keys(headers).length ? headers : undefined,
         }),
       );
+      console.log(' ==== baseUrl =====');
+      console.log(baseUrl);
+      console.log(' ==== headers =====');
+      console.log(headers);
+      console.log('==== response ors====');
+      console.log(response.data);
 
       return this.parseRouteSummary(response.data);
     } catch (error) {
@@ -570,11 +579,11 @@ export class RidesService {
   }
 
   private buildSelectionJobId(rideId: string): string {
-    return `ride-${rideId}:selection`;
+    return `ride-${rideId}-selection`;
   }
 
   private buildRouteEstimationJobId(rideId: string): string {
-    return `ride-${rideId}:route-estimation`;
+    return `ride-${rideId}-route-estimation`;
   }
 
   private async removePendingJobs(rideId: string): Promise<void> {

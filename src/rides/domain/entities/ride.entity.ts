@@ -16,7 +16,7 @@ import { RideStatusHistory } from './ride-status-history.entity';
 @Index('ix_rides_driver_id', ['driverId'])
 @Index('ix_rides_status', ['status'])
 export class Ride {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;
 
   @Column({ name: 'rider_id', type: 'varchar', length: 64 })
