@@ -1,20 +1,28 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsNumber, IsOptional, Min } from 'class-validator';
+import {
+  IsInt,
+  IsLatitude,
+  IsLongitude,
+  IsNotEmpty,
+  IsOptional,
+  Min,
+} from 'class-validator';
 
 export class GetNearbyDriversDto {
   @Type(() => Number)
-  @IsNumber()
+  @IsLongitude()
   @IsNotEmpty()
-  lon: number;
+  longitude: number;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsLatitude()
   @IsNotEmpty()
-  lat: number;
+  latitude: number;
 
   @Type(() => Number)
   @IsOptional()
   @IsInt()
   @Min(1)
   limit?: number;
+
 }

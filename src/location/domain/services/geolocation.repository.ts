@@ -16,8 +16,8 @@ interface GeospatialQueryResult {
   driverId: string;
   distanceMeters: number;
   location: {
-    lon: number;
-    lat: number;
+    longitude: number;
+    latitude: number;
   };
   metadata?: Pick<DriverLocationEntry, 'accuracyMeters' | 'updatedAt'>;
 }
@@ -53,8 +53,8 @@ export class GeolocationRepository implements OnModuleDestroy {
   ): Promise<void> {
     const timestamp = eventTimestamp ?? new Date().toISOString();
     const entry: DriverLocationEntry = {
-      lon: location.lon,
-      lat: location.lat,
+      longitude: location.longitude,
+      latitude: location.latitude,
       accuracyMeters: location.accuracyMeters,
       updatedAt: timestamp,
     };
@@ -63,11 +63,17 @@ export class GeolocationRepository implements OnModuleDestroy {
 
     await this.redis
       .multi()
-      .geoadd(DRIVER_LOC_GEO_KEY, location.lon, location.lat, driverId) // Adds/updates the driver’s coordinate in a GEO sorted set and This enables GEOSEARCH radius/box queries to find nearby drivers.
+      // Adds/updates the driver’s coordinate in a GEO sorted set. This enables GEOSEARCH radius/box queries to find nearby drivers.
+      .geoadd(
+        DRIVER_LOC_GEO_KEY,
+        location.longitude,
+        location.latitude,
+        driverId,
+      )
       .hset(driverLocationKey, {
         // Writes the driver’s latest location metadata to a hash at a stable per-driver key. Any service can later HGETALL driver:loc:<id> to fetch the latest snapshot.
-        lon: String(location.lon),
-        lat: String(location.lat),
+        longitude: String(location.longitude),
+        latitude: String(location.latitude),
         accuracyMeters: String(location.accuracyMeters ?? 0),
         updatedAt: timestamp,
       })
@@ -89,15 +95,15 @@ export class GeolocationRepository implements OnModuleDestroy {
   }
 
   async getNearbyDrivers(
-    lon: number,
-    lat: number,
+    longitude: number,
+    latitude: number,
     radiusMeters: number,
     limit: number,
   ): Promise<GeospatialQueryResult[]> {
     const rawResults = await this.redis.georadius(
       DRIVER_LOC_GEO_KEY,
-      lon,
-      lat,
+      longitude,
+      latitude,
       radiusMeters,
       'm',
       'WITHDIST',
@@ -172,8 +178,8 @@ export class GeolocationRepository implements OnModuleDestroy {
   }
 
   // async calculateDistanceKm(
-  //   origin: Pick<DriverLocationInput, 'lon' | 'lat'>,
-  //   destination: Pick<DriverLocationInput, 'lon' | 'lat'>,
+  //   origin: Pick<DriverLocationInput, 'longitude' | 'latitude'>,
+  //   destination: Pick<DriverLocationInput, 'longitude' | 'latitude'>,
   // ): Promise<number | null> {
   //   const key = `${this.temporaryDistanceKeyPrefix}:${randomUUID()}`;
 
@@ -204,11 +210,11 @@ export class GeolocationRepository implements OnModuleDestroy {
   //       1,
   //       key,
   //       'origin',
-  //       origin.lon.toString(),
-  //       origin.lat.toString(),
+  //       origin.longitude.toString(),
+  //       origin.latitude.toString(),
   //       'destination',
-  //       destination.lon.toString(),
-  //       destination.lat.toString(),
+  //       destination.longitude.toString(),
+  //       destination.latitude.toString(),
   //       'km',
   //     )) as number | string | null;
 
@@ -244,15 +250,15 @@ export class GeolocationRepository implements OnModuleDestroy {
       return null;
     }
 
-    const [lonRaw, latRaw] = Array.isArray(coordinatesRaw)
+    const [longitudeRaw, latitudeRaw] = Array.isArray(coordinatesRaw)
       ? coordinatesRaw
       : [undefined, undefined];
 
-    const lon = Number(lonRaw);
-    const lat = Number(latRaw);
+    const longitude = Number(longitudeRaw);
+    const latitude = Number(latitudeRaw);
     const distanceMeters = Number(distanceRaw);
 
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
       return null;
     }
 
@@ -260,8 +266,8 @@ export class GeolocationRepository implements OnModuleDestroy {
       driverId: driverIdRaw,
       distanceMeters: Number.isFinite(distanceMeters) ? distanceMeters : 0,
       location: {
-        lon,
-        lat,
+        longitude,
+        latitude,
       },
       metadata: metadataMap.get(driverIdRaw),
     };

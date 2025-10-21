@@ -134,8 +134,8 @@ export class GatewayController {
   @HttpCode(HttpStatus.OK)
   async getNearbyDrivers(@Query() nearbyDriversDto: GetNearbyDriversDto) {
     const items = await this.locationService.getNearbyDrivers(
-      nearbyDriversDto.lon,
-      nearbyDriversDto.lat,
+      nearbyDriversDto.longitude,
+      nearbyDriversDto.latitude,
       nearbyDriversDto.limit,
     );
 
