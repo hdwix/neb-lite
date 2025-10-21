@@ -26,16 +26,16 @@ export class Ride {
   driverId?: string | null;
 
   @Column({ name: 'pickup_lon', type: 'double precision' })
-  pickupLon!: number;
+  pickupLongitude!: number;
 
   @Column({ name: 'pickup_lat', type: 'double precision' })
-  pickupLat!: number;
+  pickupLatitude!: number;
 
   @Column({ name: 'dropoff_lon', type: 'double precision' })
-  dropoffLon!: number;
+  dropoffLongitude!: number;
 
   @Column({ name: 'dropoff_lat', type: 'double precision' })
-  dropoffLat!: number;
+  dropoffLatitude!: number;
 
   @Column({
     name: 'status',

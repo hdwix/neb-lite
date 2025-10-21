@@ -11,6 +11,7 @@ import { RideProcessor } from './domain/processors/ride.processor';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { HttpModule } from '@nestjs/axios';
+import { ROUTE_ESTIMATION_QUEUE_LIMITER } from './domain/constants/route-estimation-limiter.constant';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { HttpModule } from '@nestjs/axios';
         removeOnComplete: true,
         removeOnFail: 25,
       },
+      limiter: ROUTE_ESTIMATION_QUEUE_LIMITER,
     }),
     BullBoardModule.forFeature({
       name: RIDE_QUEUE_NAME,

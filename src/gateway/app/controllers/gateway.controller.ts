@@ -253,12 +253,12 @@ export class GatewayController {
       riderId: ride.riderId,
       driverId: ride.driverId,
       pickup: {
-        lon: ride.pickupLon,
-        lat: ride.pickupLat,
+        longitude: ride.pickupLongitude,
+        latitude: ride.pickupLatitude,
       },
       dropoff: {
-        lon: ride.dropoffLon,
-        lat: ride.dropoffLat,
+        longitude: ride.dropoffLongitude,
+        latitude: ride.dropoffLatitude,
       },
       status: ride.status,
       fareEstimated: ride.fareEstimated ?? null,

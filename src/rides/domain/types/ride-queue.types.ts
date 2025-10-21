@@ -6,8 +6,8 @@ export enum RideQueueJob {
 }
 
 export interface RideCoordinate {
-  lon: number;
-  lat: number;
+  longitude: number;
+  latitude: number;
 }
 
 export interface RideRouteEstimationJobData {
