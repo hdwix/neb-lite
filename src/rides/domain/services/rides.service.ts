@@ -72,8 +72,6 @@ export class RidesService {
       throw new BadRequestException('driverId is required for ride creation');
     }
 
-    this.ensureValidCoordinates(payload.pickup, payload.dropoff);
-
     const ride = this.rideRepository.create({
       riderId,
       driverId: payload.driverId,
@@ -369,8 +367,6 @@ export class RidesService {
     pickup: RideCoordinate,
     dropoff: RideCoordinate,
   ): Promise<RouteSummary> {
-    this.ensureValidCoordinates(pickup, dropoff);
-
     const skipOrsCall = this.getBooleanConfig('SKIP_ORS_CALL');
     const baseUrlKey = skipOrsCall ? 'MOCK_ORS_URL' : 'ORS_URL';
     const baseUrl = this.configService.get<string>(baseUrlKey);
@@ -543,27 +539,6 @@ export class RidesService {
       `Route estimation job for ride ${rideId} failed with unexpected error: ${String(
         error,
       )}`,
-    );
-  }
-
-  private ensureValidCoordinates(
-    pickup: RideCoordinate,
-    dropoff: RideCoordinate,
-  ): void {
-    if (
-      !this.areValidCoordinates(pickup) ||
-      !this.areValidCoordinates(dropoff)
-    ) {
-      throw new BadRequestException(
-        'Invalid coordinates provided for route estimation',
-      );
-    }
-  }
-
-  private areValidCoordinates(coordinates: RideCoordinate): boolean {
-    return (
-      Number.isFinite(coordinates.longitude) &&
-      Number.isFinite(coordinates.latitude)
     );
   }
 
