@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue, QueueEvents } from 'bullmq';
+import { Queue, QueueEvents, JobsOptions } from 'bullmq';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { AxiosError } from 'axios';
@@ -52,6 +52,11 @@ interface CancelRideInput {
 export class RidesService {
   private readonly logger = new Logger(RidesService.name);
   private readonly fareRatePerKm = 3000;
+  private readonly routeEstimationPerMinuteLimit = 20;
+  private readonly routeEstimationPerDayLimit = 1000;
+  private readonly routeEstimationMinuteWindowMs = 60_000;
+  private readonly routeEstimationDailyWindowMs = 86_400_000;
+  private readonly routeEstimationJobTimeoutMs = 30_000;
 
   constructor(
     @InjectQueue(RIDE_QUEUE_NAME)
@@ -72,10 +77,10 @@ export class RidesService {
     const ride = this.rideRepository.create({
       riderId,
       driverId: payload.driverId,
-      pickupLon: payload.pickup.lon,
-      pickupLat: payload.pickup.lat,
-      dropoffLon: payload.dropoff.lon,
-      dropoffLat: payload.dropoff.lat,
+      pickupLongitude: payload.pickup.longitude,
+      pickupLatitude: payload.pickup.latitude,
+      dropoffLongitude: payload.dropoff.longitude,
+      dropoffLatitude: payload.dropoff.latitude,
       note: payload.note,
       status: ERideStatus.REQUESTED,
     });
@@ -294,6 +299,14 @@ export class RidesService {
     const queueEvents = await this.createQueueEvents();
 
     try {
+      const jobOptions = {
+        jobId,
+        removeOnComplete: true,
+        removeOnFail: 25,
+        timeout: this.routeEstimationJobTimeoutMs,
+        rateLimiter: this.buildRouteEstimationRateLimiter(),
+      } as JobsOptions;
+
       const job = await this.rideQueue.add(
         RideQueueJob.EstimateRoute,
         {
@@ -301,16 +314,13 @@ export class RidesService {
           pickup,
           dropoff,
         },
-        {
-          jobId,
-          removeOnComplete: true,
-          removeOnFail: 25,
-        },
+        jobOptions,
       );
 
       try {
         const result = (await job.waitUntilFinished(
           queueEvents,
+          this.routeEstimationJobTimeoutMs,
         )) as RouteEstimates;
         return result;
       } catch (error) {
@@ -342,6 +352,19 @@ export class RidesService {
     };
   }
 
+  private buildRouteEstimationRateLimiter(): Record<string, unknown> {
+    return {
+      key: 'route-estimation',
+      limiter: {
+        max: this.routeEstimationPerMinuteLimit,
+        duration: this.routeEstimationMinuteWindowMs,
+        reservoir: this.routeEstimationPerDayLimit,
+        reservoirRefreshAmount: this.routeEstimationPerDayLimit,
+        reservoirRefreshInterval: this.routeEstimationDailyWindowMs,
+      },
+    };
+  }
+
   private async requestRouteSummary(
     pickup: RideCoordinate,
     dropoff: RideCoordinate,
@@ -359,8 +382,14 @@ export class RidesService {
     const apiKey = this.configService.get<string>('ORS_APIKEY');
     const requestUrl = new URL(baseUrl);
 
-    requestUrl.searchParams.set('start', `${pickup.lon},${pickup.lat}`);
-    requestUrl.searchParams.set('end', `${dropoff.lon},${dropoff.lat}`);
+    requestUrl.searchParams.set(
+      'start',
+      `${pickup.longitude},${pickup.latitude}`,
+    );
+    requestUrl.searchParams.set(
+      'end',
+      `${dropoff.longitude},${dropoff.latitude}`,
+    );
 
     if (apiKey) {
       requestUrl.searchParams.set('api_key', apiKey);
@@ -532,7 +561,10 @@ export class RidesService {
   }
 
   private areValidCoordinates(coordinates: RideCoordinate): boolean {
-    return Number.isFinite(coordinates.lon) && Number.isFinite(coordinates.lat);
+    return (
+      Number.isFinite(coordinates.longitude) &&
+      Number.isFinite(coordinates.latitude)
+    );
   }
 
   private getBooleanConfig(key: string): boolean {
