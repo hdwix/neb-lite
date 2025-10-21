@@ -15,7 +15,7 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class LocationService {
   private readonly logger = new Logger(LocationService.name);
-  private readonly averageDriverSpeedMetersPerSecond = 6;
+  private readonly searchRadiusMeters: number;
 
   constructor(
     @InjectQueue(LOCATION_QUEUE_NAME)
@@ -23,8 +23,7 @@ export class LocationService {
     private readonly geolocationRepository: GeolocationRepository,
     private readonly configService: ConfigService,
   ) {
-    const defaultSearchRange =
-      this.configService.get<number>('DEFAULT_SEARCH_RANGE') ?? 3000;
+    this.searchRadiusMeters = this.resolveSearchRadius();
   }
 
   async upsertDriverLocation(
@@ -33,8 +32,8 @@ export class LocationService {
   ): Promise<DriverLocationEntry> {
     const eventTimestamp = new Date().toISOString();
     const entry: DriverLocationEntry = {
-      lon: location.lon,
-      lat: location.lat,
+      longitude: location.longitude,
+      latitude: location.latitude,
       accuracyMeters: location.accuracyMeters,
       updatedAt: eventTimestamp,
     };
@@ -74,32 +73,23 @@ export class LocationService {
   }
 
   async getNearbyDrivers(
-    lon: number,
-    lat: number,
-    radiusMeters = 3000,
+    longitude: number,
+    latitude: number,
     limit = 10,
   ): Promise<NearbyDriver[]> {
     const results = await this.geolocationRepository.getNearbyDrivers(
-      lon,
-      lat,
-      radiusMeters,
+      longitude,
+      latitude,
+      this.searchRadiusMeters,
       limit,
     );
 
     return results.map((result) => ({
       driverId: result.driverId,
       distanceMeters: result.distanceMeters,
-      etaSeconds: this.calculateEtaSeconds(result.distanceMeters),
       accuracyMeters: result.metadata?.accuracyMeters,
       updatedAt: result.metadata?.updatedAt,
     }));
-  }
-
-  private calculateEtaSeconds(distanceMeters: number): number | undefined {
-    if (this.averageDriverSpeedMetersPerSecond <= 0) {
-      return undefined;
-    }
-    return Math.round(distanceMeters / this.averageDriverSpeedMetersPerSecond);
   }
 
   private isJobIdAlreadyExistsError(error: unknown): boolean {
@@ -114,5 +104,29 @@ export class LocationService {
       name === 'JobIdAlreadyExistsError' ||
       message.includes('JobIdAlreadyExists')
     );
+  }
+
+  private resolveSearchRadius(): number {
+    const candidateValues: Array<string | number | undefined> = [
+      this.configService.get<number>('SEARCH_RADIUS_METERS'),
+      this.configService.get<number>('SEARCH_RADIUS'),
+      this.configService.get<number>('searchRadius'),
+      this.configService.get<number>('DEFAULT_SEARCH_RANGE'),
+    ];
+
+    for (const value of candidateValues) {
+      const parsed =
+        typeof value === 'string' ? Number.parseFloat(value) : value;
+
+      if (
+        typeof parsed === 'number' &&
+        Number.isFinite(parsed) &&
+        parsed > 0
+      ) {
+        return parsed;
+      }
+    }
+
+    return 3000;
   }
 }

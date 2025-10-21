@@ -61,8 +61,8 @@ describe('GatewayController', () => {
       } as any;
 
       const dto = {
-        lon: 10,
-        lat: -6,
+        longitude: 10,
+        latitude: -6,
         accuracyMeters: 5,
       };
 
@@ -85,8 +85,8 @@ describe('GatewayController', () => {
 
       await expect(
         controller.upsertDriverLocation(request, {
-          lon: 1,
-          lat: 2,
+          longitude: 1,
+          latitude: 2,
         }),
       ).rejects.toBeInstanceOf(UnauthorizedException);
     });
@@ -101,16 +101,14 @@ describe('GatewayController', () => {
       locationServiceMock.getNearbyDrivers.mockResolvedValue(items);
 
       const result = await controller.getNearbyDrivers({
-        lon: 106.8,
-        lat: -6.1,
-        radiusMeters: 500,
+        longitude: 106.8,
+        latitude: -6.1,
         limit: 5,
       });
 
       expect(locationServiceMock.getNearbyDrivers).toHaveBeenCalledWith(
         106.8,
         -6.1,
-        500,
         5,
       );
       expect(result).toEqual({ data: { items } });

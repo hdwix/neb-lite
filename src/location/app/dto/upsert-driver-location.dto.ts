@@ -1,16 +1,23 @@
-import { IsNotEmpty, IsNumber, IsOptional, Min } from 'class-validator';
+import {
+  IsLatitude,
+  IsLongitude,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpsertDriverLocationDto {
   @Type(() => Number)
-  @IsNumber()
+  @IsLongitude()
   @IsNotEmpty()
-  lon: number;
+  longitude: number;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsLatitude()
   @IsNotEmpty()
-  lat: number;
+  latitude: number;
 
   @Type(() => Number)
   @IsOptional()

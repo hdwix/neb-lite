@@ -1,6 +1,6 @@
 export interface DriverLocationInput {
-  lon: number;
-  lat: number;
+  longitude: number;
+  latitude: number;
   accuracyMeters?: number;
 }
 
@@ -11,7 +11,6 @@ export interface DriverLocationEntry extends DriverLocationInput {
 export interface NearbyDriver {
   driverId: string;
   distanceMeters: number;
-  etaSeconds?: number;
   accuracyMeters?: number;
   updatedAt?: string;
 }
