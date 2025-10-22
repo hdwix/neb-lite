@@ -235,6 +235,50 @@ export class GatewayController {
     };
   }
 
+  @Post('rides/:id/driver-accept')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER)
+  @HttpCode(HttpStatus.OK)
+  async acceptRideAsDriver(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.acceptRideByDriver(
+      rideId,
+      this.getClientId(client),
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride accepted by driver',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Post('rides/:id/rider-accept')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.RIDER)
+  @HttpCode(HttpStatus.OK)
+  async confirmDriverAcceptance(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.confirmDriverAcceptance(
+      rideId,
+      this.getClientId(client),
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride confirmed by rider',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
   private getAuthenticatedClient(request: Request): AuthenticatedClientPayload {
     return request[REQUEST_CLIENT_KEY] as AuthenticatedClientPayload;
   }

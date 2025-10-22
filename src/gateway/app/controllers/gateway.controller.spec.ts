@@ -4,6 +4,7 @@ import { AuthenticationService } from '../../../iam/domain/services/authenticati
 import { LocationService } from '../../../location/domain/services/location.service';
 import { REQUEST_CLIENT_KEY } from '../../../app/constants/request-client-key';
 import { UnauthorizedException } from '@nestjs/common';
+import { RidesService } from '../../../rides/domain/services/rides.service';
 
 describe('GatewayController', () => {
   let controller: GatewayController;
@@ -31,6 +32,25 @@ describe('GatewayController', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
 
+    const ridesServiceMock: jest.Mocked<
+      Pick<
+        RidesService,
+        | 'createRide'
+        | 'getRideById'
+        | 'cancelRide'
+        | 'completeRide'
+        | 'acceptRideByDriver'
+        | 'confirmDriverAcceptance'
+      >
+    > = {
+      createRide: jest.fn(),
+      getRideById: jest.fn(),
+      cancelRide: jest.fn(),
+      completeRide: jest.fn(),
+      acceptRideByDriver: jest.fn(),
+      confirmDriverAcceptance: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [GatewayController],
       providers: [
@@ -41,6 +61,10 @@ describe('GatewayController', () => {
         {
           provide: LocationService,
           useValue: locationServiceMock as unknown as LocationService,
+        },
+        {
+          provide: RidesService,
+          useValue: ridesServiceMock as unknown as RidesService,
         },
       ],
     }).compile();

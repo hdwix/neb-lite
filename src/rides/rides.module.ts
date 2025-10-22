@@ -17,6 +17,7 @@ import {
   ROUTE_ESTIMATION_QUEUE_LIMITER,
   QueueLimiterOptions,
 } from './domain/constants/route-estimation-limiter.constant';
+import { RideNotificationService } from './domain/services/ride-notification.service';
 
 type RideQueueRegistrationOptions = RegisterQueueOptions & {
   limiter?: QueueLimiterOptions;
@@ -45,6 +46,7 @@ const rideQueueRegistration: RideQueueRegistrationOptions = {
     RidesService,
     RideRepository,
     RideStatusHistoryRepository,
+    RideNotificationService,
     RideProcessor,
   ],
   exports: [RidesService],

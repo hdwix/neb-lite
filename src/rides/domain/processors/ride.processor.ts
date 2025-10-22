@@ -38,26 +38,16 @@ export class RideProcessor extends WorkerHost {
 
     this.logger.debug(`Processing workflow for ride ${rideId}`);
 
-    await this.ridesService.transitionRideStatus(
+    const assignment = await this.ridesService.transitionRideStatus(
       rideId,
       [ERideStatus.REQUESTED, ERideStatus.CANDIDATES_COMPUTED],
       ERideStatus.ASSIGNED,
       'Driver selected by rider',
     );
 
-    await this.ridesService.transitionRideStatus(
-      rideId,
-      [ERideStatus.ASSIGNED],
-      ERideStatus.ACCEPTED,
-      'Driver accepted ride request',
-    );
-
-    await this.ridesService.transitionRideStatus(
-      rideId,
-      [ERideStatus.ACCEPTED],
-      ERideStatus.ENROUTE,
-      'Driver enroute to rider pickup',
-    );
+    if (assignment.changed) {
+      await this.ridesService.notifyRideMatched(assignment.ride);
+    }
 
     this.logger.debug(`Completed workflow for ride ${rideId}`);
   }

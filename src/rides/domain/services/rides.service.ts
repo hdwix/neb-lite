@@ -22,6 +22,7 @@ import { Ride } from '../entities/ride.entity';
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
 import { RideStatusHistoryRepository } from '../../infrastructure/repositories/ride-status-history.repository';
 import { EClientType } from '../../../app/enums/client-type.enum';
+import { RideNotificationService } from './ride-notification.service';
 interface RouteSummary {
   distanceMeters: number;
   durationSeconds: number;
@@ -59,6 +60,7 @@ export class RidesService {
     private readonly rideQueue: Queue<RideQueueJobData>,
     private readonly rideRepository: RideRepository,
     private readonly rideStatusHistoryRepository: RideStatusHistoryRepository,
+    private readonly notificationService: RideNotificationService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {}
@@ -146,7 +148,7 @@ export class RidesService {
 
     await this.removePendingJobs(ride.id);
 
-    const updated = await this.transitionRideStatus(
+    const { ride: updated } = await this.transitionRideStatus(
       ride.id,
       [
         ERideStatus.REQUESTED,
@@ -182,7 +184,7 @@ export class RidesService {
       return ride;
     }
 
-    const updated = await this.transitionRideStatus(
+    const { ride: updated } = await this.transitionRideStatus(
       ride.id,
       [ERideStatus.ENROUTE, ERideStatus.ACCEPTED, ERideStatus.ASSIGNED],
       ERideStatus.COMPLETED,
@@ -194,12 +196,109 @@ export class RidesService {
     return this.rideRepository.save(updated);
   }
 
+  async acceptRideByDriver(rideId: string, driverId: string): Promise<Ride> {
+    let ride = await this.rideRepository.findById(rideId);
+    if (!ride) {
+      throw new NotFoundException('Ride not found');
+    }
+    if (ride.driverId !== driverId) {
+      throw new NotFoundException('Ride not found');
+    }
+    if (ride.status === ERideStatus.CANCELED) {
+      throw new BadRequestException('Cancelled ride cannot be accepted');
+    }
+    if (ride.status === ERideStatus.COMPLETED) {
+      throw new BadRequestException('Completed ride cannot be accepted');
+    }
+    if (ride.status === ERideStatus.ACCEPTED || ride.status === ERideStatus.ENROUTE) {
+      return ride;
+    }
+
+    if (!ride.driverId) {
+      throw new BadRequestException('Ride is not assigned to a driver');
+    }
+
+    if (
+      ride.status === ERideStatus.REQUESTED ||
+      ride.status === ERideStatus.CANDIDATES_COMPUTED
+    ) {
+      const assignment = await this.transitionRideStatus(
+        ride.id,
+        [ERideStatus.REQUESTED, ERideStatus.CANDIDATES_COMPUTED],
+        ERideStatus.ASSIGNED,
+        'Driver selected by rider',
+      );
+      ride = assignment.ride;
+      if (assignment.changed) {
+        await this.notificationService.notifyRideMatched(ride);
+      }
+    }
+
+    const acceptance = await this.transitionRideStatus(
+      ride.id,
+      [ERideStatus.ASSIGNED],
+      ERideStatus.ACCEPTED,
+      'Driver accepted ride request',
+    );
+
+    if (acceptance.changed) {
+      await this.notificationService.notifyDriverAccepted(acceptance.ride);
+    }
+
+    return acceptance.ride;
+  }
+
+  async confirmDriverAcceptance(
+    rideId: string,
+    riderId: string,
+  ): Promise<Ride> {
+    const ride = await this.rideRepository.findById(rideId);
+    if (!ride) {
+      throw new NotFoundException('Ride not found');
+    }
+    if (ride.riderId !== riderId) {
+      throw new NotFoundException('Ride not found');
+    }
+    if (!ride.driverId) {
+      throw new BadRequestException('Ride does not have an assigned driver');
+    }
+    if (ride.status === ERideStatus.CANCELED) {
+      throw new BadRequestException('Cancelled ride cannot be confirmed');
+    }
+    if (ride.status === ERideStatus.COMPLETED) {
+      return ride;
+    }
+    if (ride.status === ERideStatus.ASSIGNED || ride.status === ERideStatus.REQUESTED) {
+      throw new BadRequestException('Driver has not accepted this ride yet');
+    }
+    if (ride.status === ERideStatus.ENROUTE) {
+      return ride;
+    }
+
+    const confirmation = await this.transitionRideStatus(
+      ride.id,
+      [ERideStatus.ACCEPTED],
+      ERideStatus.ENROUTE,
+      'Rider accepted driver confirmation',
+    );
+
+    if (confirmation.changed) {
+      await this.notificationService.notifyRiderConfirmed(confirmation.ride);
+    }
+
+    return confirmation.ride;
+  }
+
+  async notifyRideMatched(ride: Ride): Promise<void> {
+    await this.notificationService.notifyRideMatched(ride);
+  }
+
   async transitionRideStatus(
     rideId: string,
     allowedStatuses: ERideStatus[],
     nextStatus: ERideStatus,
     context?: string,
-  ): Promise<Ride> {
+  ): Promise<{ ride: Ride; changed: boolean }> {
     const ride = await this.rideRepository.findById(rideId);
     if (!ride) {
       throw new NotFoundException('Ride not found');
@@ -209,7 +308,14 @@ export class RidesService {
       this.logger.debug(
         `Skipping status change for ride ${rideId} from ${ride.status} to ${nextStatus}`,
       );
-      return ride;
+      return { ride, changed: false };
+    }
+
+    if (ride.status === nextStatus) {
+      this.logger.debug(
+        `Ride ${rideId} already in status ${nextStatus}, skipping transition`,
+      );
+      return { ride, changed: false };
     }
 
     const previousStatus = ride.status;
@@ -221,7 +327,7 @@ export class RidesService {
     await this.recordStatusChange(savedRide, previousStatus, nextStatus, {
       context,
     });
-    return savedRide;
+    return { ride: savedRide, changed: true };
   }
 
   private async enqueueRideProcessing(ride: Ride): Promise<void> {
