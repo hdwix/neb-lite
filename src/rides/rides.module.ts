@@ -22,7 +22,9 @@ import { ROUTE_ESTIMATION_QUEUE_LIMITER } from './domain/constants/route-estimat
         removeOnComplete: true,
         removeOnFail: 25,
       },
-      limiter: ROUTE_ESTIMATION_QUEUE_LIMITER,
+      queueOptions: {
+        limiter: ROUTE_ESTIMATION_QUEUE_LIMITER,
+      },
     }),
     BullBoardModule.forFeature({
       name: RIDE_QUEUE_NAME,
