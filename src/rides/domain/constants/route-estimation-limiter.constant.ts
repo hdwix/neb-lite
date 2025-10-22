@@ -1,6 +1,6 @@
 import type { QueueOptions } from 'bullmq';
 
-type QueueLimiterOptions = QueueOptions extends { limiter: infer Limiter }
+export type QueueLimiterOptions = QueueOptions extends { limiter: infer Limiter }
   ? NonNullable<Limiter>
   : {
       max: number;
@@ -8,7 +8,7 @@ type QueueLimiterOptions = QueueOptions extends { limiter: infer Limiter }
       reservoir?: number;
       reservoirRefreshAmount?: number;
       reservoirRefreshInterval?: number;
-    };
+};
 
 export const ROUTE_ESTIMATION_QUEUE_LIMITER: QueueLimiterOptions = {
   max: 20,
