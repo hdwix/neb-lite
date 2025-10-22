@@ -17,6 +17,8 @@ import {
   ROUTE_ESTIMATION_QUEUE_LIMITER,
   QueueLimiterOptions,
 } from './domain/constants/route-estimation-limiter.constant';
+import { RideNotificationService } from './domain/services/ride-notification.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 type RideQueueRegistrationOptions = RegisterQueueOptions & {
   limiter?: QueueLimiterOptions;
@@ -40,11 +42,13 @@ const rideQueueRegistration: RideQueueRegistrationOptions = {
       adapter: BullMQAdapter,
     }),
     HttpModule,
+    NotificationsModule,
   ],
   providers: [
     RidesService,
     RideRepository,
     RideStatusHistoryRepository,
+    RideNotificationService,
     RideProcessor,
   ],
   exports: [RidesService],

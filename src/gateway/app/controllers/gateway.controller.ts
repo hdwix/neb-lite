@@ -4,11 +4,13 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  MessageEvent,
   Param,
   Post,
   Query,
   Req,
   Res,
+  Sse,
   UnauthorizedException,
 } from '@nestjs/common';
 import { GetOtpDto } from '../../../app/dto/get-otp.dto';
@@ -28,6 +30,11 @@ import { RidesService } from '../../../rides/domain/services/rides.service';
 import { CreateRideDto } from '../../../rides/app/dto/create-ride.dto';
 import { CancelRideDto } from '../../../rides/app/dto/cancel-ride.dto';
 import { Ride } from '../../../rides/domain/entities/ride.entity';
+import {
+  NotificationStreamService,
+  NotificationTarget,
+} from '../../../notifications/domain/services/notification-stream.service';
+import { Observable } from 'rxjs';
 
 interface AuthenticatedClientPayload {
   sub?: string | number;
@@ -41,6 +48,7 @@ export class GatewayController {
     private readonly authService: AuthenticationService,
     private readonly locationService: LocationService,
     private readonly ridesService: RidesService,
+    private readonly notificationStreamService: NotificationStreamService,
   ) {}
 
   /*
@@ -150,6 +158,27 @@ export class GatewayController {
    * api for rides-module
    */
 
+  @Sse('notifications/stream')
+  @Auth(EAuthType.Bearer)
+  streamNotifications(@Req() request: Request): Observable<MessageEvent> {
+    const client = this.getAuthenticatedClient(request);
+    const clientId = this.getClientId(client);
+    const role = client?.role;
+
+    if (!role) {
+      throw new UnauthorizedException('Client role not found in request');
+    }
+
+    if (role !== EClientType.DRIVER && role !== EClientType.RIDER) {
+      throw new UnauthorizedException('Unsupported client type for notifications');
+    }
+
+    const target: NotificationTarget =
+      role === EClientType.DRIVER ? 'driver' : 'rider';
+
+    return this.notificationStreamService.subscribe(target, clientId);
+  }
+
   @Post('rides')
   @Auth(EAuthType.Bearer)
   @Roles(EClientType.RIDER)
@@ -230,6 +259,74 @@ export class GatewayController {
     return {
       statusCode: HttpStatus.OK,
       message: 'Ride completed',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Post('rides/:id/driver-accept')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER)
+  @HttpCode(HttpStatus.OK)
+  async acceptRideAsDriver(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.acceptRideByDriver(
+      rideId,
+      this.getClientId(client),
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride accepted by driver',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Post('rides/:id/rider-accept')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.RIDER)
+  @HttpCode(HttpStatus.OK)
+  async confirmDriverAcceptance(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.confirmDriverAcceptance(
+      rideId,
+      this.getClientId(client),
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride confirmed by rider',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Post('rides/:id/rider-reject')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.RIDER)
+  @HttpCode(HttpStatus.OK)
+  async rejectDriverAcceptance(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() cancelRideDto: CancelRideDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.rejectDriverAcceptance(
+      rideId,
+      this.getClientId(client),
+      cancelRideDto?.reason,
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride rejected by rider',
       error: null,
       data: this.toRideResponse(ride),
     };

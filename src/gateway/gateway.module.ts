@@ -21,6 +21,7 @@ import { SmsProviderService } from '../iam/domain/services/sms-provider.service'
 import { HttpService } from '@nestjs/axios';
 import { LocationModule } from '../location/location.module';
 import { RidesModule } from '../rides/rides.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { RidesModule } from '../rides/rides.module';
     IamModule,
     LocationModule,
     RidesModule,
+    NotificationsModule,
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
     TypeOrmModule.forFeature([RiderProfile, DriverProfile]),
