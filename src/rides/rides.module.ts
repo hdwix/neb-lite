@@ -31,6 +31,19 @@ const rideQueueRegistration: RideQueueRegistrationOptions = {
   limiter: ROUTE_ESTIMATION_QUEUE_LIMITER,
 };
 
+type RideQueueRegistrationOptions = RegisterQueueOptions & {
+  limiter?: QueueOptions['limiter'];
+};
+
+const rideQueueRegistration: RideQueueRegistrationOptions = {
+  name: RIDE_QUEUE_NAME,
+  defaultJobOptions: {
+    removeOnComplete: true,
+    removeOnFail: 25,
+  },
+  limiter: ROUTE_ESTIMATION_QUEUE_LIMITER,
+};
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([Ride, RideStatusHistory]),
