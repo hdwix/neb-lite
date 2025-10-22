@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -241,9 +242,11 @@ export class RidesService {
       'Driver accepted ride request',
     );
 
-    if (acceptance.changed) {
-      await this.notificationService.notifyDriverAccepted(acceptance.ride);
+    if (!acceptance.changed) {
+      throw new ConflictException('Ride could not be accepted by driver');
     }
+
+    await this.notificationService.notifyDriverAccepted(acceptance.ride);
 
     return acceptance.ride;
   }
@@ -282,9 +285,11 @@ export class RidesService {
       'Rider accepted driver confirmation',
     );
 
-    if (confirmation.changed) {
-      await this.notificationService.notifyRiderConfirmed(confirmation.ride);
+    if (!confirmation.changed) {
+      throw new ConflictException('Ride could not be confirmed by rider');
     }
+
+    await this.notificationService.notifyRiderConfirmed(confirmation.ride);
 
     return confirmation.ride;
   }
