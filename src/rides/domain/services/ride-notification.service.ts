@@ -43,6 +43,24 @@ export class RideNotificationService {
     );
   }
 
+  async notifyRiderRejected(ride: Ride, reason?: string): Promise<void> {
+    if (ride.driverId) {
+      this.logNotification(
+        'driver',
+        ride.driverId,
+        `Rider ${ride.riderId} rejected ride ${ride.id}` +
+          (reason ? `: ${reason}` : ''),
+      );
+    }
+
+    this.logNotification(
+      'rider',
+      ride.riderId,
+      `Ride ${ride.id} cancelled after rejecting driver` +
+        (reason ? `: ${reason}` : ''),
+    );
+  }
+
   private logNotification(target: string, targetId: string, message: string) {
     this.logger.log(`Notification to ${target} ${targetId}: ${message}`);
   }

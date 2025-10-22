@@ -289,6 +289,57 @@ export class RidesService {
     return confirmation.ride;
   }
 
+  async rejectDriverAcceptance(
+    rideId: string,
+    riderId: string,
+    reason?: string,
+  ): Promise<Ride> {
+    const ride = await this.rideRepository.findById(rideId);
+    if (!ride) {
+      throw new NotFoundException('Ride not found');
+    }
+    if (ride.riderId !== riderId) {
+      throw new NotFoundException('Ride not found');
+    }
+    if (!ride.driverId) {
+      throw new BadRequestException('Ride does not have an assigned driver');
+    }
+    if (ride.status === ERideStatus.CANCELED) {
+      return ride;
+    }
+    if (ride.status === ERideStatus.COMPLETED) {
+      throw new BadRequestException('Completed ride cannot be rejected');
+    }
+    if (ride.status === ERideStatus.ENROUTE) {
+      throw new BadRequestException('Ride already in progress');
+    }
+    if (ride.status === ERideStatus.ASSIGNED || ride.status === ERideStatus.REQUESTED) {
+      throw new BadRequestException('Driver has not accepted this ride yet');
+    }
+
+    await this.removePendingJobs(ride.id);
+
+    const rejection = await this.transitionRideStatus(
+      ride.id,
+      [ERideStatus.ACCEPTED],
+      ERideStatus.CANCELED,
+      reason ?? 'Rider rejected the driver acceptance',
+    );
+
+    if (rejection.changed) {
+      const updatedRide = rejection.ride;
+      updatedRide.fareFinal = '0.00';
+      await this.rideRepository.save(updatedRide);
+      await this.notificationService.notifyRiderRejected(
+        updatedRide,
+        reason,
+      );
+      return updatedRide;
+    }
+
+    return rejection.ride;
+  }
+
   async notifyRideMatched(ride: Ride): Promise<void> {
     await this.notificationService.notifyRideMatched(ride);
   }

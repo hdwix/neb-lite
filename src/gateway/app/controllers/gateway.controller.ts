@@ -279,6 +279,30 @@ export class GatewayController {
     };
   }
 
+  @Post('rides/:id/rider-reject')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.RIDER)
+  @HttpCode(HttpStatus.OK)
+  async rejectDriverAcceptance(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() cancelRideDto: CancelRideDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.rejectDriverAcceptance(
+      rideId,
+      this.getClientId(client),
+      cancelRideDto?.reason,
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride rejected by rider',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
   private getAuthenticatedClient(request: Request): AuthenticatedClientPayload {
     return request[REQUEST_CLIENT_KEY] as AuthenticatedClientPayload;
   }

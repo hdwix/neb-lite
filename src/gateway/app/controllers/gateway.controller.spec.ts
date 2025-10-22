@@ -41,6 +41,7 @@ describe('GatewayController', () => {
         | 'completeRide'
         | 'acceptRideByDriver'
         | 'confirmDriverAcceptance'
+        | 'rejectDriverAcceptance'
       >
     > = {
       createRide: jest.fn(),
@@ -49,6 +50,7 @@ describe('GatewayController', () => {
       completeRide: jest.fn(),
       acceptRideByDriver: jest.fn(),
       confirmDriverAcceptance: jest.fn(),
+      rejectDriverAcceptance: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
