@@ -11,19 +11,30 @@ import { RideProcessor } from './domain/processors/ride.processor';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { HttpModule } from '@nestjs/axios';
-import { ROUTE_ESTIMATION_QUEUE_LIMITER } from './domain/constants/route-estimation-limiter.constant';
+import type { RegisterQueueOptions } from '@nestjs/bullmq';
+import type { QueueOptions } from 'bullmq';
+import {
+  ROUTE_ESTIMATION_QUEUE_LIMITER,
+  QueueLimiterOptions,
+} from './domain/constants/route-estimation-limiter.constant';
+
+type RideQueueRegistrationOptions = RegisterQueueOptions & {
+  limiter?: QueueLimiterOptions;
+};
+
+const rideQueueRegistration: RideQueueRegistrationOptions = {
+  name: RIDE_QUEUE_NAME,
+  defaultJobOptions: {
+    removeOnComplete: true,
+    removeOnFail: 25,
+  },
+  limiter: ROUTE_ESTIMATION_QUEUE_LIMITER,
+};
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Ride, RideStatusHistory]),
-    BullModule.registerQueue({
-      name: RIDE_QUEUE_NAME,
-      defaultJobOptions: {
-        removeOnComplete: true,
-        removeOnFail: 25,
-      },
-      limiter: ROUTE_ESTIMATION_QUEUE_LIMITER,
-    }),
+    BullModule.registerQueue(rideQueueRegistration),
     BullBoardModule.forFeature({
       name: RIDE_QUEUE_NAME,
       adapter: BullMQAdapter,

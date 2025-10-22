@@ -293,7 +293,7 @@ export class RidesService {
     const queueEvents = await this.createQueueEvents();
 
     try {
-      const jobOptions: JobsOptions = {
+      const jobOptions: JobsOptions & { timeout?: number } = {
         jobId,
         removeOnComplete: true,
         removeOnFail: 25,
