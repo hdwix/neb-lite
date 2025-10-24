@@ -10,6 +10,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { of, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
+import { Request } from 'express';
 
 @Injectable()
 export class ResponseInterceptor implements NestInterceptor {
@@ -31,6 +32,17 @@ export class ResponseInterceptor implements NestInterceptor {
       205: 'ResetContent',
       206: 'PartialContent',
     };
+
+    const httpContext = context.switchToHttp();
+    const request = httpContext.getRequest<Request>();
+    const acceptHeader = request.headers['accept'];
+    const acceptsEventStream = Array.isArray(acceptHeader)
+      ? acceptHeader.some((value) => value?.includes('text/event-stream'))
+      : acceptHeader?.includes('text/event-stream');
+
+    if (acceptsEventStream) {
+      return next.handle();
+    }
 
     return next
       .handle()
@@ -76,7 +88,6 @@ export class ResponseInterceptor implements NestInterceptor {
           });
         }
 
-        const request = context.switchToHttp().getRequest<Request>();
         const isExcludedPath = this.excludePaths.some((path) => {
           return path === request.url || request.url.startsWith(path);
         });
