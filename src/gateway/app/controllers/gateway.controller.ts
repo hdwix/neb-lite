@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -14,6 +15,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { GetOtpDto } from '../../../app/dto/get-otp.dto';
+import { MsisdnParamDto } from '../../../app/dto/msisdn-param.dto';
 import { RefreshTokenDto } from '../../../app/dto/refresh-token.dto';
 import { VerifyOtpDto } from '../../../app/dto/verify-otp.dto';
 import { EAuthType } from '../../../app/enums/auth-type.enum';
@@ -33,8 +35,10 @@ import { Ride } from '../../../rides/domain/entities/ride.entity';
 import {
   NotificationStreamService,
   NotificationTarget,
+  OTP_SIMULATION_TARGET,
 } from '../../../notifications/domain/services/notification-stream.service';
 import { Observable } from 'rxjs';
+import { ConfigService } from '@nestjs/config';
 
 interface AuthenticatedClientPayload {
   sub?: string | number;
@@ -49,6 +53,7 @@ export class GatewayController {
     private readonly locationService: LocationService,
     private readonly ridesService: RidesService,
     private readonly notificationStreamService: NotificationStreamService,
+    private readonly configService: ConfigService,
   ) {}
 
   /*
@@ -63,11 +68,29 @@ export class GatewayController {
   }
 
   @Sse('simulate/:msisdn/get-otp')
-  async simulateGetOtp(
+  @Auth(EAuthType.None)
+  simulateGetOtp(
+    @Param() params: MsisdnParamDto,
     @Req() request: Request,
-    @Param() msisdn: string,
-  ): Promise<Observable<MessageEvent>> {
-    return this.notificationStreamService.subscribe(target, clientId);
+  ): Observable<MessageEvent> {
+    const trustedClientToken = this.configService.get<string>(
+      'OTP_SIMULATION_ACCESS_TOKEN',
+    );
+
+    if (!trustedClientToken) {
+      throw new ForbiddenException('OTP simulation stream is disabled.');
+    }
+
+    const providedToken = request.header('x-otp-simulation-token');
+
+    if (providedToken !== trustedClientToken) {
+      throw new UnauthorizedException('Invalid OTP simulation token.');
+    }
+
+    return this.notificationStreamService.subscribe(
+      OTP_SIMULATION_TARGET,
+      params.msisdn,
+    );
   }
 
   @HttpCode(HttpStatus.OK)

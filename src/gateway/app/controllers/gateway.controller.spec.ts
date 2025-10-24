@@ -3,11 +3,15 @@ import { GatewayController } from './gateway.controller';
 import { AuthenticationService } from '../../../iam/domain/services/authentication.service';
 import { LocationService } from '../../../location/domain/services/location.service';
 import { REQUEST_CLIENT_KEY } from '../../../app/constants/request-client-key';
-import { UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { RidesService } from '../../../rides/domain/services/rides.service';
-import { NotificationStreamService } from '../../../notifications/domain/services/notification-stream.service';
+import {
+  NotificationStreamService,
+  OTP_SIMULATION_TARGET,
+} from '../../../notifications/domain/services/notification-stream.service';
 import { EClientType } from '../../../app/enums/client-type.enum';
 import { of } from 'rxjs';
+import { ConfigService } from '@nestjs/config';
 
 describe('GatewayController', () => {
   let controller: GatewayController;
@@ -34,9 +38,13 @@ describe('GatewayController', () => {
   let notificationStreamServiceMock: jest.Mocked<
     Pick<NotificationStreamService, 'subscribe'>
   >;
+  const configServiceMock = {
+    get: jest.fn(),
+  } as jest.Mocked<Pick<ConfigService, 'get'>>;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    configServiceMock.get.mockReset();
 
     const ridesServiceMock: jest.Mocked<
       Pick<
@@ -82,6 +90,10 @@ describe('GatewayController', () => {
           provide: NotificationStreamService,
           useValue: notificationStreamServiceMock as unknown as NotificationStreamService,
         },
+        {
+          provide: ConfigService,
+          useValue: configServiceMock,
+        },
       ],
     }).compile();
 
@@ -90,6 +102,59 @@ describe('GatewayController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('simulateGetOtp', () => {
+    it('subscribes to the otp simulation stream for the provided msisdn when trusted token provided', () => {
+      const stream = of();
+      notificationStreamServiceMock.subscribe.mockReturnValue(stream);
+      configServiceMock.get.mockReturnValue('trusted-token');
+
+      const result = controller.simulateGetOtp(
+        {
+          msisdn: '+6281234567890',
+        } as any,
+        {
+          header: jest.fn().mockReturnValue('trusted-token'),
+        } as any,
+      );
+
+      expect(notificationStreamServiceMock.subscribe).toHaveBeenCalledWith(
+        OTP_SIMULATION_TARGET,
+        '+6281234567890',
+      );
+      expect(result).toBe(stream);
+    });
+
+    it('throws when token is missing or invalid', () => {
+      configServiceMock.get.mockReturnValue('expected-token');
+
+      expect(() =>
+        controller.simulateGetOtp(
+          {
+            msisdn: '+628111111111',
+          } as any,
+          {
+            header: jest.fn().mockReturnValue('wrong-token'),
+          } as any,
+        ),
+      ).toThrow(UnauthorizedException);
+    });
+
+    it('throws when simulation token is not configured', () => {
+      configServiceMock.get.mockReturnValue(undefined as any);
+
+      expect(() =>
+        controller.simulateGetOtp(
+          {
+            msisdn: '+628111111111',
+          } as any,
+          {
+            header: jest.fn().mockReturnValue('any'),
+          } as any,
+        ),
+      ).toThrow(ForbiddenException);
+    });
   });
 
   describe('upsertDriverLocation', () => {

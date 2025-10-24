@@ -17,6 +17,10 @@ import { RefreshTokenDto } from '../../../app/dto/refresh-token.dto';
 import { RiderProfileRepository } from '../../infrastructure/repository/rider-profile.repository';
 import { DriverProfileRepository } from '../../infrastructure/repository/driver-profile.repository';
 import { EClientType } from '../../../app/enums/client-type.enum';
+import {
+  NotificationStreamService,
+  OTP_SIMULATION_TARGET,
+} from '../../../notifications/domain/services/notification-stream.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import {
   ESendOtpQueueJob,
@@ -39,6 +43,7 @@ export class AuthenticationService {
     private readonly driverProfileRepo: DriverProfileRepository,
     @InjectQueue(SEND_OTP_QUEUE_NAME)
     private readonly sendOtpQueue: Queue<ISendOtpQueueData>,
+    private readonly notificationStreamService: NotificationStreamService,
   ) {}
   async getOtp(getOtpDto: GetOtpDto) {
     const cachedKey = this.getOtpCachedKey(getOtpDto.msisdn);
@@ -56,6 +61,8 @@ export class AuthenticationService {
 
     const otpTtl = this.configService.get<number>('OTP_TTL_SEC');
     await this.cacheManager.set(cachedKey, hashedCode, otpTtl);
+
+    this.emitOtpSimulationEvent(getOtpDto.msisdn, getOtpDto.clientType, otpCode);
 
     const isSkipSmsNotif = this.configService.get<boolean>('SKIP_SMS_NOTIF');
     if (isSkipSmsNotif) {
@@ -138,6 +145,29 @@ export class AuthenticationService {
 
   private getRefreshTokenCacheKey(phone) {
     return `refresh-token:${phone}`;
+  }
+
+  private emitOtpSimulationEvent(
+    msisdn: string,
+    clientType: EClientType,
+    otpCode: string,
+  ) {
+    const delivered = this.notificationStreamService.emit(
+      OTP_SIMULATION_TARGET,
+      msisdn,
+      'otp.generated',
+      {
+        msisdn,
+        clientType,
+        otp: otpCode,
+      },
+    );
+
+    if (!delivered) {
+      this.logger.debug(
+        `No active OTP simulation subscribers for ${msisdn}. Event dropped.`,
+      );
+    }
   }
 
   getAccessTokenKey(phone: any) {

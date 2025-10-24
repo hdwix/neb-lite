@@ -24,6 +24,7 @@ driver can switch on/off of location activation
 | Variable | Description |
 | --- | --- |
 | `SMS_SERVICE_URL` | Base URL for the SMS provider endpoint that delivers OTP messages. |
+| `OTP_SIMULATION_ACCESS_TOKEN` | Static token that authorizes access to the OTP simulation SSE stream. Leave unset to disable the simulation endpoint. |
 
 ## Architecture Design Document
 

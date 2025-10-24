@@ -2,7 +2,12 @@ import { Injectable, Logger, MessageEvent } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
-export type NotificationTarget = 'driver' | 'rider';
+export const OTP_SIMULATION_TARGET = 'otp-simulation' as const;
+
+export type NotificationTarget =
+  | 'driver'
+  | 'rider'
+  | typeof OTP_SIMULATION_TARGET;
 
 interface NotificationEnvelope {
   target: NotificationTarget;
