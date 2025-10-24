@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -37,6 +38,7 @@ import {
   OTP_SIMULATION_TARGET,
 } from '../../../notifications/domain/services/notification-stream.service';
 import { Observable } from 'rxjs';
+import { ConfigService } from '@nestjs/config';
 
 interface AuthenticatedClientPayload {
   sub?: string | number;
@@ -51,6 +53,7 @@ export class GatewayController {
     private readonly locationService: LocationService,
     private readonly ridesService: RidesService,
     private readonly notificationStreamService: NotificationStreamService,
+    private readonly configService: ConfigService,
   ) {}
 
   /*
@@ -66,7 +69,24 @@ export class GatewayController {
 
   @Sse('simulate/:msisdn/get-otp')
   @Auth(EAuthType.None)
-  simulateGetOtp(@Param() params: MsisdnParamDto): Observable<MessageEvent> {
+  simulateGetOtp(
+    @Param() params: MsisdnParamDto,
+    @Req() request: Request,
+  ): Observable<MessageEvent> {
+    const trustedClientToken = this.configService.get<string>(
+      'OTP_SIMULATION_ACCESS_TOKEN',
+    );
+
+    if (!trustedClientToken) {
+      throw new ForbiddenException('OTP simulation stream is disabled.');
+    }
+
+    const providedToken = request.header('x-otp-simulation-token');
+
+    if (providedToken !== trustedClientToken) {
+      throw new UnauthorizedException('Invalid OTP simulation token.');
+    }
+
     return this.notificationStreamService.subscribe(
       OTP_SIMULATION_TARGET,
       params.msisdn,
