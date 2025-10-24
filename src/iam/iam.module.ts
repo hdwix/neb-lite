@@ -69,6 +69,6 @@ const sendOtpQueueRegistration: QueueRegistrationOptions = {
     DriverProfileRepository,
     SmsProcessor,
   ],
-  exports: [HttpModule],
+  exports: [HttpModule, AuthenticationService],
 })
 export class IamModule {}
