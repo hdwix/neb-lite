@@ -6,8 +6,13 @@ import { ResponseInterceptor } from './response.interceptor';
 
 describe('ResponseInterceptor', () => {
   const createExecutionContext = (request: any): ExecutionContext => {
+    const normalizedRequest = {
+      headers: {},
+      ...request,
+    };
+    normalizedRequest.headers = request?.headers ?? {};
     return {
-      switchToHttp: () => ({ getRequest: () => request }),
+      switchToHttp: () => ({ getRequest: () => normalizedRequest }),
       getHandler: () => ({}),
     } as unknown as ExecutionContext;
   };
@@ -197,5 +202,43 @@ describe('ResponseInterceptor', () => {
       },
       status: 413,
     });
+  });
+
+  it('returns the original stream when request Accept header asks for SSE', async () => {
+    const interceptor = new ResponseInterceptor(reflector);
+    const stream$ = of({ data: 'event' });
+    const request = {
+      method: 'GET',
+      url: '/stream',
+      headers: { accept: 'text/event-stream' },
+    };
+
+    const result$ = await interceptor.intercept(
+      createExecutionContext(request),
+      {
+        handle: jest.fn().mockReturnValue(stream$),
+      },
+    );
+
+    expect(result$).toBe(stream$);
+  });
+
+  it('detects SSE requests when Accept header contains multiple values', async () => {
+    const interceptor = new ResponseInterceptor(reflector);
+    const stream$ = of({ data: 'event' });
+    const request = {
+      method: 'GET',
+      url: '/stream',
+      headers: { accept: ['application/json', 'text/event-stream'] },
+    };
+
+    const result$ = await interceptor.intercept(
+      createExecutionContext(request),
+      {
+        handle: jest.fn().mockReturnValue(stream$),
+      },
+    );
+
+    expect(result$).toBe(stream$);
   });
 });
