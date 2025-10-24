@@ -62,11 +62,15 @@ export class AuthenticationService {
     const otpTtl = this.configService.get<number>('OTP_TTL_SEC');
     await this.cacheManager.set(cachedKey, hashedCode, otpTtl);
 
-    this.emitOtpSimulationEvent(getOtpDto.msisdn, getOtpDto.clientType, otpCode);
+    this.emitOtpSimulationEvent(
+      getOtpDto.msisdn,
+      getOtpDto.clientType,
+      otpCode,
+    );
 
     const isSkipSmsNotif = this.configService.get<boolean>('SKIP_SMS_NOTIF');
     if (isSkipSmsNotif) {
-      return otpCode;
+      return 'otp code sent';
     }
     // await smsProvider.send
     await this.sendOtpQueue.add(

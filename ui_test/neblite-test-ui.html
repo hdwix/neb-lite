@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -29,9 +29,17 @@
         margin: 0;
         background: linear-gradient(180deg, #0b1220, #0f172a);
         color: var(--text);
-        font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Inter,
-          "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji",
-          "Segoe UI Emoji";
+        font:
+          14px/1.4 system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Inter,
+          'Helvetica Neue',
+          Arial,
+          'Noto Sans',
+          'Apple Color Emoji',
+          'Segoe UI Emoji';
       }
       header {
         padding: 18px 22px;
@@ -83,7 +91,7 @@
         color: var(--muted);
         margin-bottom: 6px;
       }
-      input[type="text"],
+      input[type='text'],
       select {
         width: 100%;
         padding: 10px 12px;
@@ -115,7 +123,9 @@
         padding: 10px 12px;
         border-radius: 10px;
         cursor: pointer;
-        transition: 0.18s transform, 0.18s background;
+        transition:
+          0.18s transform,
+          0.18s background;
       }
       button:hover {
         background: var(--btnh);
@@ -159,8 +169,9 @@
         height: 100%;
         overflow: auto;
         background: #0b0f1a;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
-          "Liberation Mono", monospace;
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono',
+          monospace;
         font-size: 12px;
       }
       .line {
@@ -295,47 +306,47 @@
     <script>
       // Elements
       const el = (id) => document.getElementById(id);
-      const baseUrlEl = el("baseUrl");
-      const msisdnEl = el("msisdn");
-      const clientTypeEl = el("clientType");
-      const sseTokenEl = el("sseToken");
+      const baseUrlEl = el('baseUrl');
+      const msisdnEl = el('msisdn');
+      const clientTypeEl = el('clientType');
+      const sseTokenEl = el('sseToken');
 
-      const sendOtpBtn = el("sendOtpBtn");
-      const connectSseBtn = el("connectSseBtn");
-      const disconnectSseBtn = el("disconnectSseBtn");
-      const clearLogBtn = el("clearLogBtn");
-      const copyBtn = el("copyBtn");
-      const saveBtn = el("saveBtn");
-      const loadBtn = el("loadBtn");
+      const sendOtpBtn = el('sendOtpBtn');
+      const connectSseBtn = el('connectSseBtn');
+      const disconnectSseBtn = el('disconnectSseBtn');
+      const clearLogBtn = el('clearLogBtn');
+      const copyBtn = el('copyBtn');
+      const saveBtn = el('saveBtn');
+      const loadBtn = el('loadBtn');
 
-      const logBox = el("log");
-      const statusEl = el("status");
+      const logBox = el('log');
+      const statusEl = el('status');
 
       let sseAbortController = null;
 
-      function line(text, cls = "") {
-        const div = document.createElement("div");
-        div.className = "line " + cls;
+      function line(text, cls = '') {
+        const div = document.createElement('div');
+        div.className = 'line ' + cls;
         div.textContent = text;
         logBox.appendChild(div);
         logBox.scrollTop = logBox.scrollHeight;
       }
 
       function validateInputs(requireTokenForSSE = false) {
-        const base = (baseUrlEl.value || "").trim().replace(/\/+$/, "");
-        const msisdn = (msisdnEl.value || "").trim();
-        const clientType = (clientTypeEl.value || "").trim();
-        const token = (sseTokenEl.value || "").trim();
+        const base = (baseUrlEl.value || '').trim().replace(/\/+$/, '');
+        const msisdn = (msisdnEl.value || '').trim();
+        const clientType = (clientTypeEl.value || '').trim();
+        const token = (sseTokenEl.value || '').trim();
         if (!base) {
-          line("Please provide a base URL.", "err");
+          line('Please provide a base URL.', 'err');
           return null;
         }
         if (!msisdn) {
-          line("Please provide MSISDN / phone number.", "err");
+          line('Please provide MSISDN / phone number.', 'err');
           return null;
         }
         if (requireTokenForSSE && !token) {
-          line("SSE token is required for the stream.", "err");
+          line('SSE token is required for the stream.', 'err');
           return null;
         }
         return { base, msisdn, clientType, token };
@@ -350,46 +361,32 @@
           msisdn: v.msisdn,
           clientType: v.clientType || undefined,
         };
-        line(`→ POST ${url}\n${JSON.stringify(body, null, 2)}`, "dim");
+        line(`→ POST ${url}\n${JSON.stringify(body, null, 2)}`, 'dim');
 
         try {
           const res = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
-            mode: "cors",
-            credentials: "omit",
+            mode: 'cors',
+            credentials: 'omit',
           });
 
-          const contentType = res.headers.get("content-type") || "";
+          const contentType = res.headers.get('content-type') || '';
           let payload;
-          if (contentType.includes("application/json")) {
+          if (contentType.includes('application/json')) {
             payload = await res.json();
           } else {
             payload = await res.text();
           }
 
           if (res.ok) {
-            line(
-              `✓ OTP request accepted (HTTP ${res.status})\n${
-                typeof payload === "string"
-                  ? payload
-                  : JSON.stringify(payload, null, 2)
-              }`,
-              "ok"
-            );
+            line(`✓ OTP request sent for msisdn : ${msisdnEl.value}`, 'ok');
           } else {
-            line(
-              `✗ OTP request failed (HTTP ${res.status})\n${
-                typeof payload === "string"
-                  ? payload
-                  : JSON.stringify(payload, null, 2)
-              }`,
-              "err"
-            );
+            line(`✗ OTP request failed for msisdn : ${msisdnEl.value}`, 'err');
           }
         } catch (err) {
-          line(`✗ Network/Fetch error: ${err}`, "err");
+          line(`✗ Network/Fetch error: ${err}`, 'err');
         }
       }
 
@@ -402,9 +399,9 @@
         if (!v) return;
 
         const sseUrl = `${v.base}/api/v1/gateway/simulate/${encodeURIComponent(
-          v.msisdn
+          v.msisdn,
         )}/get-otp`;
-        line(`⇄ Connecting SSE: GET ${sseUrl}`, "dim");
+        line(`⇄ Connecting SSE: GET ${sseUrl}`, 'dim');
 
         // Abort any existing connection
         if (sseAbortController) {
@@ -413,28 +410,28 @@
           } catch {}
         }
         sseAbortController = new AbortController();
-        setStatus("connecting…");
+        setStatus('connecting…');
 
         fetch(sseUrl, {
-          method: "GET",
+          method: 'GET',
           headers: {
-            Accept: "text/event-stream",
+            Accept: 'text/event-stream',
             // Required by your server code
-            "x-otp-simulation-token": v.token,
+            'x-otp-simulation-token': v.token,
           },
-          mode: "cors",
+          mode: 'cors',
           signal: sseAbortController.signal,
         })
           .then(async (res) => {
             if (!res.ok) {
-              setStatus("error");
-              line(`✗ SSE HTTP ${res.status} — unable to open stream.`, "err");
+              setStatus('error');
+              line(`✗ SSE HTTP ${res.status} — unable to open stream.`, 'err');
               return;
             }
-            setStatus("connected");
+            setStatus('connected');
             const reader = res.body.getReader();
-            const decoder = new TextDecoder("utf-8");
-            let buffer = "";
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
 
             // Basic SSE parser: events separated by \n\n, fields "event:", "data:", "id:", ":" (comment)
             while (true) {
@@ -443,22 +440,22 @@
               buffer += decoder.decode(value, { stream: true });
 
               let idx;
-              while ((idx = buffer.indexOf("\n\n")) !== -1) {
+              while ((idx = buffer.indexOf('\n\n')) !== -1) {
                 const rawEvent = buffer.slice(0, idx);
                 buffer = buffer.slice(idx + 2);
                 handleSSEChunk(rawEvent);
               }
             }
-            setStatus("disconnected");
-            line("SSE connection closed.", "dim");
+            setStatus('disconnected');
+            line('SSE connection closed.', 'dim');
           })
           .catch((err) => {
-            if (err.name === "AbortError") {
-              setStatus("disconnected");
-              line("SSE connection aborted by user.", "dim");
+            if (err.name === 'AbortError') {
+              setStatus('disconnected');
+              line('SSE connection aborted by user.', 'dim');
             } else {
-              setStatus("error");
-              line(`✗ SSE error: ${err}`, "err");
+              setStatus('error');
+              line(`✗ SSE error: ${err}`, 'err');
             }
           });
       }
@@ -469,16 +466,16 @@
           return; // keep-alive or comment
         }
         // Parse lines
-        const lines = chunk.split("\n");
-        const evt = { event: "message", data: "", id: null };
+        const lines = chunk.split('\n');
+        const evt = { event: 'message', data: '', id: null };
         for (const l of lines) {
           if (!l) continue;
-          if (l.startsWith("event:")) {
+          if (l.startsWith('event:')) {
             evt.event = l.slice(6).trim();
-          } else if (l.startsWith("data:")) {
+          } else if (l.startsWith('data:')) {
             const dataLine = l.slice(5).trim();
-            evt.data += (evt.data ? "\n" : "") + dataLine;
-          } else if (l.startsWith("id:")) {
+            evt.data += (evt.data ? '\n' : '') + dataLine;
+          } else if (l.startsWith('id:')) {
             evt.id = l.slice(3).trim();
           }
         }
@@ -486,10 +483,10 @@
         let rendered = evt.data;
         try {
           const parsed = JSON.parse(evt.data);
-          rendered = JSON.stringify(parsed, null, 2);
+          rendered = JSON.stringify(parsed.payload, null, 2);
         } catch {}
-        const tag = evt.event ? `[${evt.event}]` : "[message]";
-        line(`${tag}${evt.id ? " #" + evt.id : ""}\n${rendered}`);
+        const tag = evt.event ? `[${evt.event}]` : '[message]';
+        line(`${tag}${evt.id ? ' #' + evt.id : ''}\n${rendered}`);
       }
 
       function disconnectSSE() {
@@ -502,58 +499,58 @@
       }
 
       function clearLog() {
-        logBox.innerHTML = "";
+        logBox.innerHTML = '';
       }
 
       async function copyAll() {
-        const text = Array.from(logBox.querySelectorAll(".line"))
+        const text = Array.from(logBox.querySelectorAll('.line'))
           .map((d) => d.textContent)
-          .join("\n");
+          .join('\n');
         try {
           await navigator.clipboard.writeText(text);
-          line("✓ Copied all logs to clipboard.", "ok");
+          line('✓ Copied all logs to clipboard.', 'ok');
         } catch {
-          line("✗ Unable to copy to clipboard.", "err");
+          line('✗ Unable to copy to clipboard.', 'err');
         }
       }
 
       function saveInputs() {
         const payload = {
-          baseUrl: baseUrlEl.value || "",
-          msisdn: msisdnEl.value || "",
-          clientType: clientTypeEl.value || "",
-          sseToken: sseTokenEl.value || "",
+          baseUrl: baseUrlEl.value || '',
+          msisdn: msisdnEl.value || '',
+          clientType: clientTypeEl.value || '',
+          sseToken: sseTokenEl.value || '',
         };
-        localStorage.setItem("otpToolInputs", JSON.stringify(payload));
-        line("✓ Saved inputs to localStorage.", "ok");
+        localStorage.setItem('otpToolInputs', JSON.stringify(payload));
+        line('✓ Saved inputs to localStorage.', 'ok');
       }
 
       function loadInputs() {
-        const raw = localStorage.getItem("otpToolInputs");
+        const raw = localStorage.getItem('otpToolInputs');
         if (!raw) {
-          line("No saved inputs found.", "dim");
+          line('No saved inputs found.', 'dim');
           return;
         }
         try {
           const p = JSON.parse(raw);
-          baseUrlEl.value = p.baseUrl || "";
-          msisdnEl.value = p.msisdn || "";
-          clientTypeEl.value = p.clientType || "";
-          sseTokenEl.value = p.sseToken || "";
-          line("✓ Loaded saved inputs.", "ok");
+          baseUrlEl.value = p.baseUrl || '';
+          msisdnEl.value = p.msisdn || '';
+          clientTypeEl.value = p.clientType || '';
+          sseTokenEl.value = p.sseToken || '';
+          line('✓ Loaded saved inputs.', 'ok');
         } catch {
-          line("✗ Failed to parse saved inputs.", "err");
+          line('✗ Failed to parse saved inputs.', 'err');
         }
       }
 
       // Wire up
-      sendOtpBtn.addEventListener("click", sendOtp);
-      connectSseBtn.addEventListener("click", connectSSE);
-      disconnectSseBtn.addEventListener("click", disconnectSSE);
-      clearLogBtn.addEventListener("click", clearLog);
-      copyBtn.addEventListener("click", copyAll);
-      saveBtn.addEventListener("click", saveInputs);
-      loadBtn.addEventListener("click", loadInputs);
+      sendOtpBtn.addEventListener('click', sendOtp);
+      connectSseBtn.addEventListener('click', connectSSE);
+      disconnectSseBtn.addEventListener('click', disconnectSSE);
+      clearLogBtn.addEventListener('click', clearLog);
+      copyBtn.addEventListener('click', copyAll);
+      saveBtn.addEventListener('click', saveInputs);
+      loadBtn.addEventListener('click', loadInputs);
 
       // Helpful defaults if you reload frequently
       loadInputs();
