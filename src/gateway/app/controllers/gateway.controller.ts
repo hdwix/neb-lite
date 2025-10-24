@@ -14,6 +14,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { GetOtpDto } from '../../../app/dto/get-otp.dto';
+import { MsisdnParamDto } from '../../../app/dto/msisdn-param.dto';
 import { RefreshTokenDto } from '../../../app/dto/refresh-token.dto';
 import { VerifyOtpDto } from '../../../app/dto/verify-otp.dto';
 import { EAuthType } from '../../../app/enums/auth-type.enum';
@@ -33,6 +34,7 @@ import { Ride } from '../../../rides/domain/entities/ride.entity';
 import {
   NotificationStreamService,
   NotificationTarget,
+  OTP_SIMULATION_TARGET,
 } from '../../../notifications/domain/services/notification-stream.service';
 import { Observable } from 'rxjs';
 
@@ -63,11 +65,12 @@ export class GatewayController {
   }
 
   @Sse('simulate/:msisdn/get-otp')
-  async simulateGetOtp(
-    @Req() request: Request,
-    @Param() msisdn: string,
-  ): Promise<Observable<MessageEvent>> {
-    return this.notificationStreamService.subscribe(target, clientId);
+  @Auth(EAuthType.None)
+  simulateGetOtp(@Param() params: MsisdnParamDto): Observable<MessageEvent> {
+    return this.notificationStreamService.subscribe(
+      OTP_SIMULATION_TARGET,
+      params.msisdn,
+    );
   }
 
   @HttpCode(HttpStatus.OK)

@@ -5,7 +5,10 @@ import { LocationService } from '../../../location/domain/services/location.serv
 import { REQUEST_CLIENT_KEY } from '../../../app/constants/request-client-key';
 import { UnauthorizedException } from '@nestjs/common';
 import { RidesService } from '../../../rides/domain/services/rides.service';
-import { NotificationStreamService } from '../../../notifications/domain/services/notification-stream.service';
+import {
+  NotificationStreamService,
+  OTP_SIMULATION_TARGET,
+} from '../../../notifications/domain/services/notification-stream.service';
 import { EClientType } from '../../../app/enums/client-type.enum';
 import { of } from 'rxjs';
 
@@ -90,6 +93,23 @@ describe('GatewayController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('simulateGetOtp', () => {
+    it('subscribes to the otp simulation stream for the provided msisdn', () => {
+      const stream = of();
+      notificationStreamServiceMock.subscribe.mockReturnValue(stream);
+
+      const result = controller.simulateGetOtp({
+        msisdn: '+6281234567890',
+      } as any);
+
+      expect(notificationStreamServiceMock.subscribe).toHaveBeenCalledWith(
+        OTP_SIMULATION_TARGET,
+        '+6281234567890',
+      );
+      expect(result).toBe(stream);
+    });
   });
 
   describe('upsertDriverLocation', () => {
