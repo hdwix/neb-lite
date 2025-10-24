@@ -20,8 +20,9 @@ async function bootstrap() {
   // Enable CORS with specific methods (only GET and POST)
   app.enableCors({
     origin: '*', // You can specify specific origins if needed
-    methods: 'GET,POST', // Restrict to GET and POST methods
-    allowedHeaders: 'Content-Type, Authorization, xusernik', // Specify any additional allowed headers if needed,
+    methods: '*',
+    allowedHeaders:
+      'Content-Type, Authorization, msisdn, x-otp-simulation-token', // Specify any additional allowed headers if needed,
     credentials: true,
   });
   app.useGlobalPipes(
