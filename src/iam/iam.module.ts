@@ -10,12 +10,30 @@ import { APP_GUARD } from '@nestjs/core';
 import { AccessTokenGuard } from './app/guards/access-token/access-token.guard';
 import { AuthenticationGuard } from './app/guards/authentication/authentication.guard';
 import { AccessRoleGuard } from './app/guards/access-role/access-role.guard';
-import { SmsProviderService } from './domain/services/sms-provider.service';
+import { SmsProcessor } from './domain/services/sms-processor';
 import { RiderProfileRepository } from './infrastructure/repository/rider-profile.repository';
 import { DriverProfileRepository } from './infrastructure/repository/driver-profile.repository';
 import { RiderProfile } from './domain/entities/rider-profile.entity';
 import { DriverProfile } from './domain/entities/driver-profile.entity';
 import { HttpModule } from '@nestjs/axios';
+import { BullModule, RegisterQueueOptions } from '@nestjs/bullmq';
+import { QueueLimiterOptions } from '../rides/domain/constants/route-estimation-limiter.constant';
+import {
+  SEND_OTP_QUEUE_LIMITER,
+  SEND_OTP_QUEUE_NAME,
+} from './app/types/iam-module-types-definition';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import { QueueRegistrationOptions } from '../app/global-type/queue-global-types';
+
+const sendOtpQueueRegistration: QueueRegistrationOptions = {
+  name: SEND_OTP_QUEUE_NAME,
+  defaultJobOptions: {
+    removeOnComplete: true,
+    removeOnFail: 25,
+  },
+  limiter: SEND_OTP_QUEUE_LIMITER,
+};
 
 @Module({
   imports: [
@@ -23,6 +41,11 @@ import { HttpModule } from '@nestjs/axios';
     HttpModule,
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
+    BullModule.registerQueue(sendOtpQueueRegistration),
+    BullBoardModule.forFeature({
+      name: SEND_OTP_QUEUE_NAME,
+      adapter: BullMQAdapter,
+    }),
   ],
   controllers: [],
   providers: [
@@ -42,8 +65,8 @@ import { HttpModule } from '@nestjs/axios';
     AccessTokenGuard,
     RiderProfileRepository,
     DriverProfileRepository,
-    SmsProviderService,
+    SmsProcessor,
   ],
-  exports: [SmsProviderService, HttpModule],
+  exports: [HttpModule],
 })
 export class IamModule {}

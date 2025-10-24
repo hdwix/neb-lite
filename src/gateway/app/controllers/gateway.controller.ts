@@ -62,6 +62,14 @@ export class GatewayController {
     return await this.authService.getOtp(getOtpDto);
   }
 
+  @Sse('simulate/:msisdn/get-otp')
+  async simulateGetOtp(
+    @Req() request: Request,
+    @Param() msisdn: string,
+  ): Promise<Observable<MessageEvent>> {
+    return this.notificationStreamService.subscribe(target, clientId);
+  }
+
   @HttpCode(HttpStatus.OK)
   @Auth(EAuthType.None)
   @Post('auth/verify-otp')
@@ -170,7 +178,9 @@ export class GatewayController {
     }
 
     if (role !== EClientType.DRIVER && role !== EClientType.RIDER) {
-      throw new UnauthorizedException('Unsupported client type for notifications');
+      throw new UnauthorizedException(
+        'Unsupported client type for notifications',
+      );
     }
 
     const target: NotificationTarget =

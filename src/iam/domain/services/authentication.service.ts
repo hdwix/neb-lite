@@ -14,10 +14,16 @@ import jwtConfig from '../../app/config/jwt.config';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'crypto';
 import { RefreshTokenDto } from '../../../app/dto/refresh-token.dto';
-import { SmsProviderService } from './sms-provider.service';
 import { RiderProfileRepository } from '../../infrastructure/repository/rider-profile.repository';
 import { DriverProfileRepository } from '../../infrastructure/repository/driver-profile.repository';
 import { EClientType } from '../../../app/enums/client-type.enum';
+import { InjectQueue } from '@nestjs/bullmq';
+import {
+  ESendOtpQueueJob,
+  ISendOtpQueueData,
+  SEND_OTP_QUEUE_NAME,
+} from '../../app/types/iam-module-types-definition';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class AuthenticationService {
@@ -31,7 +37,8 @@ export class AuthenticationService {
     private readonly jwtConfiguration: ConfigType<typeof jwtConfig>,
     private readonly riderProfileRepo: RiderProfileRepository,
     private readonly driverProfileRepo: DriverProfileRepository,
-    private readonly smsProviderService: SmsProviderService,
+    @InjectQueue(SEND_OTP_QUEUE_NAME)
+    private readonly sendOtpQueue: Queue<ISendOtpQueueData>,
   ) {}
   async getOtp(getOtpDto: GetOtpDto) {
     const cachedKey = this.getOtpCachedKey(getOtpDto.msisdn);
@@ -43,6 +50,7 @@ export class AuthenticationService {
       this.logger.error('Unauthorized: client not found');
       throw new BadRequestException('Client not found');
     }
+    const jobId = `send-otp-${getOtpDto.msisdn}-${getOtpDto.clientType}`;
     const otpCode = this.generateOtp();
     const hashedCode = await this.hashingService.hash(otpCode);
 
@@ -54,7 +62,18 @@ export class AuthenticationService {
       return otpCode;
     }
     // await smsProvider.send
-    await this.smsProviderService.sendOtp(client[0].msisdn, otpCode);
+    await this.sendOtpQueue.add(
+      ESendOtpQueueJob.SendOtpJob,
+      {
+        msisdn: getOtpDto.msisdn,
+        otp: otpCode,
+      },
+      {
+        jobId,
+        removeOnComplete: true,
+        removeOnFail: 25,
+      },
+    );
     return 'otp code sent';
   }
 

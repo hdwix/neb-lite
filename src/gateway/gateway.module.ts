@@ -17,7 +17,7 @@ import { DriverProfile } from '../iam/domain/entities/driver-profile.entity';
 import { RiderProfileRepository } from '../iam/infrastructure/repository/rider-profile.repository';
 import { DriverProfileRepository } from '../iam/infrastructure/repository/driver-profile.repository';
 import { DatabaseModule } from '../infrastructure/modules/database.module';
-import { SmsProviderService } from '../iam/domain/services/sms-provider.service';
+import { SmsProviderService } from '../iam/domain/services/sms-processor';
 import { HttpService } from '@nestjs/axios';
 import { LocationModule } from '../location/location.module';
 import { RidesModule } from '../rides/rides.module';

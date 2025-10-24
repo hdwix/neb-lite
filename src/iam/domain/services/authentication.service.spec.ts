@@ -5,7 +5,7 @@ import { JwtService } from '@nestjs/jwt';
 import { AuthenticationService } from './authentication.service';
 import { NebengjekClientRepository } from '../../infrastructure/repository/nebengjek-client.repository';
 import { HashingService } from './hashing.service';
-import { SmsProviderService } from './sms-provider.service';
+import { SmsProviderService } from './sms-processor';
 
 describe('AuthenticationService', () => {
   const nebengjekClientRepo = {
@@ -96,9 +96,11 @@ describe('AuthenticationService', () => {
   });
 
   it('throws unauthorized when cached otp is missing', async () => {
-    jest.spyOn(nebengjekClientRepo, 'findUserByPhone').mockResolvedValue([
-      { id: 1, role: 'CUSTOMER', phone_number: '+6281112345678' },
-    ]);
+    jest
+      .spyOn(nebengjekClientRepo, 'findUserByPhone')
+      .mockResolvedValue([
+        { id: 1, role: 'CUSTOMER', phone_number: '+6281112345678' },
+      ]);
     jest.spyOn(cacheManager, 'get').mockResolvedValue(undefined);
 
     await expect(
@@ -107,9 +109,11 @@ describe('AuthenticationService', () => {
   });
 
   it('throws unauthorized when otp does not match', async () => {
-    jest.spyOn(nebengjekClientRepo, 'findUserByPhone').mockResolvedValue([
-      { id: 1, role: 'CUSTOMER', phone_number: '+6281112345678' },
-    ]);
+    jest
+      .spyOn(nebengjekClientRepo, 'findUserByPhone')
+      .mockResolvedValue([
+        { id: 1, role: 'CUSTOMER', phone_number: '+6281112345678' },
+      ]);
     jest.spyOn(cacheManager, 'get').mockResolvedValue('hashed');
     jest.spyOn(hashingService, 'compare').mockResolvedValue(false);
 
@@ -119,9 +123,11 @@ describe('AuthenticationService', () => {
   });
 
   it('returns tokens and clears cache when otp is valid', async () => {
-    jest.spyOn(nebengjekClientRepo, 'findUserByPhone').mockResolvedValue([
-      { id: 1, role: 'CUSTOMER', phone_number: '+6281112345678' },
-    ]);
+    jest
+      .spyOn(nebengjekClientRepo, 'findUserByPhone')
+      .mockResolvedValue([
+        { id: 1, role: 'CUSTOMER', phone_number: '+6281112345678' },
+      ]);
     jest.spyOn(cacheManager, 'get').mockResolvedValue('hashed');
     jest.spyOn(hashingService, 'compare').mockResolvedValue(true);
     jest
@@ -209,12 +215,15 @@ describe('AuthenticationService', () => {
   it('throws unauthorized when refresh token validation fails', async () => {
     jest
       .spyOn(service, 'getClientAndTokenIdInfo')
-      .mockResolvedValue({ client: [{ phone_number: '+6281112345678' }], refreshTokenId: 'id' });
+      .mockResolvedValue({
+        client: [{ phone_number: '+6281112345678' }],
+        refreshTokenId: 'id',
+      });
     jest.spyOn(service as any, 'validateRefreshToken').mockResolvedValue(false);
 
-    await expect(service.getRefreshToken({ refreshToken: 'token' })).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    await expect(
+      service.getRefreshToken({ refreshToken: 'token' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('throws unauthorized when refresh token verification throws', async () => {
@@ -222,35 +231,38 @@ describe('AuthenticationService', () => {
       .spyOn(service, 'getClientAndTokenIdInfo')
       .mockRejectedValue(new Error('boom'));
 
-    await expect(service.getRefreshToken({ refreshToken: 'token' })).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    await expect(
+      service.getRefreshToken({ refreshToken: 'token' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('logout clears access token when validation succeeds', async () => {
-    jest
-      .spyOn(service, 'getClientAndTokenIdInfo')
-      .mockResolvedValue({
-        client: [{ id: 1, role: 'CUSTOMER', phone_number: '+6281112345678' }],
-        refreshTokenId: 'id',
-      });
+    jest.spyOn(service, 'getClientAndTokenIdInfo').mockResolvedValue({
+      client: [{ id: 1, role: 'CUSTOMER', phone_number: '+6281112345678' }],
+      refreshTokenId: 'id',
+    });
     jest.spyOn(service as any, 'validateRefreshToken').mockResolvedValue(true);
 
     const result = await service.logout({ refreshToken: 'token' });
 
     expect(result).toBe('successfully logout');
-    expect(cacheManager.del).toHaveBeenCalledWith('access-token:+6281112345678');
+    expect(cacheManager.del).toHaveBeenCalledWith(
+      'access-token:+6281112345678',
+    );
   });
 
   it('logout throws when refresh token invalid', async () => {
     jest
       .spyOn(service, 'getClientAndTokenIdInfo')
-      .mockResolvedValue({ client: [{ phone_number: '+6281112345678' }], refreshTokenId: 'id' });
+      .mockResolvedValue({
+        client: [{ phone_number: '+6281112345678' }],
+        refreshTokenId: 'id',
+      });
     jest.spyOn(service as any, 'validateRefreshToken').mockResolvedValue(false);
 
-    await expect(service.logout({ refreshToken: 'token' })).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.logout({ refreshToken: 'token' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('validateRefreshToken returns true when cached id matches', async () => {
@@ -262,7 +274,9 @@ describe('AuthenticationService', () => {
     );
 
     expect(result).toBe(true);
-    expect(cacheManager.del).toHaveBeenCalledWith('refresh-token:+6281112345678');
+    expect(cacheManager.del).toHaveBeenCalledWith(
+      'refresh-token:+6281112345678',
+    );
   });
 
   it('validateRefreshToken returns false when cached id does not match', async () => {
