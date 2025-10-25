@@ -3,14 +3,14 @@ import {
   Injectable,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
 import { EClientType } from '../../../app/enums/client-type.enum';
 import { RiderProfileRepository } from '../../../iam/infrastructure/repository/rider-profile.repository';
 import { DriverProfileRepository } from '../../../iam/infrastructure/repository/driver-profile.repository';
 import { SignupRiderDto } from '../../app/dto/signup-rider.dto';
 import { SignupDriverDto } from '../../app/dto/signup-driver.dto';
 import { DataEncryptionService } from './data-encryption.service';
-import { DataSource, EntityManager } from 'typeorm';
+import { EntityManager } from 'typeorm';
+import { ClientSignupRepository } from '../../infrastructure/repository/client-signup.repository';
 
 @Injectable()
 export class ClientService {
@@ -18,11 +18,11 @@ export class ClientService {
     private readonly riderProfileRepository: RiderProfileRepository,
     private readonly driverProfileRepository: DriverProfileRepository,
     private readonly dataEncryptionService: DataEncryptionService,
-    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly clientSignupRepository: ClientSignupRepository,
   ) {}
 
   async signupRider(signupRiderDto: SignupRiderDto) {
-    return this.withSignupLock(
+    return this.clientSignupRepository.withSignupLock(
       signupRiderDto.msisdn,
       'Failed to create rider profile',
       async (manager) => {
@@ -58,7 +58,7 @@ export class ClientService {
   }
 
   async signupDriver(signupDriverDto: SignupDriverDto) {
-    return this.withSignupLock(
+    return this.clientSignupRepository.withSignupLock(
       signupDriverDto.msisdn,
       'Failed to create driver profile',
       async (manager) => {
@@ -106,14 +106,10 @@ export class ClientService {
     msisdn: string,
     clientType: EClientType,
   ) {
-    const riderProfiles = await this.riderProfileRepository.findRiderByPhone(
-      msisdn,
-      manager,
-    );
-    const driverProfiles = await this.driverProfileRepository.findDriverByPhone(
-      msisdn,
-      manager,
-    );
+    const [riderProfiles, driverProfiles] = await Promise.all([
+      this.riderProfileRepository.findRiderByPhone(msisdn, manager),
+      this.driverProfileRepository.findDriverByPhone(msisdn, manager),
+    ]);
 
     const riderExists = riderProfiles?.length > 0;
     const driverExists = driverProfiles?.length > 0;
@@ -145,60 +141,4 @@ export class ClientService {
     }
   }
 
-  private async withSignupLock<T>(
-    msisdn: string,
-    fallbackErrorMessage: string,
-    work: (manager: EntityManager) => Promise<T>,
-  ): Promise<T> {
-    const lockKey = `client_signup_lock:${msisdn}`;
-    const queryRunner = this.dataSource.createQueryRunner();
-    let lockAcquired = false;
-
-    try {
-      await queryRunner.connect();
-      await queryRunner.startTransaction();
-
-      const [lockResult] = await queryRunner.query(
-        'SELECT GET_LOCK(?, 5) AS acquired',
-        [lockKey],
-      );
-
-      if (!lockResult?.acquired) {
-        throw new ConflictException(
-          'Registration is currently being processed, please try again.',
-        );
-      }
-
-      lockAcquired = true;
-
-      const result = await work(queryRunner.manager);
-
-      await queryRunner.commitTransaction();
-
-      return result;
-    } catch (error) {
-      if (queryRunner.isTransactionActive) {
-        await queryRunner.rollbackTransaction();
-      }
-
-      if (
-        error instanceof ConflictException ||
-        error instanceof InternalServerErrorException
-      ) {
-        throw error;
-      }
-
-      throw new InternalServerErrorException(fallbackErrorMessage);
-    } finally {
-      try {
-        if (lockAcquired && !queryRunner.isReleased) {
-          await queryRunner.query('SELECT RELEASE_LOCK(?)', [lockKey]);
-        }
-      } finally {
-        if (!queryRunner.isReleased) {
-          await queryRunner.release();
-        }
-      }
-    }
-  }
 }

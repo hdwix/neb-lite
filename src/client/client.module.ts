@@ -4,6 +4,7 @@ import { RiderProfileRepository } from '../iam/infrastructure/repository/rider-p
 import { DriverProfileRepository } from '../iam/infrastructure/repository/driver-profile.repository';
 import { DataEncryptionService } from './domain/services/data-encryption.service';
 import { DatabaseModule } from '../infrastructure/modules/database.module';
+import { ClientSignupRepository } from './infrastructure/repository/client-signup.repository';
 
 @Module({
   imports: [DatabaseModule],
@@ -13,6 +14,7 @@ import { DatabaseModule } from '../infrastructure/modules/database.module';
     RiderProfileRepository,
     DriverProfileRepository,
     DataEncryptionService,
+    ClientSignupRepository,
   ],
   exports: [ClientService],
 })

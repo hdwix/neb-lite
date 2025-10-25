@@ -3,7 +3,7 @@ import { ClientService } from './client.service';
 import { RiderProfileRepository } from '../../../iam/infrastructure/repository/rider-profile.repository';
 import { DriverProfileRepository } from '../../../iam/infrastructure/repository/driver-profile.repository';
 import { DataEncryptionService } from './data-encryption.service';
-import { DataSource } from 'typeorm';
+import { ClientSignupRepository } from '../../infrastructure/repository/client-signup.repository';
 
 describe('ClientService', () => {
   let service: ClientService;
@@ -27,19 +27,13 @@ describe('ClientService', () => {
           },
         },
         {
-          provide: DataSource,
+          provide: ClientSignupRepository,
           useValue: {
-            createQueryRunner: jest.fn(() => ({
-              connect: jest.fn(),
-              startTransaction: jest.fn(),
-              query: jest.fn(),
-              manager: {},
-              commitTransaction: jest.fn(),
-              rollbackTransaction: jest.fn(),
-              release: jest.fn(),
-              isTransactionActive: false,
-              isReleased: false,
-            })),
+            withSignupLock: jest
+              .fn()
+              .mockImplementation(async (_msisdn, _fallback, work) =>
+                work({}),
+              ),
           },
         },
       ],
