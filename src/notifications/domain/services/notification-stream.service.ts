@@ -32,6 +32,7 @@ export class NotificationStreamService implements OnModuleDestroy {
   private readonly redisPublisher: Redis;
   private readonly redisSubscriber: Redis;
   private readonly redisSubscribedChannels = new Set<string>();
+  private readonly redisSubscriptionPromises = new Map<string, Promise<void>>();
 
   constructor(@Inject(REDIS_CLIENT) redisClient: Redis) {
     this.redisPublisher = redisClient.duplicate();
@@ -101,6 +102,7 @@ export class NotificationStreamService implements OnModuleDestroy {
     };
 
     try {
+      await this.waitForRedisSubscription(channelKey);
       const publishedCount = await this.redisPublisher.publish(
         this.getRedisChannel(channelKey),
         JSON.stringify(envelope),
@@ -139,21 +141,53 @@ export class NotificationStreamService implements OnModuleDestroy {
   private ensureRedisSubscription(channelKey: string): void {
     const redisChannel = this.getRedisChannel(channelKey);
 
-    if (this.redisSubscribedChannels.has(redisChannel)) {
+    if (
+      this.redisSubscribedChannels.has(redisChannel) ||
+      this.redisSubscriptionPromises.has(redisChannel)
+    ) {
       return;
     }
 
-    this.redisSubscribedChannels.add(redisChannel);
-    this.redisSubscriber.subscribe(redisChannel).catch((error) => {
-      this.logger.error(
-        `Failed to subscribe to redis channel ${redisChannel}: ${error}`,
-      );
-      this.redisSubscribedChannels.delete(redisChannel);
-    });
+    const subscriptionPromise = this.redisSubscriber
+      .subscribe(redisChannel)
+      .then(() => {
+        this.redisSubscribedChannels.add(redisChannel);
+      })
+      .catch((error) => {
+        this.logger.error(
+          `Failed to subscribe to redis channel ${redisChannel}: ${error}`,
+        );
+        this.redisSubscribedChannels.delete(redisChannel);
+        throw error;
+      })
+      .finally(() => {
+        this.redisSubscriptionPromises.delete(redisChannel);
+      });
+
+    this.redisSubscriptionPromises.set(redisChannel, subscriptionPromise);
   }
 
   private cleanupRedisSubscription(channelKey: string): void {
     const redisChannel = this.getRedisChannel(channelKey);
+
+    const pendingSubscription = this.redisSubscriptionPromises.get(redisChannel);
+
+    if (pendingSubscription) {
+      pendingSubscription
+        .then(() => {
+          const activeSubscribers = this.channels.get(channelKey);
+
+          if (activeSubscribers && activeSubscribers.size > 0) {
+            return;
+          }
+
+          this.cleanupRedisSubscription(channelKey);
+        })
+        .catch(() => {
+          // Error already logged in ensureRedisSubscription.
+        });
+      return;
+    }
 
     if (!this.redisSubscribedChannels.has(redisChannel)) {
       return;
@@ -208,6 +242,23 @@ export class NotificationStreamService implements OnModuleDestroy {
 
   private getRedisChannel(channelKey: string): string {
     return `notifications:${channelKey}`;
+  }
+
+  private async waitForRedisSubscription(channelKey: string): Promise<void> {
+    const redisChannel = this.getRedisChannel(channelKey);
+    const pendingSubscription = this.redisSubscriptionPromises.get(redisChannel);
+
+    if (!pendingSubscription) {
+      return;
+    }
+
+    try {
+      await pendingSubscription;
+    } catch (error) {
+      this.logger.warn(
+        `Redis subscription for ${redisChannel} failed before publishing: ${error}`,
+      );
+    }
   }
 
   private extractChannelKey(redisChannel: string): string | null {
