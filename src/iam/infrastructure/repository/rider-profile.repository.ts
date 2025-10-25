@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { Repository, DataSource, EntityManager } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { RiderProfile } from '../../domain/entities/rider-profile.entity';
@@ -13,6 +18,66 @@ export class RiderProfileRepository extends Repository<RiderProfile> {
 
   private getExecutor(manager?: EntityManager) {
     return manager ?? this.dataSource;
+  }
+
+  async withSignupLock<T>(
+    msisdn: string,
+    fallbackErrorMessage: string,
+    work: (manager: EntityManager) => Promise<T>,
+  ): Promise<T> {
+    const lockKey = `client_signup_lock:${msisdn}`;
+    const queryRunner = this.dataSource.createQueryRunner();
+    let lockAcquired = false;
+
+    try {
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      const [lockResult] = await queryRunner.query(
+        'SELECT pg_try_advisory_lock(hashtext($1::text)) AS acquired',
+        [lockKey],
+      );
+
+      if (!lockResult?.acquired) {
+        throw new ConflictException(
+          'Registration is currently being processed, please try again.',
+        );
+      }
+
+      lockAcquired = true;
+
+      const result = await work(queryRunner.manager);
+
+      await queryRunner.commitTransaction();
+
+      return result;
+    } catch (error) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+
+      if (
+        error instanceof ConflictException ||
+        error instanceof InternalServerErrorException
+      ) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(fallbackErrorMessage);
+    } finally {
+      try {
+        if (lockAcquired && !queryRunner.isReleased) {
+          await queryRunner.query(
+            'SELECT pg_advisory_unlock(hashtext($1::text)) AS released',
+            [lockKey],
+          );
+        }
+      } finally {
+        if (!queryRunner.isReleased) {
+          await queryRunner.release();
+        }
+      }
+    }
   }
 
   async createRiderProfile(

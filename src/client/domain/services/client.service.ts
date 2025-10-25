@@ -10,7 +10,6 @@ import { SignupRiderDto } from '../../app/dto/signup-rider.dto';
 import { SignupDriverDto } from '../../app/dto/signup-driver.dto';
 import { DataEncryptionService } from './data-encryption.service';
 import { EntityManager } from 'typeorm';
-import { ClientSignupRepository } from '../../infrastructure/repository/client-signup.repository';
 
 @Injectable()
 export class ClientService {
@@ -18,11 +17,10 @@ export class ClientService {
     private readonly riderProfileRepository: RiderProfileRepository,
     private readonly driverProfileRepository: DriverProfileRepository,
     private readonly dataEncryptionService: DataEncryptionService,
-    private readonly clientSignupRepository: ClientSignupRepository,
   ) {}
 
   async signupRider(signupRiderDto: SignupRiderDto) {
-    return this.clientSignupRepository.withSignupLock(
+    return this.riderProfileRepository.withSignupLock(
       signupRiderDto.msisdn,
       'Failed to create rider profile',
       async (manager) => {
@@ -58,7 +56,7 @@ export class ClientService {
   }
 
   async signupDriver(signupDriverDto: SignupDriverDto) {
-    return this.clientSignupRepository.withSignupLock(
+    return this.driverProfileRepository.withSignupLock(
       signupDriverDto.msisdn,
       'Failed to create driver profile',
       async (manager) => {
