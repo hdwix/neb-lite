@@ -39,6 +39,9 @@ import {
 } from '../../../notifications/domain/services/notification-stream.service';
 import { Observable } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
+import { ClientService } from '../../../client/domain/services/client.service';
+import { SignupRiderDto } from '../../../client/app/dto/signup-rider.dto';
+import { SignupDriverDto } from '../../../client/app/dto/signup-driver.dto';
 
 interface AuthenticatedClientPayload {
   sub?: string | number;
@@ -54,7 +57,30 @@ export class GatewayController {
     private readonly ridesService: RidesService,
     private readonly notificationStreamService: NotificationStreamService,
     private readonly configService: ConfigService,
+    private readonly clientService: ClientService,
   ) {}
+
+  @Post('client/rider/signup')
+  @Auth(EAuthType.None)
+  @HttpCode(HttpStatus.CREATED)
+  async signupRider(@Body() signupRiderDto: SignupRiderDto) {
+    const rider = await this.clientService.signupRider(signupRiderDto);
+
+    return {
+      data: rider,
+    };
+  }
+
+  @Post('client/driver/signup')
+  @Auth(EAuthType.None)
+  @HttpCode(HttpStatus.CREATED)
+  async signupDriver(@Body() signupDriverDto: SignupDriverDto) {
+    const driver = await this.clientService.signupDriver(signupDriverDto);
+
+    return {
+      data: driver,
+    };
+  }
 
   /*
    * api for iam-module

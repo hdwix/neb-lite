@@ -5,6 +5,7 @@ import { DatabaseModule } from '../infrastructure/modules/database.module';
 import { LocationModule } from '../location/location.module';
 import { RidesModule } from '../rides/rides.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ClientModule } from '../client/client.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     LocationModule,
     RidesModule,
     NotificationsModule,
+    ClientModule,
   ],
   controllers: [GatewayController],
 })

@@ -1,5 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Repository, DataSource } from 'typeorm';
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { RiderProfile } from '../../domain/entities/rider-profile.entity';
 
@@ -9,6 +14,40 @@ export class RiderProfileRepository extends Repository<RiderProfile> {
 
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {
     super(RiderProfile, dataSource.createEntityManager());
+  }
+
+  private getExecutor(manager?: EntityManager) {
+    return manager ?? this.dataSource;
+  }
+
+  async createRiderProfileWithLock(
+    msisdn: string,
+    name: string | null,
+    beforeInsert?: (manager: EntityManager) => Promise<void>,
+  ) {
+    return this.executeWithSignupLock(
+      msisdn,
+      'Failed to create rider profile',
+      async (manager) => {
+        if (beforeInsert) {
+          await beforeInsert(manager);
+        }
+
+        const insertQuery = `
+          INSERT INTO rider_profile (msisdn, name)
+          VALUES ($1, $2)
+          RETURNING id, msisdn, role
+        `;
+
+        const [rider] = await manager.query(insertQuery, [msisdn, name]);
+
+        if (!rider) {
+          throw new InternalServerErrorException('Failed to create rider profile');
+        }
+
+        return rider;
+      },
+    );
   }
 
   async upsertRiderByPhone(phone: string) {
@@ -25,12 +64,13 @@ export class RiderProfileRepository extends Repository<RiderProfile> {
     }
   }
 
-  async findRiderByPhone(phone: string): Promise<any> {
+  async findRiderByPhone(phone: string, manager?: EntityManager): Promise<any> {
     const findClientQuery = `
       SELECT id, msisdn, role FROM rider_profile
       WHERE msisdn=$1 AND status='ACTIVE'
     `;
-    return await this.dataSource.query(findClientQuery, [phone]);
+    const executor = this.getExecutor(manager);
+    return await executor.query(findClientQuery, [phone]);
   }
 
   async findRiderbyId(id: number) {
@@ -39,5 +79,77 @@ export class RiderProfileRepository extends Repository<RiderProfile> {
       WHERE id=$1 AND status='ACTIVE'
     `;
     return await this.dataSource.query(findClientByIdQuery, [id]);
+  }
+
+  private getSignupLockKeys(msisdn: string) {
+    return [
+      `client_signup_lock:driver_profile:${msisdn}`,
+      `client_signup_lock:rider_profile:${msisdn}`,
+    ];
+  }
+
+  private async executeWithSignupLock<T>(
+    msisdn: string,
+    fallbackErrorMessage: string,
+    work: (manager: EntityManager) => Promise<T>,
+  ): Promise<T> {
+    const lockKeys = this.getSignupLockKeys(msisdn);
+    const queryRunner = this.dataSource.createQueryRunner();
+    const acquiredLocks: string[] = [];
+
+    try {
+      await queryRunner.connect();
+
+      for (const lockKey of lockKeys) {
+        const [lockResult] = await queryRunner.query(
+          'SELECT pg_try_advisory_lock(hashtext($1::text)) AS acquired',
+          [lockKey],
+        );
+
+        if (!lockResult?.acquired) {
+          throw new ConflictException(
+            'Registration is currently being processed, please try again.',
+          );
+        }
+
+        acquiredLocks.push(lockKey);
+      }
+
+      await queryRunner.startTransaction();
+
+      const result = await work(queryRunner.manager);
+
+      await queryRunner.commitTransaction();
+
+      return result;
+    } catch (error) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+
+      if (
+        error instanceof ConflictException ||
+        error instanceof InternalServerErrorException
+      ) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(fallbackErrorMessage);
+    } finally {
+      try {
+        if (!queryRunner.isReleased) {
+          for (const lockKey of acquiredLocks.reverse()) {
+            await queryRunner.query(
+              'SELECT pg_advisory_unlock(hashtext($1::text)) AS released',
+              [lockKey],
+            );
+          }
+        }
+      } finally {
+        if (!queryRunner.isReleased) {
+          await queryRunner.release();
+        }
+      }
+    }
   }
 }
