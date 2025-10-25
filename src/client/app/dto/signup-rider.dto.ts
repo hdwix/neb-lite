@@ -8,7 +8,6 @@ export class SignupRiderDto {
   })
   msisdn!: string;
 
-  @IsOptional()
   @IsString()
-  name?: string;
+  name: string;
 }

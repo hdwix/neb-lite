@@ -60,6 +60,10 @@ export class GatewayController {
     private readonly clientService: ClientService,
   ) {}
 
+  /*
+   * api for client-module
+   */
+
   @Post('client/rider/signup')
   @Auth(EAuthType.None)
   @HttpCode(HttpStatus.CREATED)

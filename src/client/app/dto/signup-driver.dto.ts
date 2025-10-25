@@ -8,9 +8,8 @@ export class SignupDriverDto {
   })
   msisdn!: string;
 
-  @IsOptional()
   @IsString()
-  name?: string;
+  name: string;
 
   @IsString()
   @IsNotEmpty()
