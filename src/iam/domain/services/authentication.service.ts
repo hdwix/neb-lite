@@ -62,7 +62,7 @@ export class AuthenticationService {
     const otpTtl = this.configService.get<number>('OTP_TTL_SEC');
     await this.cacheManager.set(cachedKey, hashedCode, otpTtl);
 
-    this.emitOtpSimulationEvent(
+    await this.emitOtpSimulationEvent(
       getOtpDto.msisdn,
       getOtpDto.clientType,
       otpCode,
@@ -151,12 +151,12 @@ export class AuthenticationService {
     return `refresh-token:${phone}`;
   }
 
-  private emitOtpSimulationEvent(
+  private async emitOtpSimulationEvent(
     msisdn: string,
     clientType: EClientType,
     otpCode: string,
   ) {
-    const delivered = this.notificationStreamService.emit(
+    const delivered = await this.notificationStreamService.emit(
       OTP_SIMULATION_TARGET,
       msisdn,
       'otp.generated',
