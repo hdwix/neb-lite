@@ -11,6 +11,7 @@ import { GatewayModule } from './gateway/gateway.module';
 import { HttpModule } from '@nestjs/axios';
 import { LocationModule } from './location/location.module';
 import { RidesModule } from './rides/rides.module';
+import { RedisModule } from './infrastructure/redis/redis.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { RidesModule } from './rides/rides.module';
     HttpModule,
     LocationModule,
     RidesModule,
+    RedisModule,
   ],
   controllers: [AppController],
   providers: [],
