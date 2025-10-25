@@ -11,6 +11,21 @@ export class RiderProfileRepository extends Repository<RiderProfile> {
     super(RiderProfile, dataSource.createEntityManager());
   }
 
+  async createRiderProfile(msisdn: string, name: string | null) {
+    const insertQuery = `
+      INSERT INTO rider_profile (msisdn, name)
+      VALUES ($1, $2)
+      RETURNING id, msisdn, role
+    `;
+
+    const [rider] = await this.dataSource.query(insertQuery, [
+      msisdn,
+      name,
+    ]);
+
+    return rider;
+  }
+
   async upsertRiderByPhone(phone: string) {
     this.logger.log(`process upsert for phone number : ${phone}`);
     try {

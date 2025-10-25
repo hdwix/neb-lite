@@ -19,10 +19,12 @@ export class DriverProfile {
   @Column({ name: 'msisdn', type: 'varchar', length: 32 })
   msisdn!: string;
 
+  @Column({ name: 'name', type: 'text', nullable: true })
+  name?: string;
+
   @Column({
     name: 'driver_license_no',
-    type: 'varchar',
-    length: 30,
+    type: 'text',
     nullable: true,
   })
   driverLicenseNo?: string;
@@ -43,8 +45,7 @@ export class DriverProfile {
 
   @Column({
     name: 'vehicle_license_plate',
-    type: 'varchar',
-    length: 30,
+    type: 'text',
     nullable: true,
   })
   vehicleLicensePlate?: string;

@@ -19,7 +19,7 @@ export class RiderProfile {
   @Column({ name: 'msisdn', type: 'varchar', length: 32 })
   msisdn!: string;
 
-  @Column({ type: 'varchar', length: 70, nullable: true })
+  @Column({ type: 'text', nullable: true })
   name?: string;
 
   @Column({ type: 'enum', enum: EClientType, default: EClientType.RIDER })

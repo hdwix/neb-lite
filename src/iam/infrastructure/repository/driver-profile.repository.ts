@@ -10,6 +10,27 @@ export class DriverProfileRepository extends Repository<DriverProfile> {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {
     super(DriverProfile, dataSource.createEntityManager());
   }
+  async createDriverProfile(
+    msisdn: string,
+    driverLicenseNo: string | null,
+    vehicleLicensePlate: string | null,
+    name: string | null,
+  ) {
+    const insertQuery = `
+      INSERT INTO driver_profile (msisdn, driver_license_no, vehicle_license_plate, name)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, msisdn, role
+    `;
+
+    const [driver] = await this.dataSource.query(insertQuery, [
+      msisdn,
+      driverLicenseNo,
+      vehicleLicensePlate,
+      name,
+    ]);
+
+    return driver;
+  }
   async upsertDriverByPhone(msisdn: string) {
     this.logger.log(`process upsert for phone number : ${msisdn}`);
     try {
