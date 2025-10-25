@@ -175,6 +175,12 @@ export class NotificationStreamService implements OnModuleDestroy {
     if (pendingSubscription) {
       pendingSubscription
         .then(() => {
+          const activeSubscribers = this.channels.get(channelKey);
+
+          if (activeSubscribers && activeSubscribers.size > 0) {
+            return;
+          }
+
           this.cleanupRedisSubscription(channelKey);
         })
         .catch(() => {
