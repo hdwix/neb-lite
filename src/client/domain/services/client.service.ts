@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { EClientType } from '../../../app/enums/client-type.enum';
 import { RiderProfileRepository } from '../../../iam/infrastructure/repository/rider-profile.repository';
 import { DriverProfileRepository } from '../../../iam/infrastructure/repository/driver-profile.repository';
@@ -20,83 +16,59 @@ export class ClientService {
   ) {}
 
   async signupRider(signupRiderDto: SignupRiderDto) {
-    return this.riderProfileRepository.withSignupLock(
+    const encryptedName = this.dataEncryptionService.encrypt(
+      signupRiderDto.name,
+    );
+
+    const rider = await this.riderProfileRepository.createRiderProfileWithLock(
       signupRiderDto.msisdn,
-      'Failed to create rider profile',
+      encryptedName,
       async (manager) => {
         await this.ensureMsisdnExclusivity(
           manager,
           signupRiderDto.msisdn,
           EClientType.RIDER,
         );
-
-        const encryptedName = this.dataEncryptionService.encrypt(
-          signupRiderDto.name,
-        );
-
-        const rider = await this.riderProfileRepository.createRiderProfile(
-          signupRiderDto.msisdn,
-          encryptedName,
-          manager,
-        );
-
-        if (!rider) {
-          throw new InternalServerErrorException(
-            'Failed to create rider profile',
-          );
-        }
-
-        return {
-          id: rider.id,
-          msisdn: rider.msisdn,
-          role: rider.role,
-        };
       },
     );
+
+    return {
+      id: rider.id,
+      msisdn: rider.msisdn,
+      role: rider.role,
+    };
   }
 
   async signupDriver(signupDriverDto: SignupDriverDto) {
-    return this.driverProfileRepository.withSignupLock(
+    const encryptedDriverLicense = this.dataEncryptionService.encrypt(
+      signupDriverDto.driverLicenseNumber,
+    );
+    const encryptedVehicleLicense = this.dataEncryptionService.encrypt(
+      signupDriverDto.vehicleLicensePlate,
+    );
+    const encryptedName = this.dataEncryptionService.encrypt(
+      signupDriverDto.name,
+    );
+
+    const driver = await this.driverProfileRepository.createDriverProfileWithLock(
       signupDriverDto.msisdn,
-      'Failed to create driver profile',
+      encryptedDriverLicense,
+      encryptedVehicleLicense,
+      encryptedName,
       async (manager) => {
         await this.ensureMsisdnExclusivity(
           manager,
           signupDriverDto.msisdn,
           EClientType.DRIVER,
         );
-
-        const encryptedDriverLicense = this.dataEncryptionService.encrypt(
-          signupDriverDto.driverLicenseNumber,
-        );
-        const encryptedVehicleLicense = this.dataEncryptionService.encrypt(
-          signupDriverDto.vehicleLicensePlate,
-        );
-        const encryptedName = this.dataEncryptionService.encrypt(
-          signupDriverDto.name,
-        );
-
-        const driver = await this.driverProfileRepository.createDriverProfile(
-          signupDriverDto.msisdn,
-          encryptedDriverLicense,
-          encryptedVehicleLicense,
-          encryptedName,
-          manager,
-        );
-
-        if (!driver) {
-          throw new InternalServerErrorException(
-            'Failed to create driver profile',
-          );
-        }
-
-        return {
-          id: driver.id,
-          msisdn: driver.msisdn,
-          role: driver.role,
-        };
       },
     );
+
+    return {
+      id: driver.id,
+      msisdn: driver.msisdn,
+      role: driver.role,
+    };
   }
 
   private async ensureMsisdnExclusivity(

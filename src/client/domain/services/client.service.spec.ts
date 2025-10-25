@@ -14,25 +14,47 @@ describe('ClientService', () => {
         {
           provide: RiderProfileRepository,
           useValue: {
-            withSignupLock: jest
+            createRiderProfileWithLock: jest
               .fn()
-              .mockImplementation(async (_msisdn, _fallback, work) =>
-                work({}),
-              ),
+              .mockImplementation(async (_msisdn, _name, beforeInsert) => {
+                if (beforeInsert) {
+                  await beforeInsert({});
+                }
+
+                return {
+                  id: 1,
+                  msisdn: '123',
+                  role: 'RIDER',
+                };
+              }),
             findRiderByPhone: jest.fn().mockResolvedValue([]),
-            createRiderProfile: jest.fn(),
           },
         },
         {
           provide: DriverProfileRepository,
           useValue: {
-            withSignupLock: jest
+            createDriverProfileWithLock: jest
               .fn()
-              .mockImplementation(async (_msisdn, _fallback, work) =>
-                work({}),
+              .mockImplementation(
+                async (
+                  _msisdn,
+                  _driverLicense,
+                  _vehicleLicense,
+                  _name,
+                  beforeInsert,
+                ) => {
+                  if (beforeInsert) {
+                    await beforeInsert({});
+                  }
+
+                  return {
+                    id: 1,
+                    msisdn: '123',
+                    role: 'DRIVER',
+                  };
+                },
               ),
             findDriverByPhone: jest.fn().mockResolvedValue([]),
-            createDriverProfile: jest.fn(),
           },
         },
         {
