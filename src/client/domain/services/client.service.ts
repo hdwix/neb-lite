@@ -22,71 +22,83 @@ export class ClientService {
   ) {}
 
   async signupRider(signupRiderDto: SignupRiderDto) {
-    return this.dataSource.transaction(async (manager) => {
-      await this.ensureMsisdnExclusivity(
-        manager,
-        signupRiderDto.msisdn,
-        EClientType.RIDER,
-      );
+    return this.withSignupLock(
+      signupRiderDto.msisdn,
+      'Failed to create rider profile',
+      async (manager) => {
+        await this.ensureMsisdnExclusivity(
+          manager,
+          signupRiderDto.msisdn,
+          EClientType.RIDER,
+        );
 
-      const encryptedName = this.dataEncryptionService.encrypt(
-        signupRiderDto.name,
-      );
+        const encryptedName = this.dataEncryptionService.encrypt(
+          signupRiderDto.name,
+        );
 
-      const rider = await this.riderProfileRepository.createRiderProfile(
-        signupRiderDto.msisdn,
-        encryptedName,
-        manager,
-      );
+        const rider = await this.riderProfileRepository.createRiderProfile(
+          signupRiderDto.msisdn,
+          encryptedName,
+          manager,
+        );
 
-      if (!rider) {
-        throw new InternalServerErrorException('Failed to create rider profile');
-      }
+        if (!rider) {
+          throw new InternalServerErrorException(
+            'Failed to create rider profile',
+          );
+        }
 
-      return {
-        id: rider.id,
-        msisdn: rider.msisdn,
-        role: rider.role,
-      };
-    });
+        return {
+          id: rider.id,
+          msisdn: rider.msisdn,
+          role: rider.role,
+        };
+      },
+    );
   }
 
   async signupDriver(signupDriverDto: SignupDriverDto) {
-    return this.dataSource.transaction(async (manager) => {
-      await this.ensureMsisdnExclusivity(
-        manager,
-        signupDriverDto.msisdn,
-        EClientType.DRIVER,
-      );
+    return this.withSignupLock(
+      signupDriverDto.msisdn,
+      'Failed to create driver profile',
+      async (manager) => {
+        await this.ensureMsisdnExclusivity(
+          manager,
+          signupDriverDto.msisdn,
+          EClientType.DRIVER,
+        );
 
-      const encryptedDriverLicense = this.dataEncryptionService.encrypt(
-        signupDriverDto.driverLicenseNumber,
-      );
-      const encryptedVehicleLicense = this.dataEncryptionService.encrypt(
-        signupDriverDto.vehicleLicensePlate,
-      );
-      const encryptedName = this.dataEncryptionService.encrypt(
-        signupDriverDto.name,
-      );
+        const encryptedDriverLicense = this.dataEncryptionService.encrypt(
+          signupDriverDto.driverLicenseNumber,
+        );
+        const encryptedVehicleLicense = this.dataEncryptionService.encrypt(
+          signupDriverDto.vehicleLicensePlate,
+        );
+        const encryptedName = this.dataEncryptionService.encrypt(
+          signupDriverDto.name,
+        );
 
-      const driver = await this.driverProfileRepository.createDriverProfile(
-        signupDriverDto.msisdn,
-        encryptedDriverLicense,
-        encryptedVehicleLicense,
-        encryptedName,
-        manager,
-      );
+        const driver = await this.driverProfileRepository.createDriverProfile(
+          signupDriverDto.msisdn,
+          encryptedDriverLicense,
+          encryptedVehicleLicense,
+          encryptedName,
+          manager,
+        );
 
-      if (!driver) {
-        throw new InternalServerErrorException('Failed to create driver profile');
-      }
+        if (!driver) {
+          throw new InternalServerErrorException(
+            'Failed to create driver profile',
+          );
+        }
 
-      return {
-        id: driver.id,
-        msisdn: driver.msisdn,
-        role: driver.role,
-      };
-    });
+        return {
+          id: driver.id,
+          msisdn: driver.msisdn,
+          role: driver.role,
+        };
+      },
+    );
   }
 
   private async ensureMsisdnExclusivity(
@@ -94,29 +106,6 @@ export class ClientService {
     msisdn: string,
     clientType: EClientType,
   ) {
-    await manager.query(
-      `
-        INSERT INTO client_msisdn_lock (msisdn, client_type)
-        VALUES ($1, $2)
-        ON CONFLICT (msisdn) DO NOTHING
-      `,
-      [msisdn, clientType],
-    );
-
-    const [lockRow] = await manager.query(
-      `
-        SELECT client_type
-        FROM client_msisdn_lock
-        WHERE msisdn = $1
-        FOR UPDATE
-      `,
-      [msisdn],
-    );
-
-    if (!lockRow) {
-      throw new InternalServerErrorException('Failed to secure msisdn exclusivity');
-    }
-
     const riderProfiles = await this.riderProfileRepository.findRiderByPhone(
       msisdn,
       manager,
@@ -128,16 +117,6 @@ export class ClientService {
 
     const riderExists = riderProfiles?.length > 0;
     const driverExists = driverProfiles?.length > 0;
-
-    const existingType = lockRow.client_type as EClientType | undefined;
-
-    if (existingType && existingType !== clientType) {
-      throw new ConflictException(
-        existingType === EClientType.RIDER
-          ? 'msisdn is already registered as rider'
-          : 'msisdn is already registered as driver',
-      );
-    }
 
     if (riderExists && driverExists) {
       throw new ConflictException(
@@ -162,6 +141,63 @@ export class ClientService {
 
       if (riderExists) {
         throw new ConflictException('msisdn is already registered as rider');
+      }
+    }
+  }
+
+  private async withSignupLock<T>(
+    msisdn: string,
+    fallbackErrorMessage: string,
+    work: (manager: EntityManager) => Promise<T>,
+  ): Promise<T> {
+    const lockKey = `client_signup_lock:${msisdn}`;
+    const queryRunner = this.dataSource.createQueryRunner();
+    let lockAcquired = false;
+
+    try {
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      const [lockResult] = await queryRunner.query(
+        'SELECT GET_LOCK(?, 5) AS acquired',
+        [lockKey],
+      );
+
+      if (!lockResult?.acquired) {
+        throw new ConflictException(
+          'Registration is currently being processed, please try again.',
+        );
+      }
+
+      lockAcquired = true;
+
+      const result = await work(queryRunner.manager);
+
+      await queryRunner.commitTransaction();
+
+      return result;
+    } catch (error) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+
+      if (
+        error instanceof ConflictException ||
+        error instanceof InternalServerErrorException
+      ) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(fallbackErrorMessage);
+    } finally {
+      try {
+        if (lockAcquired && !queryRunner.isReleased) {
+          await queryRunner.query('SELECT RELEASE_LOCK(?)', [lockKey]);
+        }
+      } finally {
+        if (!queryRunner.isReleased) {
+          await queryRunner.release();
+        }
       }
     }
   }

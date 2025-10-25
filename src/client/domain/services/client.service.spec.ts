@@ -29,9 +29,17 @@ describe('ClientService', () => {
         {
           provide: DataSource,
           useValue: {
-            transaction: jest.fn(async (work: any) =>
-              work({ query: jest.fn() }),
-            ),
+            createQueryRunner: jest.fn(() => ({
+              connect: jest.fn(),
+              startTransaction: jest.fn(),
+              query: jest.fn(),
+              manager: {},
+              commitTransaction: jest.fn(),
+              rollbackTransaction: jest.fn(),
+              release: jest.fn(),
+              isTransactionActive: false,
+              isReleased: false,
+            })),
           },
         },
       ],
