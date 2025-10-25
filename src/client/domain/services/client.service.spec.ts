@@ -3,6 +3,7 @@ import { ClientService } from './client.service';
 import { RiderProfileRepository } from '../../../iam/infrastructure/repository/rider-profile.repository';
 import { DriverProfileRepository } from '../../../iam/infrastructure/repository/driver-profile.repository';
 import { DataEncryptionService } from './data-encryption.service';
+import { DataSource } from 'typeorm';
 
 describe('ClientService', () => {
   let service: ClientService;
@@ -23,6 +24,14 @@ describe('ClientService', () => {
           provide: DataEncryptionService,
           useValue: {
             encrypt: jest.fn((value) => value),
+          },
+        },
+        {
+          provide: DataSource,
+          useValue: {
+            transaction: jest.fn(async (work: any) =>
+              work({ query: jest.fn() }),
+            ),
           },
         },
       ],

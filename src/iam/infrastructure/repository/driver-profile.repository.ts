@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DriverProfile } from '../../domain/entities/driver-profile.entity';
 
@@ -10,11 +10,16 @@ export class DriverProfileRepository extends Repository<DriverProfile> {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {
     super(DriverProfile, dataSource.createEntityManager());
   }
+  private getExecutor(manager?: EntityManager) {
+    return manager ?? this.dataSource;
+  }
+
   async createDriverProfile(
     msisdn: string,
     driverLicenseNo: string | null,
     vehicleLicensePlate: string | null,
     name: string | null,
+    manager?: EntityManager,
   ) {
     const insertQuery = `
       INSERT INTO driver_profile (msisdn, driver_license_no, vehicle_license_plate, name)
@@ -22,7 +27,9 @@ export class DriverProfileRepository extends Repository<DriverProfile> {
       RETURNING id, msisdn, role
     `;
 
-    const [driver] = await this.dataSource.query(insertQuery, [
+    const executor = this.getExecutor(manager);
+
+    const [driver] = await executor.query(insertQuery, [
       msisdn,
       driverLicenseNo,
       vehicleLicensePlate,
@@ -45,12 +52,16 @@ export class DriverProfileRepository extends Repository<DriverProfile> {
     }
   }
 
-  async findDriverByPhone(msisdn: string): Promise<any> {
+  async findDriverByPhone(
+    msisdn: string,
+    manager?: EntityManager,
+  ): Promise<any> {
     const findClientQuery = `
       SELECT id, msisdn, role FROM driver_profile
       WHERE msisdn=$1 AND status='ACTIVE'
     `;
-    return await this.dataSource.query(findClientQuery, [msisdn]);
+    const executor = this.getExecutor(manager);
+    return await executor.query(findClientQuery, [msisdn]);
   }
 
   async findDriverbyId(id: number) {
