@@ -38,7 +38,8 @@
       }
       input,
       button,
-      textarea {
+      textarea,
+      select {
         width: 100%;
         box-sizing: border-box;
         padding: 8px;
@@ -152,9 +153,14 @@
           <input
             id="baseUrl"
             type="url"
-            value="http://localhost:3000/api/v1"
-            placeholder="http://localhost:3000/api/v1"
+            value="http://localhost:3000/api/v1/gateway/auth"
+            placeholder="http://localhost:3000/api/v1/gateway/auth"
           />
+          <label for="clientType">Client type</label>
+          <select id="clientType">
+            <option value="RIDER">RIDER</option>
+            <option value="DRIVER">DRIVER</option>
+          </select>
           <div class="inline">
             <input
               id="authMsisdn"
@@ -169,31 +175,24 @@
       <section>
         <h2>1. Request OTP</h2>
         <div class="stacked">
-          <label for="otpChannel">OTP SSE endpoint</label>
           <div class="inline">
-            <input
-              id="otpChannel"
-              type="text"
-              value="/notifications/stream"
-              placeholder="/notifications/stream"
-            />
             <button id="startSse">Start stream</button>
             <button id="stopSse" class="secondary">Stop</button>
           </div>
-          <label for="otpSimulationToken">x-otp-simulation-token header</label>
+          <label for="otpSimulationToken">x-otp-simulation-token header (SSE only)</label>
           <input
             id="otpSimulationToken"
             type="text"
-            placeholder="Provide simulation token to forward in requests"
+            placeholder="Provide simulation token for OTP stream"
           />
           <div class="two-column">
             <div class="panel stacked">
               <button id="requestOtp" type="button">
-                Call /authentication/request-otp
+                Call /gateway/auth/request-otp
               </button>
               <pre id="requestOtpResult">{}</pre>
               <button id="simulateOtp" class="secondary" type="button">
-                Call simulate/:msisdn/get-otp
+                Call /gateway/auth/simulate/:msisdn/get-otp
               </button>
               <pre id="simulateOtpResult">{}</pre>
             </div>
@@ -215,7 +214,7 @@
         <h2>2. Verify OTP</h2>
         <div class="stacked">
           <input id="otpCode" type="text" placeholder="Enter OTP code" />
-          <button id="verifyOtp">Call /authentication/verify-otp</button>
+          <button id="verifyOtp">Call /gateway/auth/verify-otp</button>
           <pre id="verifyOtpResult">{}</pre>
         </div>
       </section>
@@ -228,7 +227,7 @@
             type="text"
             placeholder="Paste refresh token value"
           />
-          <button id="refreshTokens">Call /authentication/refresh-token</button>
+          <button id="refreshTokens">Call /gateway/auth/refresh-token</button>
           <pre id="refreshResult">{}</pre>
         </div>
       </section>
@@ -241,7 +240,7 @@
             type="text"
             placeholder="Refresh token"
           />
-          <button id="logout">Call /authentication/logout</button>
+          <button id="logout">Call /gateway/auth/logout</button>
           <pre id="logoutResult">{}</pre>
         </div>
       </section>
@@ -274,9 +273,14 @@
         document.getElementById('otpSimulationToken');
       const latestOtpTokenEl = document.getElementById('latestOtpToken');
       const latestOtpRawEl = document.getElementById('latestOtpRaw');
+      const clientTypeEl = document.getElementById('clientType');
 
       function getBaseUrl() {
         return baseUrlEl.value.replace(/\/$/, '');
+      }
+
+      function getClientType() {
+        return clientTypeEl.value;
       }
 
       function rememberMsisdn() {
@@ -291,6 +295,17 @@
           msisdnEl.value = cached;
         }
       }
+
+      function loadClientType() {
+        const cachedType = localStorage.getItem('auth-client-type');
+        if (cachedType) {
+          clientTypeEl.value = cachedType;
+        }
+      }
+
+      clientTypeEl.addEventListener('change', () => {
+        localStorage.setItem('auth-client-type', getClientType());
+      });
 
       function setResult(element, payload) {
         element.textContent = formatPayload(payload);
@@ -421,17 +436,12 @@
             return setResult(otpResultEl, 'Enter phone number first.');
           }
           try {
-            const headers = {};
-            const simulationToken = getSimulationToken();
-            if (simulationToken) {
-              headers['x-otp-simulation-token'] = simulationToken;
-            }
-            const result = await requestJson('/auth/request-otp', {
+            const result = await requestJson('/request-otp', {
               method: 'POST',
               body: {
                 msisdn,
+                clientType: getClientType(),
               },
-              headers,
             });
             setResult(otpResultEl, result.data || result.response);
             const tokenFromResponse = extractOtpToken(result.data);
@@ -453,14 +463,8 @@
             return setResult(simulateOtpResultEl, 'Enter phone number first.');
           }
           try {
-            const headers = {};
-            const simulationToken = getSimulationToken();
-            if (simulationToken) {
-              headers['x-otp-simulation-token'] = simulationToken;
-            }
             const result = await requestJson(
               `/simulate/${encodeURIComponent(phone)}/get-otp`,
-              { headers },
             );
             setResult(simulateOtpResultEl, result.data || result.response);
             const tokenFromResponse = extractOtpToken(result.data);
@@ -486,9 +490,10 @@
             );
           }
           try {
-            const result = await postJson('/auth/verify-otp', {
-              phone,
+            const result = await postJson('/verify-otp', {
+              msisdn: phone,
               otpCode,
+              clientType: getClientType(),
             });
             setResult(verifyResultEl, result.data || result.response);
           } catch (error) {
@@ -508,7 +513,7 @@
             return setResult(refreshResultEl, 'Enter refresh token value.');
           }
           try {
-            const result = await postJson('/auth/refresh-token', {
+            const result = await postJson('/refresh-token', {
               refreshToken,
             });
             setResult(refreshResultEl, result.data || result.response);
@@ -527,7 +532,7 @@
           return setResult(logoutResultEl, 'Provide refresh token to log out.');
         }
         try {
-          const result = await postJson('/auth/logout', {
+          const result = await postJson('/logout', {
             refreshToken,
           });
           setResult(logoutResultEl, result.data || result.response);
@@ -567,53 +572,134 @@
         sseLogEl.prepend(entry);
       }
 
-      function closeStream() {
+      function closeStream({ reason } = {}) {
+        if (state.sse?.abortController) {
+          state.sse.abortController.abort();
+        }
         if (state.sse) {
-          state.sse.close();
           state.sse = null;
-          appendLog('SSE connection closed');
+          appendLog(reason || 'SSE connection closed');
         }
       }
 
-      document.getElementById('startSse').addEventListener('click', () => {
+      document.getElementById('startSse').addEventListener('click', async () => {
         closeStream();
-        const channel = document.getElementById('otpChannel').value.trim();
-        if (!channel) {
-          return appendLog('Provide an SSE endpoint path.');
-        }
-        const url = new URL(channel, getBaseUrl());
+        const url = `${getBaseUrl()}/notifications/stream`;
         const simulationToken = getSimulationToken();
-        if (simulationToken) {
-          url.searchParams.set('x-otp-simulation-token', simulationToken);
+        if (!simulationToken) {
+          appendLog('Provide x-otp-simulation-token before starting stream.');
+          return;
         }
-        state.sse = new EventSource(url.toString(), { withCredentials: true });
+        const headers = { Accept: 'text/event-stream' };
+        headers['x-otp-simulation-token'] = simulationToken;
+        const abortController = new AbortController();
+        state.sse = { abortController };
         appendLog(`Connecting to ${url}`);
-        state.sse.onmessage = (event) => {
-          const message = event.data || '[empty message]';
-          appendLog(message);
-          let parsed = message;
-          if (typeof message === 'string') {
-            try {
-              parsed = JSON.parse(message);
-            } catch (error) {
-              parsed = message;
+        try {
+          const response = await fetch(url, {
+            method: 'GET',
+            headers,
+            credentials: 'include',
+            signal: abortController.signal,
+          });
+          if (!response.ok) {
+            closeStream({ reason: `SSE connection failed: ${response.status} ${response.statusText}` });
+            return;
+          }
+          if (!response.body) {
+            closeStream({ reason: 'SSE response did not include a body.' });
+            return;
+          }
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          async function readStream() {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) {
+                buffer += decoder.decode();
+                buffer = processSseBuffer(buffer, handleSseMessage);
+                if (buffer.trim()) {
+                  handleSseMessage(buffer);
+                }
+                appendLog('SSE stream ended by server.');
+                state.sse = null;
+                return;
+              }
+              buffer += decoder.decode(value, { stream: true });
+              buffer = processSseBuffer(buffer, handleSseMessage);
             }
           }
-          if (parsed && typeof parsed === 'object') {
-            const streamToken = extractOtpToken(parsed);
-            if (streamToken) {
-              otpSimulationTokenEl.value = streamToken;
-            }
+          await readStream();
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            appendLog('SSE connection aborted.');
+          } else {
+            appendLog(`SSE connection error: ${error.message}`);
           }
-          updateLatestOtpDisplays(message);
-        };
-        state.sse.onerror = () => {
-          appendLog('Stream reported an error.');
-        };
+        } finally {
+          if (state.sse?.abortController === abortController) {
+            state.sse = null;
+          }
+        }
       });
 
-      document.getElementById('stopSse').addEventListener('click', closeStream);
+      document
+        .getElementById('stopSse')
+        .addEventListener('click', () => closeStream());
 
+      function processSseBuffer(buffer, callback) {
+        while (buffer.includes('\n\n') || buffer.includes('\r\n\r\n')) {
+          let delimiter = '\n\n';
+          let index = buffer.indexOf(delimiter);
+          if (index === -1) {
+            delimiter = '\r\n\r\n';
+            index = buffer.indexOf(delimiter);
+          }
+          if (index === -1) {
+            break;
+          }
+          const rawEvent = buffer.slice(0, index);
+          buffer = buffer.slice(index + delimiter.length);
+          callback(rawEvent);
+        }
+        return buffer;
+      }
+
+      function handleSseMessage(rawEvent) {
+        if (!rawEvent.trim()) {
+          return;
+        }
+        const lines = rawEvent.split(/\r?\n/);
+        const dataLines = [];
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trimStart());
+          }
+        }
+        if (!dataLines.length) {
+          return;
+        }
+        const message = dataLines.join('\n');
+        appendLog(message || '[empty message]');
+        let parsed = message;
+        if (typeof message === 'string') {
+          try {
+            parsed = JSON.parse(message);
+          } catch (error) {
+            parsed = message;
+          }
+        }
+        if (parsed && typeof parsed === 'object') {
+          const streamToken = extractOtpToken(parsed);
+          if (streamToken) {
+            otpSimulationTokenEl.value = streamToken;
+          }
+        }
+        updateLatestOtpDisplays(message);
+      }
+
+      loadClientType();
       loadMsisdn();
       refreshTokenSnapshot();
       updateLatestOtpDisplays();
