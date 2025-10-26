@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Location Module API Tester</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #0d1117;
+        color: #f0f6fc;
+      }
+      h1,
+      h2 {
+        margin-top: 0;
+      }
+      section {
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+        background: rgba(13, 17, 23, 0.85);
+      }
+      label {
+        display: block;
+        font-size: 0.85rem;
+        margin-bottom: 4px;
+        color: #9da5b4;
+      }
+      input,
+      button,
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px;
+        margin-bottom: 12px;
+        border-radius: 6px;
+        border: 1px solid #30363d;
+        background: #161b22;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+        border: 1px solid #238636;
+        background: #238636;
+        font-weight: 600;
+      }
+      button.secondary {
+        background: transparent;
+        border-color: #30363d;
+      }
+      pre {
+        background: #161b22;
+        border: 1px solid #30363d;
+        padding: 12px;
+        border-radius: 6px;
+        overflow: auto;
+        max-height: 240px;
+        font-size: 0.9rem;
+      }
+      .stacked {
+        display: grid;
+        gap: 12px;
+      }
+      .inline {
+        display: flex;
+        gap: 8px;
+      }
+      .inline > * {
+        flex: 1;
+        margin-bottom: 0;
+      }
+      .badge {
+        display: inline-flex;
+        padding: 2px 6px;
+        border-radius: 12px;
+        background: #30363d;
+        font-size: 0.75rem;
+        color: #9da5b4;
+        margin-left: 8px;
+      }
+      .muted {
+        color: #8b949e;
+        font-size: 0.85rem;
+      }
+      textarea {
+        min-height: 120px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stacked">
+      <header>
+        <h1>
+          Location Process Testing
+          <span class="badge">Location module</span>
+        </h1>
+        <p class="muted">
+          Quick controls for updating a rider or driver location, reading the latest
+          stored coordinates, and exercising auxiliary endpoints.
+        </p>
+      </header>
+
+      <section>
+        <h2>Environment</h2>
+        <div class="stacked">
+          <label for="baseUrl">Gateway base URL</label>
+          <input
+            id="baseUrl"
+            type="url"
+            value="http://localhost:3000/api/v1"
+            placeholder="http://localhost:3000/api/v1"
+          />
+          <label for="authHeader">Authorization header</label>
+          <input id="authHeader" type="text" placeholder="Bearer &lt;token&gt;" />
+          <label for="clientId">Client identifier</label>
+          <input id="clientId" type="text" placeholder="UUID or numeric id" />
+        </div>
+      </section>
+
+      <section>
+        <h2>Update location</h2>
+        <div class="stacked">
+          <label for="updatePath">Endpoint path</label>
+          <input
+            id="updatePath"
+            type="text"
+            value="/location/update"
+            placeholder="/location/update"
+          />
+          <div class="inline">
+            <input id="latitude" type="number" step="0.000001" placeholder="Latitude" />
+            <input id="longitude" type="number" step="0.000001" placeholder="Longitude" />
+          </div>
+          <input id="bearing" type="number" step="1" placeholder="Heading (degrees)" />
+          <button id="sendUpdate">Send update</button>
+          <pre id="updateResult">{}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Fetch latest location</h2>
+        <div class="stacked">
+          <label for="fetchPath">Endpoint path</label>
+          <input
+            id="fetchPath"
+            type="text"
+            value="/location/latest"
+            placeholder="/location/latest"
+          />
+          <button id="fetchLocation">Request location</button>
+          <pre id="fetchResult">{}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Free-form request</h2>
+        <div class="stacked">
+          <label for="rawPath">Endpoint path</label>
+          <input id="rawPath" type="text" placeholder="/location/nearby" />
+          <label for="rawMethod">Method</label>
+          <input id="rawMethod" type="text" value="POST" />
+          <textarea id="rawBody" placeholder="JSON body"></textarea>
+          <button id="sendRaw">Send</button>
+          <pre id="rawResult">{}</pre>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      function getBaseUrl() {
+        return document.getElementById('baseUrl').value.trim().replace(/\/$/, '');
+      }
+
+      function buildHeaders() {
+        const headers = {
+          'Content-Type': 'application/json',
+        };
+        const auth = document.getElementById('authHeader').value.trim();
+        if (auth) {
+          headers.Authorization = auth;
+        }
+        const clientId = document.getElementById('clientId').value.trim();
+        if (clientId) {
+          headers['x-client-id'] = clientId;
+        }
+        return headers;
+      }
+
+      async function send(path, options) {
+        const response = await fetch(`${getBaseUrl()}${path}`, {
+          credentials: 'include',
+          ...options,
+          headers: {
+            ...buildHeaders(),
+            ...(options.headers || {}),
+          },
+        });
+        let data;
+        try {
+          data = await response.clone().json();
+        } catch (error) {
+          data = await response.text();
+        }
+        return { response, data };
+      }
+
+      function present(result) {
+        if (result instanceof Response) {
+          return `${result.status} ${result.statusText}`;
+        }
+        try {
+          return JSON.stringify(result, null, 2);
+        } catch (error) {
+          return String(result);
+        }
+      }
+
+      document.getElementById('sendUpdate').addEventListener('click', async () => {
+        const path = document.getElementById('updatePath').value.trim() || '/location/update';
+        const payload = {
+          latitude: Number(document.getElementById('latitude').value),
+          longitude: Number(document.getElementById('longitude').value),
+        };
+        const bearingInput = document.getElementById('bearing').value;
+        if (bearingInput) {
+          payload.bearing = Number(bearingInput);
+        }
+        const clientId = document.getElementById('clientId').value.trim();
+        if (clientId) {
+          payload.clientId = clientId;
+        }
+        try {
+          const { response, data } = await send(path, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
+          document.getElementById('updateResult').textContent = present(data || response);
+        } catch (error) {
+          document.getElementById('updateResult').textContent = error.message;
+        }
+      });
+
+      document.getElementById('fetchLocation').addEventListener('click', async () => {
+        const path = document.getElementById('fetchPath').value.trim() || '/location/latest';
+        const clientId = document.getElementById('clientId').value.trim();
+        const query = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
+        try {
+          const { response, data } = await send(`${path}${query}`, { method: 'GET' });
+          document.getElementById('fetchResult').textContent = present(data || response);
+        } catch (error) {
+          document.getElementById('fetchResult').textContent = error.message;
+        }
+      });
+
+      document.getElementById('sendRaw').addEventListener('click', async () => {
+        const path = document.getElementById('rawPath').value.trim();
+        if (!path) {
+          return (document.getElementById('rawResult').textContent = 'Provide an endpoint path.');
+        }
+        const method = document.getElementById('rawMethod').value.trim() || 'POST';
+        const body = document.getElementById('rawBody').value.trim();
+        if (body && !method.match(/^GET|HEAD$/i)) {
+          try {
+            JSON.parse(body);
+          } catch (error) {
+            return (document.getElementById('rawResult').textContent =
+              'Body must be valid JSON.');
+          }
+        }
+        try {
+          const { response, data } = await send(path, {
+            method,
+            body: body && !method.match(/^GET|HEAD$/i) ? body : undefined,
+          });
+          document.getElementById('rawResult').textContent = present(data || response);
+        } catch (error) {
+          document.getElementById('rawResult').textContent = error.message;
+        }
+      });
+    </script>
+  </body>
+</html>

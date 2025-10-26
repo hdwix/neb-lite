@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Authentication API Tester</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #0d1117;
+        color: #f0f6fc;
+      }
+      h1,
+      h2 {
+        margin-top: 0;
+      }
+      section {
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+        background: rgba(13, 17, 23, 0.85);
+      }
+      label {
+        display: block;
+        font-size: 0.85rem;
+        margin-bottom: 4px;
+        color: #9da5b4;
+      }
+      input,
+      button,
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px;
+        margin-bottom: 12px;
+        border-radius: 6px;
+        border: 1px solid #30363d;
+        background: #161b22;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+        border: 1px solid #238636;
+        background: #238636;
+        font-weight: 600;
+      }
+      button.secondary {
+        background: transparent;
+        border-color: #30363d;
+      }
+      pre {
+        background: #161b22;
+        border: 1px solid #30363d;
+        padding: 12px;
+        border-radius: 6px;
+        overflow: auto;
+        max-height: 240px;
+        font-size: 0.9rem;
+      }
+      .stacked {
+        display: grid;
+        gap: 12px;
+      }
+      .inline {
+        display: flex;
+        gap: 8px;
+      }
+      .inline input,
+      .inline button {
+        flex: 1;
+        margin-bottom: 0;
+      }
+      .inline button {
+        flex: none;
+        width: auto;
+        padding-inline: 16px;
+      }
+      .badge {
+        display: inline-flex;
+        padding: 2px 6px;
+        border-radius: 12px;
+        background: #30363d;
+        font-size: 0.75rem;
+        color: #9da5b4;
+        margin-left: 8px;
+      }
+      .muted {
+        color: #8b949e;
+        font-size: 0.8rem;
+      }
+      .logs {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 240px;
+        overflow-y: auto;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 12px;
+        background: #161b22;
+      }
+      .log-entry {
+        font-family: ui-monospace, SFMono-Regular, SFMono-Regular, "Fira Code", monospace;
+        font-size: 0.85rem;
+        padding: 4px 6px;
+        border-radius: 4px;
+        background: rgba(35, 134, 54, 0.12);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stacked">
+      <header>
+        <h1>
+          Authentication Process Testing
+          <span class="badge">IAM module</span>
+        </h1>
+        <p class="muted">
+          Minimal controls to exercise OTP retrieval, verification, refresh, and logout
+          flows. Requests automatically include credentials so tokens emitted in cookies
+          stay attached to subsequent calls.
+        </p>
+      </header>
+
+      <section>
+        <h2>Environment</h2>
+        <div class="stacked">
+          <label for="baseUrl">Gateway base URL</label>
+          <input
+            id="baseUrl"
+            type="url"
+            value="http://localhost:3000/api/v1"
+            placeholder="http://localhost:3000/api/v1"
+          />
+          <div class="inline">
+            <input
+              id="authMsisdn"
+              type="tel"
+              placeholder="MSISDN / phone number"
+            />
+            <button id="rememberMsisdn" class="secondary">Remember</button>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>1. Request OTP</h2>
+        <div class="stacked">
+          <label for="otpChannel">OTP SSE endpoint</label>
+          <div class="inline">
+            <input
+              id="otpChannel"
+              type="text"
+              value="/notifications/stream"
+              placeholder="/notifications/stream"
+            />
+            <button id="startSse">Start stream</button>
+            <button id="stopSse" class="secondary">Stop</button>
+          </div>
+          <button id="requestOtp">Call /authentication/request-otp</button>
+          <pre id="requestOtpResult">{}</pre>
+          <div>
+            <span class="muted">Incoming OTP messages</span>
+            <div id="sseLog" class="logs"></div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>2. Verify OTP</h2>
+        <div class="stacked">
+          <input id="otpCode" type="text" placeholder="Enter OTP code" />
+          <button id="verifyOtp">Call /authentication/verify-otp</button>
+          <pre id="verifyOtpResult">{}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>3. Refresh Tokens</h2>
+        <div class="stacked">
+          <input
+            id="refreshToken"
+            type="text"
+            placeholder="Paste refresh token value"
+          />
+          <button id="refreshTokens">Call /authentication/refresh-token</button>
+          <pre id="refreshResult">{}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>4. Logout</h2>
+        <div class="stacked">
+          <input id="logoutRefreshToken" type="text" placeholder="Refresh token" />
+          <button id="logout">Call /authentication/logout</button>
+          <pre id="logoutResult">{}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Token snapshot</h2>
+        <div class="stacked">
+          <button id="refreshTokenSnapshot">Read cookies</button>
+          <pre id="tokenSnapshot">{}</pre>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        sse: null,
+        msisdn: '',
+      };
+
+      const baseUrlEl = document.getElementById('baseUrl');
+      const msisdnEl = document.getElementById('authMsisdn');
+      const otpResultEl = document.getElementById('requestOtpResult');
+      const verifyResultEl = document.getElementById('verifyOtpResult');
+      const refreshResultEl = document.getElementById('refreshResult');
+      const logoutResultEl = document.getElementById('logoutResult');
+      const tokenSnapshotEl = document.getElementById('tokenSnapshot');
+      const sseLogEl = document.getElementById('sseLog');
+
+      function getBaseUrl() {
+        return baseUrlEl.value.replace(/\/$/, '');
+      }
+
+      function rememberMsisdn() {
+        state.msisdn = msisdnEl.value.trim();
+        localStorage.setItem('auth-msisdn', state.msisdn);
+      }
+
+      function loadMsisdn() {
+        const cached = localStorage.getItem('auth-msisdn');
+        if (cached) {
+          state.msisdn = cached;
+          msisdnEl.value = cached;
+        }
+      }
+
+      function setResult(element, payload) {
+        element.textContent = formatPayload(payload);
+      }
+
+      function formatPayload(payload) {
+        if (payload instanceof Response) {
+          return `${payload.status} ${payload.statusText}`;
+        }
+        if (typeof payload === 'string') {
+          return payload;
+        }
+        try {
+          return JSON.stringify(payload, null, 2);
+        } catch (error) {
+          return String(payload);
+        }
+      }
+
+      async function postJson(path, body) {
+        const url = `${getBaseUrl()}${path}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+
+        let data = null;
+        try {
+          data = await response.clone().json();
+        } catch (error) {
+          data = await response.text();
+        }
+        return { response, data };
+      }
+
+      document
+        .getElementById('rememberMsisdn')
+        .addEventListener('click', (event) => {
+          event.preventDefault();
+          rememberMsisdn();
+          refreshTokenSnapshot();
+        });
+
+      document.getElementById('requestOtp').addEventListener('click', async () => {
+        rememberMsisdn();
+        const phone = state.msisdn;
+        if (!phone) {
+          return setResult(otpResultEl, 'Enter phone number first.');
+        }
+        try {
+          const result = await postJson('/authentication/request-otp', {
+            phone,
+          });
+          setResult(otpResultEl, result.data);
+        } catch (error) {
+          setResult(otpResultEl, error.message);
+        }
+      });
+
+      document.getElementById('verifyOtp').addEventListener('click', async () => {
+        rememberMsisdn();
+        const phone = state.msisdn;
+        const otpCode = document.getElementById('otpCode').value.trim();
+        if (!phone || !otpCode) {
+          return setResult(verifyResultEl, 'Provide both phone number and OTP.');
+        }
+        try {
+          const result = await postJson('/authentication/verify-otp', {
+            phone,
+            otpCode,
+          });
+          setResult(verifyResultEl, result.data || result.response);
+        } catch (error) {
+          setResult(verifyResultEl, error.message);
+        } finally {
+          refreshTokenSnapshot();
+        }
+      });
+
+      document
+        .getElementById('refreshTokens')
+        .addEventListener('click', async () => {
+          const refreshToken = document.getElementById('refreshToken').value.trim();
+          if (!refreshToken) {
+            return setResult(refreshResultEl, 'Enter refresh token value.');
+          }
+          try {
+            const result = await postJson('/authentication/refresh-token', {
+              refreshToken,
+            });
+            setResult(refreshResultEl, result.data || result.response);
+          } catch (error) {
+            setResult(refreshResultEl, error.message);
+          } finally {
+            refreshTokenSnapshot();
+          }
+        });
+
+      document.getElementById('logout').addEventListener('click', async () => {
+        const refreshToken = document
+          .getElementById('logoutRefreshToken')
+          .value.trim();
+        if (!refreshToken) {
+          return setResult(logoutResultEl, 'Provide refresh token to log out.');
+        }
+        try {
+          const result = await postJson('/authentication/logout', {
+            refreshToken,
+          });
+          setResult(logoutResultEl, result.data || result.response);
+        } catch (error) {
+          setResult(logoutResultEl, error.message);
+        } finally {
+          refreshTokenSnapshot();
+        }
+      });
+
+      function refreshTokenSnapshot() {
+        const cookies = document.cookie
+          .split(';')
+          .map((cookie) => cookie.trim())
+          .filter(Boolean);
+        const pairs = Object.fromEntries(
+          cookies.map((cookie) => {
+            const [key, ...rest] = cookie.split('=');
+            return [decodeURIComponent(key), decodeURIComponent(rest.join('='))];
+          }),
+        );
+        setResult(tokenSnapshotEl, pairs);
+      }
+
+      document
+        .getElementById('refreshTokenSnapshot')
+        .addEventListener('click', refreshTokenSnapshot);
+
+      function appendLog(message) {
+        const entry = document.createElement('div');
+        const timestamp = new Date().toISOString();
+        entry.className = 'log-entry';
+        entry.textContent = `[${timestamp}] ${message}`;
+        sseLogEl.prepend(entry);
+      }
+
+      function closeStream() {
+        if (state.sse) {
+          state.sse.close();
+          state.sse = null;
+          appendLog('SSE connection closed');
+        }
+      }
+
+      document.getElementById('startSse').addEventListener('click', () => {
+        closeStream();
+        const channel = document.getElementById('otpChannel').value.trim();
+        if (!channel) {
+          return appendLog('Provide an SSE endpoint path.');
+        }
+        const url = new URL(channel, getBaseUrl());
+        state.sse = new EventSource(url.toString(), { withCredentials: true });
+        appendLog(`Connecting to ${url}`);
+        state.sse.onmessage = (event) => {
+          appendLog(event.data || '[empty message]');
+        };
+        state.sse.onerror = () => {
+          appendLog('Stream reported an error.');
+        };
+      });
+
+      document.getElementById('stopSse').addEventListener('click', closeStream);
+
+      loadMsisdn();
+      refreshTokenSnapshot();
+    </script>
+  </body>
+</html>
