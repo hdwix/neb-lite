@@ -2,558 +2,1138 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>OTP Request & SSE Monitor</title>
+    <title>Nebula Lite Gateway Playground</title>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <style>
       :root {
-        --bg: #0f172a;
-        --card: #111827;
-        --muted: #9ca3af;
-        --text: #e5e7eb;
-        --accent: #22d3ee;
-        --ok: #22c55e;
-        --err: #ef4444;
-        --border: #1f2937;
-        --btn: #1f2937;
-        --btnh: #374151;
-        --input: #0b1220;
+        color-scheme: light;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+          sans-serif;
       }
       * {
         box-sizing: border-box;
       }
-      html,
-      body {
-        height: 100%;
-      }
       body {
         margin: 0;
-        background: linear-gradient(180deg, #0b1220, #0f172a);
-        color: var(--text);
-        font:
-          14px/1.4 system-ui,
-          -apple-system,
-          Segoe UI,
-          Roboto,
-          Inter,
-          'Helvetica Neue',
-          Arial,
-          'Noto Sans',
-          'Apple Color Emoji',
-          'Segoe UI Emoji';
+        background: #f4f5f7;
+        color: #0f172a;
+        font-size: 14px;
       }
       header {
-        padding: 18px 22px;
-        border-bottom: 1px solid var(--border);
-        backdrop-filter: blur(6px);
+        background: #ffffff;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 20px 24px;
         position: sticky;
         top: 0;
-        z-index: 5;
+        z-index: 10;
       }
       header h1 {
+        margin: 0 0 6px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      header p {
+        margin: 0;
+        color: #475569;
+        max-width: 720px;
+        line-height: 1.4;
+      }
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 24px 20px 80px;
+        display: grid;
+        gap: 18px;
+      }
+      section.card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 18px;
+        display: grid;
+        gap: 16px;
+      }
+      section.card h2 {
         margin: 0;
         font-size: 16px;
-        letter-spacing: 0.3px;
+        font-weight: 600;
       }
-      header .sub {
-        color: var(--muted);
+      section.card h2 span {
+        display: block;
+        margin-top: 2px;
         font-size: 12px;
+        font-weight: 400;
+        color: #64748b;
       }
-      .wrap {
+      .grid-two {
         display: grid;
-        grid-template-columns: 420px 1fr;
-        gap: 16px;
-        padding: 16px;
-        height: calc(100% - 66px);
+        gap: 12px;
       }
-      .card {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-        overflow: hidden;
-      }
-      .section {
-        padding: 16px;
-      }
-      .card h2 {
-        margin: 0.2rem 0 1rem;
-        font-size: 14px;
-        color: #cbd5e1;
-      }
-      .row {
-        display: flex;
-        gap: 10px;
-        align-items: center;
+      .grid-two.cols-2 {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       }
       label {
         display: block;
         font-size: 12px;
-        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: 500;
+        color: #475569;
         margin-bottom: 6px;
       }
-      input[type='text'],
-      select {
+      input,
+      select,
+      textarea {
         width: 100%;
-        padding: 10px 12px;
-        border-radius: 10px;
-        border: 1px solid var(--border);
-        background: var(--input);
-        color: var(--text);
-        outline: none;
+        padding: 9px 10px;
+        border-radius: 8px;
+        border: 1px solid #cbd5f5;
+        background: #f8fafc;
+        color: inherit;
+        font: inherit;
       }
-      input::placeholder {
-        color: #6b7280;
+      textarea {
+        resize: vertical;
       }
-      .grid {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 12px;
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: 2px solid #38bdf8;
+        outline-offset: 0;
+        background: #ffffff;
       }
       .actions {
         display: flex;
-        gap: 8px;
-        margin-top: 6px;
         flex-wrap: wrap;
+        gap: 8px;
       }
       button {
-        appearance: none;
-        border: 1px solid var(--border);
-        background: var(--btn);
-        color: var(--text);
-        padding: 10px 12px;
-        border-radius: 10px;
+        border: 1px solid #0f172a10;
+        background: #0f172a;
+        color: #ffffff;
+        border-radius: 8px;
+        padding: 9px 14px;
+        font: inherit;
+        font-weight: 500;
         cursor: pointer;
-        transition:
-          0.18s transform,
-          0.18s background;
+        transition: background 0.18s ease, transform 0.18s ease;
+      }
+      button.secondary {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+      button.ghost {
+        background: transparent;
+        border: 1px solid #cbd5f5;
+        color: #0f172a;
       }
       button:hover {
-        background: var(--btnh);
+        transform: translateY(-1px);
       }
-      button.primary {
-        border-color: #0ea5b7;
-        background: #0b3a43;
-      }
-      button.success {
-        border-color: #14532d;
-        background: #063114;
-      }
-      button.warn {
-        border-color: #7f1d1d;
-        background: #3a0b0b;
-      }
-      .hint {
+      .note {
         font-size: 12px;
-        color: var(--muted);
+        color: #64748b;
       }
-      .log {
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-      }
-      .log-toolbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 8px;
-        padding: 12px 16px;
-        border-bottom: 1px solid var(--border);
-        background: #0b1220;
-      }
-      .log-toolbar .status {
-        font-size: 12px;
-        color: var(--muted);
-      }
-      .log-body {
-        padding: 0;
-        height: 100%;
-        overflow: auto;
-        background: #0b0f1a;
-        font-family:
-          ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono',
+      .result {
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 12px;
+        border-radius: 8px;
+        min-height: 60px;
+        font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas,
           monospace;
-        font-size: 12px;
-      }
-      .line {
-        padding: 8px 12px;
-        border-bottom: 1px dashed #1e293b;
         white-space: pre-wrap;
         word-break: break-word;
       }
-      .line.ok {
-        color: #bbf7d0;
+      .result.empty {
+        opacity: 0.6;
       }
-      .line.err {
-        color: #fecaca;
-      }
-      .line.dim {
-        color: #9ca3af;
-      }
-      .footer {
-        padding: 8px 16px;
-        border-top: 1px solid var(--border);
-        color: var(--muted);
-        font-size: 11px;
-      }
-      code.kv {
-        background: #0b1220;
-        padding: 2px 6px;
-        border-radius: 6px;
-        border: 1px solid var(--border);
-      }
-      .two-col {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+      .inline {
+        display: flex;
         gap: 12px;
+        flex-wrap: wrap;
       }
-      @media (max-width: 980px) {
-        .wrap {
-          grid-template-columns: 1fr;
-          height: auto;
+      .inline > div {
+        flex: 1 1 200px;
+      }
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #e2e8f0;
+        font-size: 12px;
+      }
+      .status-pill span.dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #ef4444;
+      }
+      .status-pill.connected span.dot {
+        background: #22c55e;
+      }
+      .sse-box {
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 8px;
+        padding: 10px;
+        font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas,
+          monospace;
+        height: 130px;
+        overflow-y: auto;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+      .sse-box.large {
+        height: 200px;
+      }
+      .sse-box .line {
+        margin-bottom: 6px;
+      }
+      .pill-group {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: #475569;
+      }
+      .pill-group span {
+        background: #e2e8f0;
+        padding: 4px 8px;
+        border-radius: 999px;
+      }
+      @media (min-width: 900px) {
+        main {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
-        .log-body {
-          height: 380px;
+        section.card.full {
+          grid-column: 1 / -1;
         }
       }
     </style>
   </head>
   <body>
     <header>
-      <h1>OTP Request & SSE Monitor</h1>
-      <div class="sub">
-        Sends <code class="kv">POST /api/v1/gateway/auth/request-otp</code> and
-        listens to <code class="kv">SSE /simulate/:msisdn/get-otp</code> with a
-        header <code class="kv">x-otp-simulation-token</code>.
-      </div>
+      <h1>Nebula Lite Gateway Playground</h1>
+      <p>
+        Minimal helper to walk through the client signup, authentication,
+        location, ride, and notification flows exposed by
+        <code>/api/v1/gateway</code>.
+      </p>
     </header>
-
-    <div class="wrap">
-      <!-- LEFT: Form -->
-      <div class="card">
-        <div class="section">
-          <h2>Request OTP</h2>
-          <div class="grid">
-            <div>
-              <label for="baseUrl">Base URL</label>
-              <input
-                id="baseUrl"
-                type="text"
-                placeholder="http://localhost:3000"
-              />
-            </div>
-            <div>
-              <label for="msisdn">MSISDN / Phone Number</label>
-              <input id="msisdn" type="text" placeholder="+62812xxxxxxx" />
-            </div>
-            <div class="two-col">
-              <div>
-                <label for="clientType">Client Type</label>
-                <input
-                  id="clientType"
-                  type="text"
-                  placeholder="RIDER | DRIVER"
-                />
-              </div>
-              <div>
-                <label for="sseToken">SSE Token (x-otp-simulation-token)</label>
-                <input
-                  id="sseToken"
-                  type="text"
-                  placeholder="required by SSE endpoint"
-                />
-              </div>
-            </div>
-            <div class="actions">
-              <button id="sendOtpBtn" class="primary">Send OTP Request</button>
-              <button id="connectSseBtn" class="success">Connect SSE</button>
-              <button id="disconnectSseBtn" class="warn">Disconnect SSE</button>
-              <button id="clearLogBtn">Clear Log</button>
-              <button id="saveBtn">Save Inputs</button>
-              <button id="loadBtn">Load Inputs</button>
-            </div>
-            <div class="hint">
-              • POST goes to
-              <code class="kv">{base_url}/api/v1/gateway/auth/request-otp</code>
-              with JSON.<br />
-              • SSE connects to
-              <code class="kv">{base_url}/simulate/{msisdn}/get-otp</code> and
-              sends header <code class="kv">x-otp-simulation-token</code>.<br />
-              • Requires CORS enabled on your server for both endpoints.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- RIGHT: SSE Log -->
-      <div class="card log">
-        <div class="log-toolbar">
+    <main>
+      <section class="card full" id="setup">
+        <h2>Setup <span>Shared configuration and context</span></h2>
+        <div class="grid-two cols-2">
           <div>
-            <strong>Events</strong>
-            <span class="status" id="status">• disconnected</span>
+            <label for="baseUrl">Base URL</label>
+            <input id="baseUrl" type="text" placeholder="http://localhost:3000" />
           </div>
-          <div class="row">
-            <button id="copyBtn">Copy All</button>
+          <div>
+            <label for="otpToken">OTP simulation token (x-otp-simulation-token)</label>
+            <input id="otpToken" type="text" placeholder="token for /simulate/{msisdn}/get-otp" />
+          </div>
+          <div>
+            <label for="activeRole">Active client</label>
+            <select id="activeRole">
+              <option value="RIDER">Rider</option>
+              <option value="DRIVER">Driver</option>
+            </select>
+          </div>
+          <div>
+            <label for="lastRide">Last ride id</label>
+            <input id="lastRide" type="text" placeholder="auto-filled after create ride" />
           </div>
         </div>
-        <div id="log" class="log-body" aria-live="polite"></div>
-        <div class="footer">
-          Tip: you can keep the SSE stream open while sending multiple OTP
-          requests.
+        <div class="pill-group" id="tokenSummary"></div>
+        <div class="actions">
+          <button id="saveConfig" class="secondary">Save configuration</button>
+          <button id="loadConfig" class="ghost">Load saved configuration</button>
+          <button id="clearSaved" class="ghost">Clear saved data</button>
         </div>
-      </div>
-    </div>
+        <p class="note">
+          Tokens are stored per client type after verifying OTP. Selecting an
+          active client tells the playground which token to use for Bearer-protected
+          calls.
+        </p>
+      </section>
+
+      <section class="card" id="signup">
+        <h2>1. Client signup <span>Create rider and driver profiles</span></h2>
+        <div class="grid-two cols-2">
+          <div>
+            <label for="signupRiderMsisdn">Rider MSISDN</label>
+            <input id="signupRiderMsisdn" type="text" placeholder="+62812..." />
+          </div>
+          <div>
+            <label for="signupRiderName">Rider name</label>
+            <input id="signupRiderName" type="text" placeholder="Rider Name" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="signupRider">Create rider</button>
+        </div>
+        <pre id="signupRiderResult" class="result empty">Waiting for response…</pre>
+        <hr />
+        <div class="grid-two cols-2">
+          <div>
+            <label for="signupDriverMsisdn">Driver MSISDN</label>
+            <input id="signupDriverMsisdn" type="text" placeholder="+62811..." />
+          </div>
+          <div>
+            <label for="signupDriverName">Driver name</label>
+            <input id="signupDriverName" type="text" placeholder="Driver Name" />
+          </div>
+          <div>
+            <label for="signupDriverLicense">Driver license number</label>
+            <input id="signupDriverLicense" type="text" placeholder="SIM" />
+          </div>
+          <div>
+            <label for="signupDriverVehicle">Vehicle license plate</label>
+            <input id="signupDriverVehicle" type="text" placeholder="B 1234 CD" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="signupDriver">Create driver</button>
+        </div>
+        <pre id="signupDriverResult" class="result empty">Waiting for response…</pre>
+      </section>
+
+      <section class="card" id="auth">
+        <h2>2. Authenticate <span>Request OTP, verify, refresh, and simulate SSE</span></h2>
+        <div class="grid-two cols-2">
+          <div>
+            <label for="authMsisdn">MSISDN</label>
+            <input id="authMsisdn" type="text" placeholder="+6281…" />
+          </div>
+          <div>
+            <label for="authClientType">Client type</label>
+            <select id="authClientType">
+              <option value="RIDER">RIDER</option>
+              <option value="DRIVER">DRIVER</option>
+            </select>
+          </div>
+          <div>
+            <label for="authOtp">OTP Code</label>
+            <input id="authOtp" type="text" placeholder="123456" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="requestOtp">Request OTP</button>
+          <button id="verifyOtp" class="secondary">Verify OTP</button>
+          <button id="refreshToken" class="ghost">Refresh access token</button>
+          <button id="logout" class="ghost">Logout</button>
+        </div>
+        <pre id="authResult" class="result empty">Responses will appear here</pre>
+        <div>
+          <div class="inline">
+            <div>
+              <label for="otpStreamMsisdn">OTP stream MSISDN</label>
+              <input id="otpStreamMsisdn" type="text" placeholder="+6281…" />
+            </div>
+          </div>
+          <div class="actions">
+            <button id="connectOtpStream">Connect OTP stream</button>
+            <span class="status-pill" id="otpStreamStatus"><span class="dot"></span>disconnected</span>
+            <button id="disconnectOtpStream" class="ghost">Disconnect</button>
+            <button id="clearOtpStream" class="ghost">Clear</button>
+          </div>
+          <div class="sse-box" id="otpStream"></div>
+        </div>
+      </section>
+
+      <section class="card" id="location">
+        <h2>3. Driver updates location <span>Requires driver bearer token</span></h2>
+        <div class="grid-two cols-2">
+          <div>
+            <label for="driverLongitude">Longitude</label>
+            <input id="driverLongitude" type="number" step="any" placeholder="106.8" />
+          </div>
+          <div>
+            <label for="driverLatitude">Latitude</label>
+            <input id="driverLatitude" type="number" step="any" placeholder="-6.2" />
+          </div>
+          <div>
+            <label for="driverAccuracy">Accuracy (meters)</label>
+            <input id="driverAccuracy" type="number" step="any" placeholder="optional" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="updateLocation">POST /location/driver</button>
+        </div>
+        <pre id="locationResult" class="result empty">Waiting for response…</pre>
+      </section>
+
+      <section class="card" id="ride-create">
+        <h2>4. Rider creates ride <span>Requires rider bearer token</span></h2>
+        <div class="grid-two cols-2">
+          <div>
+            <label for="pickupLongitude">Pickup longitude</label>
+            <input id="pickupLongitude" type="number" step="any" placeholder="106.8" />
+          </div>
+          <div>
+            <label for="pickupLatitude">Pickup latitude</label>
+            <input id="pickupLatitude" type="number" step="any" placeholder="-6.2" />
+          </div>
+          <div>
+            <label for="dropoffLongitude">Dropoff longitude</label>
+            <input id="dropoffLongitude" type="number" step="any" placeholder="106.9" />
+          </div>
+          <div>
+            <label for="dropoffLatitude">Dropoff latitude</label>
+            <input id="dropoffLatitude" type="number" step="any" placeholder="-6.1" />
+          </div>
+          <div>
+            <label for="rideDriverId">Driver id</label>
+            <input id="rideDriverId" type="text" placeholder="Driver id" />
+          </div>
+          <div>
+            <label for="rideNote">Ride note</label>
+            <input id="rideNote" type="text" placeholder="optional" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="createRide">POST /rides</button>
+        </div>
+        <pre id="createRideResult" class="result empty">Waiting for response…</pre>
+      </section>
+
+      <section class="card" id="ride-lifecycle">
+        <h2>5. Ride lifecycle <span>Continue operations using stored ride id</span></h2>
+        <div class="grid-two cols-2">
+          <div>
+            <label for="rideId">Ride id</label>
+            <input id="rideId" type="text" placeholder="Use the last ride id or paste manually" />
+          </div>
+          <div>
+            <label for="rideReason">Reason (for cancel / reject)</label>
+            <input id="rideReason" type="text" placeholder="optional" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="getRide" class="secondary">GET /rides/:id (active client)</button>
+          <button id="driverAccept">Driver accept</button>
+          <button id="riderAccept" class="secondary">Rider accept</button>
+          <button id="riderReject" class="ghost">Rider reject</button>
+          <button id="riderCancel" class="ghost">Rider cancel</button>
+          <button id="driverComplete">Driver complete</button>
+        </div>
+        <pre id="rideActionsResult" class="result empty">Responses from ride operations will appear here</pre>
+      </section>
+
+      <section class="card" id="notifications">
+        <h2>6. Notifications stream <span>Server-sent events from /notifications/stream</span></h2>
+        <div class="actions">
+          <button id="connectNotifications">Connect stream</button>
+          <span class="status-pill" id="notificationStatus"><span class="dot"></span>disconnected</span>
+          <button id="disconnectNotifications" class="ghost">Disconnect</button>
+          <button id="clearNotifications" class="ghost">Clear</button>
+        </div>
+        <div class="sse-box large" id="notificationStream"></div>
+        <p class="note">
+          Uses the active client's bearer token. Switch roles in the setup
+          section to listen as a rider or driver.
+        </p>
+      </section>
+    </main>
 
     <script>
-      // Elements
-      const el = (id) => document.getElementById(id);
-      const baseUrlEl = el('baseUrl');
-      const msisdnEl = el('msisdn');
-      const clientTypeEl = el('clientType');
-      const sseTokenEl = el('sseToken');
+      const storageKey = 'neblite-gateway-playground';
+      const $ = (id) => document.getElementById(id);
 
-      const sendOtpBtn = el('sendOtpBtn');
-      const connectSseBtn = el('connectSseBtn');
-      const disconnectSseBtn = el('disconnectSseBtn');
-      const clearLogBtn = el('clearLogBtn');
-      const copyBtn = el('copyBtn');
-      const saveBtn = el('saveBtn');
-      const loadBtn = el('loadBtn');
+      const state = {
+        baseUrl: '',
+        otpToken: '',
+        activeRole: 'RIDER',
+        tokens: {
+          RIDER: { accessToken: '', refreshToken: '', msisdn: '' },
+          DRIVER: { accessToken: '', refreshToken: '', msisdn: '' },
+        },
+        lastRideId: '',
+      };
 
-      const logBox = el('log');
-      const statusEl = el('status');
+      let otpStreamAbort;
+      let notificationStreamAbort;
 
-      let sseAbortController = null;
-
-      function line(text, cls = '') {
-        const div = document.createElement('div');
-        div.className = 'line ' + cls;
-        div.textContent = text;
-        logBox.appendChild(div);
-        logBox.scrollTop = logBox.scrollHeight;
+      function applyStateToUi() {
+        $('baseUrl').value = state.baseUrl;
+        $('otpToken').value = state.otpToken;
+        $('activeRole').value = state.activeRole;
+        $('lastRide').value = state.lastRideId;
+        $('rideId').value = state.lastRideId;
+        updateTokenSummary();
       }
 
-      function validateInputs(requireTokenForSSE = false) {
-        const base = (baseUrlEl.value || '').trim().replace(/\/+$/, '');
-        const msisdn = (msisdnEl.value || '').trim();
-        const clientType = (clientTypeEl.value || '').trim();
-        const token = (sseTokenEl.value || '').trim();
-        if (!base) {
-          line('Please provide a base URL.', 'err');
-          return null;
-        }
-        if (!msisdn) {
-          line('Please provide MSISDN / phone number.', 'err');
-          return null;
-        }
-        if (requireTokenForSSE && !token) {
-          line('SSE token is required for the stream.', 'err');
-          return null;
-        }
-        return { base, msisdn, clientType, token };
+      function updateTokenSummary() {
+        const summary = $('tokenSummary');
+        summary.innerHTML = '';
+        ['RIDER', 'DRIVER'].forEach((role) => {
+          const tokenInfo = state.tokens[role];
+          const span = document.createElement('span');
+          const access = tokenInfo.accessToken || '(none)';
+          const refresh = tokenInfo.refreshToken || '(none)';
+          const owner = tokenInfo.msisdn || 'unknown';
+          span.textContent = `${role} – msisdn: ${owner} | access: ${access} | refresh: ${refresh}`;
+          summary.appendChild(span);
+        });
       }
 
-      async function sendOtp() {
-        const v = validateInputs(false);
-        if (!v) return;
+      function persistState() {
+        const payload = JSON.stringify(state);
+        localStorage.setItem(storageKey, payload);
+      }
 
-        const url = `${v.base}/api/v1/gateway/auth/request-otp`;
-        const body = {
-          msisdn: v.msisdn,
-          clientType: v.clientType || undefined,
-        };
-        line(`→ POST ${url}\n${JSON.stringify(body, null, 2)}`, 'dim');
-
+      function loadState() {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return;
         try {
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            mode: 'cors',
-            credentials: 'omit',
+          const parsed = JSON.parse(raw);
+          Object.assign(state, parsed);
+          // ensure structure exists
+          state.tokens = state.tokens || {
+            RIDER: { accessToken: '', refreshToken: '', msisdn: '' },
+            DRIVER: { accessToken: '', refreshToken: '', msisdn: '' },
+          };
+          ['RIDER', 'DRIVER'].forEach((role) => {
+            state.tokens[role] = Object.assign(
+              { accessToken: '', refreshToken: '', msisdn: '' },
+              state.tokens[role] || {},
+            );
           });
-
-          const contentType = res.headers.get('content-type') || '';
-          let payload;
-          if (contentType.includes('application/json')) {
-            payload = await res.json();
-          } else {
-            payload = await res.text();
-          }
-
-          if (res.ok) {
-            line(`✓ OTP request sent for msisdn : ${msisdnEl.value}`, 'ok');
-          } else {
-            line(`✗ OTP request failed for msisdn : ${msisdnEl.value}`, 'err');
-          }
         } catch (err) {
-          line(`✗ Network/Fetch error: ${err}`, 'err');
+          console.error('Unable to load state', err);
         }
       }
 
-      function setStatus(txt) {
-        statusEl.textContent = `• ${txt}`;
+      function clearSavedState() {
+        localStorage.removeItem(storageKey);
       }
 
-      function connectSSE() {
-        const v = validateInputs(true);
-        if (!v) return;
-
-        const sseUrl = `${v.base}/api/v1/gateway/simulate/${encodeURIComponent(
-          v.msisdn,
-        )}/get-otp`;
-        line(`⇄ Connecting SSE: GET ${sseUrl}`, 'dim');
-
-        // Abort any existing connection
-        if (sseAbortController) {
-          try {
-            sseAbortController.abort();
-          } catch {}
+      function getBaseUrl() {
+        const base = $('baseUrl').value.trim().replace(/\/+$/, '');
+        if (!base) {
+          renderResult('authResult', 'Base URL is required', false);
+          return null;
         }
-        sseAbortController = new AbortController();
-        setStatus('connecting…');
-
-        fetch(sseUrl, {
-          method: 'GET',
-          headers: {
-            Accept: 'text/event-stream',
-            // Required by your server code
-            'x-otp-simulation-token': v.token,
-          },
-          mode: 'cors',
-          signal: sseAbortController.signal,
-        })
-          .then(async (res) => {
-            if (!res.ok) {
-              setStatus('error');
-              line(`✗ SSE HTTP ${res.status} — unable to open stream.`, 'err');
-              return;
-            }
-            setStatus('connected');
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder('utf-8');
-            let buffer = '';
-
-            // Basic SSE parser: events separated by \n\n, fields "event:", "data:", "id:", ":" (comment)
-            while (true) {
-              const { value, done } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-
-              let idx;
-              while ((idx = buffer.indexOf('\n\n')) !== -1) {
-                const rawEvent = buffer.slice(0, idx);
-                buffer = buffer.slice(idx + 2);
-                handleSSEChunk(rawEvent);
-              }
-            }
-            setStatus('disconnected');
-            line('SSE connection closed.', 'dim');
-          })
-          .catch((err) => {
-            if (err.name === 'AbortError') {
-              setStatus('disconnected');
-              line('SSE connection aborted by user.', 'dim');
-            } else {
-              setStatus('error');
-              line(`✗ SSE error: ${err}`, 'err');
-            }
-          });
+        state.baseUrl = base;
+        return base;
       }
 
-      function handleSSEChunk(chunk) {
-        // Ignore keep-alive comments
-        if (/^:\s?.*/.test(chunk.trim())) {
-          return; // keep-alive or comment
+      function setLastRideId(id) {
+        state.lastRideId = id || '';
+        $('lastRide').value = state.lastRideId;
+        $('rideId').value = state.lastRideId;
+        persistState();
+      }
+
+      function renderResult(id, message, ok = true) {
+        const pre = $(id);
+        pre.classList.remove('empty');
+        pre.textContent = message;
+        if (!message) {
+          pre.classList.add('empty');
+          pre.textContent = 'No response yet';
         }
-        // Parse lines
-        const lines = chunk.split('\n');
-        const evt = { event: 'message', data: '', id: null };
-        for (const l of lines) {
-          if (!l) continue;
-          if (l.startsWith('event:')) {
-            evt.event = l.slice(6).trim();
-          } else if (l.startsWith('data:')) {
-            const dataLine = l.slice(5).trim();
-            evt.data += (evt.data ? '\n' : '') + dataLine;
-          } else if (l.startsWith('id:')) {
-            evt.id = l.slice(3).trim();
+      }
+
+      function formatResponse(res, bodyText) {
+        return `Status ${res.status}${res.ok ? ' OK' : ''}\n${bodyText}`;
+      }
+
+      function readCookie(name) {
+        const raw = document.cookie;
+        if (!raw) return '';
+        const parts = raw.split('; ');
+        for (const part of parts) {
+          const [key, ...rest] = part.split('=');
+          if (key === name) {
+            return decodeURIComponent(rest.join('='));
           }
         }
-        // Try to pretty print JSON data if possible
-        let rendered = evt.data;
-        try {
-          const parsed = JSON.parse(evt.data);
-          rendered = JSON.stringify(parsed.payload, null, 2);
-        } catch {}
-        const tag = evt.event ? `[${evt.event}]` : '[message]';
-        line(`${tag}${evt.id ? ' #' + evt.id : ''}\n${rendered}`);
+        return '';
       }
 
-      function disconnectSSE() {
-        if (sseAbortController) {
-          try {
-            sseAbortController.abort();
-          } catch {}
-          sseAbortController = null;
-        }
-      }
-
-      function clearLog() {
-        logBox.innerHTML = '';
-      }
-
-      async function copyAll() {
-        const text = Array.from(logBox.querySelectorAll('.line'))
-          .map((d) => d.textContent)
-          .join('\n');
-        try {
-          await navigator.clipboard.writeText(text);
-          line('✓ Copied all logs to clipboard.', 'ok');
-        } catch {
-          line('✗ Unable to copy to clipboard.', 'err');
-        }
-      }
-
-      function saveInputs() {
-        const payload = {
-          baseUrl: baseUrlEl.value || '',
-          msisdn: msisdnEl.value || '',
-          clientType: clientTypeEl.value || '',
-          sseToken: sseTokenEl.value || '',
+      function getTokensFromCookies() {
+        return {
+          accessToken: readCookie('accesstoken'),
+          refreshToken: readCookie('refreshtoken'),
         };
-        localStorage.setItem('otpToolInputs', JSON.stringify(payload));
-        line('✓ Saved inputs to localStorage.', 'ok');
       }
 
-      function loadInputs() {
-        const raw = localStorage.getItem('otpToolInputs');
-        if (!raw) {
-          line('No saved inputs found.', 'dim');
+      function mergeCookieTokens(tokenLike) {
+        const fromCookies = getTokensFromCookies();
+        const source = tokenLike || {};
+        return {
+          accessToken: source.accessToken || fromCookies.accessToken || '',
+          refreshToken: source.refreshToken || fromCookies.refreshToken || '',
+        };
+      }
+
+      async function callApi(options) {
+        const {
+          method = 'GET',
+          path,
+          body,
+          target,
+          requireAuth,
+          role,
+          headers = {},
+        } = options;
+
+        const base = getBaseUrl();
+        if (!base) {
+          return { ok: false };
+        }
+
+        const url = `${base}${path}`;
+        const requestHeaders = Object.assign(
+          { Accept: 'application/json' },
+          headers,
+        );
+
+        if (requireAuth) {
+          const useRole = role || state.activeRole;
+          const tokenInfo = state.tokens[useRole];
+          if (!tokenInfo || !tokenInfo.accessToken) {
+            const msg = `${useRole} access token missing. Verify OTP first.`;
+            if (target) renderResult(target, msg, false);
+            return { ok: false };
+          }
+          requestHeaders.Authorization = `Bearer ${tokenInfo.accessToken}`;
+        }
+
+        let payload;
+        if (body !== undefined) {
+          requestHeaders['Content-Type'] = 'application/json';
+          payload = JSON.stringify(body);
+        }
+
+        try {
+          const response = await fetch(url, {
+            method,
+            headers: requestHeaders,
+            body: payload,
+            credentials: 'include',
+          });
+          const text = await response.text();
+          let parsed;
+          let formattedBody = text;
+          if (text) {
+            try {
+              parsed = JSON.parse(text);
+              formattedBody = JSON.stringify(parsed, null, 2);
+            } catch (err) {
+              formattedBody = text;
+            }
+          }
+          if (target) {
+            renderResult(target, formatResponse(response, formattedBody), response.ok);
+          }
+          return { ok: response.ok, data: parsed ?? text, response };
+        } catch (err) {
+          const message = `Network error: ${err}`;
+          if (target) renderResult(target, message, false);
+          return { ok: false, error: err };
+        }
+      }
+
+      function storeTokens(role, msisdn, tokens) {
+        state.tokens[role] = {
+          accessToken: tokens.accessToken || '',
+          refreshToken: tokens.refreshToken || '',
+          msisdn: msisdn || '',
+        };
+        state.activeRole = role;
+        $('activeRole').value = role;
+        updateTokenSummary();
+        persistState();
+      }
+
+      function captureTokens(role, msisdn, tokensFromResponse) {
+        const merged = mergeCookieTokens(tokensFromResponse);
+        if (!merged.accessToken && !merged.refreshToken) {
+          return false;
+        }
+        storeTokens(role, msisdn, merged);
+        return true;
+      }
+
+      function getRefreshToken(role) {
+        const tokenInfo = state.tokens[role];
+        return tokenInfo ? tokenInfo.refreshToken : '';
+      }
+
+      function setStatusPill(id, status) {
+        const pill = $(id);
+        if (!pill) return;
+        if (status === 'connected') {
+          pill.classList.add('connected');
+          pill.innerHTML = '<span class="dot"></span>connected';
+        } else if (status === 'connecting') {
+          pill.classList.remove('connected');
+          pill.innerHTML = '<span class="dot" style="background:#fbbf24"></span>connecting';
+        } else {
+          pill.classList.remove('connected');
+          pill.innerHTML = '<span class="dot"></span>disconnected';
+        }
+      }
+
+      function appendSseLine(boxId, text) {
+        const box = $(boxId);
+        const div = document.createElement('div');
+        div.className = 'line';
+        div.textContent = text;
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+      }
+
+      function clearSse(boxId) {
+        $(boxId).innerHTML = '';
+      }
+
+      async function connectOtpSse() {
+        const base = getBaseUrl();
+        if (!base) return;
+        const msisdn = $('otpStreamMsisdn').value.trim();
+        if (!msisdn) {
+          appendSseLine('otpStream', 'MSISDN required');
           return;
         }
+        const token = $('otpToken').value.trim();
+        if (!token) {
+          appendSseLine('otpStream', 'Simulation token required');
+          return;
+        }
+
+        disconnectOtpSse();
+        otpStreamAbort = new AbortController();
+        setStatusPill('otpStreamStatus', 'connecting');
+        appendSseLine('otpStream', `connecting to simulate/${msisdn}/get-otp…`);
+        const url = `${base}/api/v1/gateway/simulate/${encodeURIComponent(msisdn)}/get-otp`;
+
         try {
-          const p = JSON.parse(raw);
-          baseUrlEl.value = p.baseUrl || '';
-          msisdnEl.value = p.msisdn || '';
-          clientTypeEl.value = p.clientType || '';
-          sseTokenEl.value = p.sseToken || '';
-          line('✓ Loaded saved inputs.', 'ok');
-        } catch {
-          line('✗ Failed to parse saved inputs.', 'err');
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              Accept: 'text/event-stream',
+              'x-otp-simulation-token': token,
+            },
+            signal: otpStreamAbort.signal,
+          });
+          if (!response.ok) {
+            setStatusPill('otpStreamStatus', 'disconnected');
+            appendSseLine('otpStream', `HTTP ${response.status}`);
+            return;
+          }
+          setStatusPill('otpStreamStatus', 'connected');
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let boundary;
+            while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+              const chunk = buffer.slice(0, boundary);
+              buffer = buffer.slice(boundary + 2);
+              handleOtpChunk(chunk);
+            }
+          }
+          setStatusPill('otpStreamStatus', 'disconnected');
+          appendSseLine('otpStream', 'stream closed');
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            appendSseLine('otpStream', `error: ${err}`);
+            setStatusPill('otpStreamStatus', 'disconnected');
+          }
         }
       }
 
-      // Wire up
-      sendOtpBtn.addEventListener('click', sendOtp);
-      connectSseBtn.addEventListener('click', connectSSE);
-      disconnectSseBtn.addEventListener('click', disconnectSSE);
-      clearLogBtn.addEventListener('click', clearLog);
-      copyBtn.addEventListener('click', copyAll);
-      saveBtn.addEventListener('click', saveInputs);
-      loadBtn.addEventListener('click', loadInputs);
+      function handleOtpChunk(raw) {
+        if (!raw.trim() || raw.trim().startsWith(':')) return;
+        const lines = raw.split('\n');
+        let data = '';
+        lines.forEach((line) => {
+          if (line.startsWith('data:')) {
+            data += line.slice(5).trim();
+          }
+        });
+        if (!data) return;
+        try {
+          const parsed = JSON.parse(data);
+          const payload = parsed?.payload ?? parsed;
+          appendSseLine('otpStream', JSON.stringify(payload, null, 2));
+        } catch (err) {
+          appendSseLine('otpStream', data);
+        }
+      }
 
-      // Helpful defaults if you reload frequently
-      loadInputs();
+      function disconnectOtpSse() {
+        if (otpStreamAbort) {
+          otpStreamAbort.abort();
+          otpStreamAbort = null;
+        }
+        setStatusPill('otpStreamStatus', 'disconnected');
+      }
+
+      async function connectNotificationSse() {
+        const base = getBaseUrl();
+        if (!base) return;
+        const role = state.activeRole;
+        const tokenInfo = state.tokens[role];
+        if (!tokenInfo.accessToken) {
+          appendSseLine('notificationStream', `Missing ${role} access token`);
+          return;
+        }
+        disconnectNotificationSse();
+        notificationStreamAbort = new AbortController();
+        setStatusPill('notificationStatus', 'connecting');
+        appendSseLine('notificationStream', `connecting as ${role}…`);
+        const url = `${base}/api/v1/gateway/notifications/stream`;
+        try {
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              Accept: 'text/event-stream',
+              Authorization: `Bearer ${tokenInfo.accessToken}`,
+            },
+            signal: notificationStreamAbort.signal,
+          });
+          if (!response.ok) {
+            setStatusPill('notificationStatus', 'disconnected');
+            appendSseLine('notificationStream', `HTTP ${response.status}`);
+            return;
+          }
+          setStatusPill('notificationStatus', 'connected');
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let boundary;
+            while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+              const chunk = buffer.slice(0, boundary);
+              buffer = buffer.slice(boundary + 2);
+              handleNotificationChunk(chunk);
+            }
+          }
+          setStatusPill('notificationStatus', 'disconnected');
+          appendSseLine('notificationStream', 'stream closed');
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            appendSseLine('notificationStream', `error: ${err}`);
+            setStatusPill('notificationStatus', 'disconnected');
+          }
+        }
+      }
+
+      function handleNotificationChunk(raw) {
+        if (!raw.trim() || raw.trim().startsWith(':')) return;
+        const lines = raw.split('\n');
+        let eventName = 'message';
+        let data = '';
+        lines.forEach((line) => {
+          if (line.startsWith('event:')) {
+            eventName = line.slice(6).trim();
+          }
+          if (line.startsWith('data:')) {
+            data += line.slice(5).trim();
+          }
+        });
+        if (!data) return;
+        try {
+          const parsed = JSON.parse(data);
+          appendSseLine(
+            'notificationStream',
+            `${eventName}\n${JSON.stringify(parsed, null, 2)}`,
+          );
+        } catch (err) {
+          appendSseLine('notificationStream', `${eventName}\n${data}`);
+        }
+      }
+
+      function disconnectNotificationSse() {
+        if (notificationStreamAbort) {
+          notificationStreamAbort.abort();
+          notificationStreamAbort = null;
+        }
+        setStatusPill('notificationStatus', 'disconnected');
+      }
+
+      // Event listeners
+      $('baseUrl').addEventListener('change', (e) => {
+        state.baseUrl = e.target.value.trim();
+      });
+      $('otpToken').addEventListener('change', (e) => {
+        state.otpToken = e.target.value.trim();
+      });
+      $('activeRole').addEventListener('change', (e) => {
+        state.activeRole = e.target.value;
+        persistState();
+      });
+      $('lastRide').addEventListener('change', (e) => {
+        setLastRideId(e.target.value.trim());
+      });
+
+      $('saveConfig').addEventListener('click', () => {
+        persistState();
+        updateTokenSummary();
+      });
+      $('loadConfig').addEventListener('click', () => {
+        loadState();
+        applyStateToUi();
+      });
+      $('clearSaved').addEventListener('click', () => {
+        clearSavedState();
+      });
+
+      $('signupRider').addEventListener('click', async () => {
+        const msisdn = $('signupRiderMsisdn').value.trim();
+        const name = $('signupRiderName').value.trim();
+        await callApi({
+          method: 'POST',
+          path: '/api/v1/gateway/client/rider/signup',
+          body: { msisdn, name },
+          target: 'signupRiderResult',
+        });
+      });
+
+      $('signupDriver').addEventListener('click', async () => {
+        const msisdn = $('signupDriverMsisdn').value.trim();
+        const name = $('signupDriverName').value.trim();
+        const driverLicenseNumber = $('signupDriverLicense').value.trim();
+        const vehicleLicensePlate = $('signupDriverVehicle').value.trim();
+        await callApi({
+          method: 'POST',
+          path: '/api/v1/gateway/client/driver/signup',
+          body: { msisdn, name, driverLicenseNumber, vehicleLicensePlate },
+          target: 'signupDriverResult',
+        });
+      });
+
+      $('requestOtp').addEventListener('click', async () => {
+        const msisdn = $('authMsisdn').value.trim();
+        const clientType = $('authClientType').value;
+        const result = await callApi({
+          method: 'POST',
+          path: '/api/v1/gateway/auth/request-otp',
+          body: { msisdn, clientType },
+          target: 'authResult',
+        });
+        if (result.ok) {
+          $('otpStreamMsisdn').value = msisdn;
+        }
+      });
+
+      $('verifyOtp').addEventListener('click', async () => {
+        const msisdn = $('authMsisdn').value.trim();
+        const clientType = $('authClientType').value;
+        const otpCode = $('authOtp').value.trim();
+        const result = await callApi({
+          method: 'POST',
+          path: '/api/v1/gateway/auth/verify-otp',
+          body: { msisdn, clientType, otpCode },
+          target: 'authResult',
+        });
+        if (result.ok) {
+          captureTokens(clientType, msisdn, result.data);
+        }
+      });
+
+      $('refreshToken').addEventListener('click', async () => {
+        const role = state.activeRole;
+        const refreshToken = getRefreshToken(role);
+        if (!refreshToken) {
+          renderResult(
+            'authResult',
+            `No refresh token stored for ${role}. Verify OTP first.`,
+            false,
+          );
+          return;
+        }
+        const result = await callApi({
+          method: 'POST',
+          path: '/api/v1/gateway/auth/refresh-token',
+          body: { refreshToken },
+          target: 'authResult',
+        });
+        if (result.ok) {
+          const msisdn = state.tokens[role].msisdn;
+          captureTokens(role, msisdn, result.data);
+        }
+      });
+
+      $('logout').addEventListener('click', async () => {
+        const role = state.activeRole;
+        const refreshToken = getRefreshToken(role);
+        if (!refreshToken) {
+          renderResult('authResult', `No refresh token for ${role}`, false);
+          return;
+        }
+        const result = await callApi({
+          method: 'POST',
+          path: '/api/v1/gateway/auth/logout',
+          body: { refreshToken },
+          target: 'authResult',
+        });
+        if (result.ok) {
+          state.tokens[role] = { accessToken: '', refreshToken: '', msisdn: '' };
+          updateTokenSummary();
+          persistState();
+        }
+      });
+
+      $('connectOtpStream').addEventListener('click', connectOtpSse);
+      $('disconnectOtpStream').addEventListener('click', disconnectOtpSse);
+      $('clearOtpStream').addEventListener('click', () => clearSse('otpStream'));
+
+      $('updateLocation').addEventListener('click', async () => {
+        const longitude = $('driverLongitude').value;
+        const latitude = $('driverLatitude').value;
+        const accuracyMeters = $('driverAccuracy').value;
+        await callApi({
+          method: 'POST',
+          path: '/api/v1/gateway/location/driver',
+          body: {
+            longitude: longitude ? Number(longitude) : undefined,
+            latitude: latitude ? Number(latitude) : undefined,
+            accuracyMeters: accuracyMeters ? Number(accuracyMeters) : undefined,
+          },
+          target: 'locationResult',
+          requireAuth: true,
+          role: 'DRIVER',
+        });
+      });
+
+      $('createRide').addEventListener('click', async () => {
+        const pickupLongitude = $('pickupLongitude').value;
+        const pickupLatitude = $('pickupLatitude').value;
+        const dropoffLongitude = $('dropoffLongitude').value;
+        const dropoffLatitude = $('dropoffLatitude').value;
+        const pickup = {
+          longitude: pickupLongitude ? Number(pickupLongitude) : undefined,
+          latitude: pickupLatitude ? Number(pickupLatitude) : undefined,
+        };
+        const dropoff = {
+          longitude: dropoffLongitude ? Number(dropoffLongitude) : undefined,
+          latitude: dropoffLatitude ? Number(dropoffLatitude) : undefined,
+        };
+        const driverId = $('rideDriverId').value.trim();
+        const note = $('rideNote').value.trim();
+        const result = await callApi({
+          method: 'POST',
+          path: '/api/v1/gateway/rides',
+          body: {
+            pickup,
+            dropoff,
+            driverId,
+            note: note || undefined,
+          },
+          target: 'createRideResult',
+          requireAuth: true,
+          role: 'RIDER',
+        });
+        if (result.ok && result.data && result.data.data && result.data.data.id) {
+          setLastRideId(result.data.data.id);
+        }
+      });
+
+      function getRideIdFromInput() {
+        const id = $('rideId').value.trim() || state.lastRideId;
+        if (!id) {
+          renderResult('rideActionsResult', 'Ride id is required', false);
+          return null;
+        }
+        return id;
+      }
+
+      $('getRide').addEventListener('click', async () => {
+        const id = getRideIdFromInput();
+        if (!id) return;
+        await callApi({
+          method: 'GET',
+          path: `/api/v1/gateway/rides/${encodeURIComponent(id)}`,
+          target: 'rideActionsResult',
+          requireAuth: true,
+        });
+      });
+
+      $('driverAccept').addEventListener('click', async () => {
+        const id = getRideIdFromInput();
+        if (!id) return;
+        await callApi({
+          method: 'POST',
+          path: `/api/v1/gateway/rides/${encodeURIComponent(id)}/driver-accept`,
+          target: 'rideActionsResult',
+          requireAuth: true,
+          role: 'DRIVER',
+        });
+      });
+
+      $('riderAccept').addEventListener('click', async () => {
+        const id = getRideIdFromInput();
+        if (!id) return;
+        await callApi({
+          method: 'POST',
+          path: `/api/v1/gateway/rides/${encodeURIComponent(id)}/rider-accept`,
+          target: 'rideActionsResult',
+          requireAuth: true,
+          role: 'RIDER',
+        });
+      });
+
+      $('riderReject').addEventListener('click', async () => {
+        const id = getRideIdFromInput();
+        if (!id) return;
+        const reason = $('rideReason').value.trim();
+        await callApi({
+          method: 'POST',
+          path: `/api/v1/gateway/rides/${encodeURIComponent(id)}/rider-reject`,
+          body: { reason: reason || undefined },
+          target: 'rideActionsResult',
+          requireAuth: true,
+          role: 'RIDER',
+        });
+      });
+
+      $('riderCancel').addEventListener('click', async () => {
+        const id = getRideIdFromInput();
+        if (!id) return;
+        const reason = $('rideReason').value.trim();
+        await callApi({
+          method: 'POST',
+          path: `/api/v1/gateway/rides/${encodeURIComponent(id)}/cancel`,
+          body: { reason: reason || undefined },
+          target: 'rideActionsResult',
+          requireAuth: true,
+          role: 'RIDER',
+        });
+      });
+
+      $('driverComplete').addEventListener('click', async () => {
+        const id = getRideIdFromInput();
+        if (!id) return;
+        await callApi({
+          method: 'POST',
+          path: `/api/v1/gateway/rides/${encodeURIComponent(id)}/complete`,
+          target: 'rideActionsResult',
+          requireAuth: true,
+          role: 'DRIVER',
+        });
+      });
+
+      $('connectNotifications').addEventListener('click', connectNotificationSse);
+      $('disconnectNotifications').addEventListener('click', disconnectNotificationSse);
+      $('clearNotifications').addEventListener('click', () => clearSse('notificationStream'));
+
+      // Initial load
+      loadState();
+      applyStateToUi();
     </script>
   </body>
 </html>
