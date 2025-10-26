@@ -194,8 +194,9 @@
       }
 
       async function request(path, options) {
+        let response;
         try {
-          const response = await fetch(`${getBaseUrl()}${path}`, {
+          response = await fetch(`${getBaseUrl()}${path}`, {
             // credentials: 'include',
             ...options,
             headers: {
@@ -203,11 +204,18 @@
               ...(options.headers || {}),
             },
           });
-          let data;
+        } catch (error) {
+          console.error(error);
+          const detail =
+            error instanceof Error ? error.message : 'Unknown network failure';
+          throw new Error(`Network request failed: ${detail}`);
+        }
 
+        let data;
+        try {
           data = await response.clone().json();
         } catch (error) {
-          console.log(error);
+          console.error(error);
           data = await response.text();
         }
         return { response, data };
