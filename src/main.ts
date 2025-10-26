@@ -17,7 +17,6 @@ async function bootstrap() {
   app.useLogger(logger);
   app.use(helmet.hidePoweredBy());
 
-  // Enable CORS with specific methods (only GET and POST)
   app.enableCors({
     origin: '*', // You can specify specific origins if needed
     methods: '*',

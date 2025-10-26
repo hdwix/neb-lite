@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -6,7 +6,12 @@
     <style>
       :root {
         color-scheme: light dark;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
       }
       body {
         margin: 0;
@@ -101,8 +106,8 @@
           <span class="badge">Client module</span>
         </h1>
         <p class="muted">
-          Use these controls to walk through onboarding a customer or driver account
-          against the gateway.
+          Use these controls to walk through onboarding a customer or driver
+          account against the gateway.
         </p>
       </header>
 
@@ -117,50 +122,44 @@
             placeholder="http://localhost:3000/api/v1"
           />
           <label for="authHeader">Authorization header (optional)</label>
-          <input
-            id="authHeader"
-            type="text"
-            placeholder="Bearer &lt;token&gt;"
-          />
         </div>
       </section>
 
       <section>
-        <h2>Signup Request</h2>
+        <h2>Rider Signup Request</h2>
         <div class="stacked">
           <label for="signupPath">Endpoint path</label>
           <input
             id="signupPath"
             type="text"
-            value="/client/signup"
-            placeholder="/client/signup"
+            value="/gateway/client/rider/signup"
+            placeholder="/gateway/client/rider/signup"
           />
           <div class="inline">
             <div>
-              <label for="signupRole">Role</label>
-              <select id="signupRole">
-                <option value="CUSTOMER">Customer</option>
-                <option value="DRIVER">Driver</option>
-              </select>
-            </div>
-            <div>
               <label for="signupPhone">Phone number</label>
-              <input id="signupPhone" type="tel" placeholder="62xxxxxxxxxx" />
+              <input id="signupPhone" type="tel" placeholder="+62xxxxxxxxxx" />
             </div>
           </div>
           <input id="signupName" type="text" placeholder="Full name" />
-          <input id="signupEmail" type="email" placeholder="Email (optional)" />
-          <textarea id="signupExtras" placeholder='Additional payload as JSON (e.g. {"vehicleType":"bike"})'></textarea>
+          <textarea
+            id="signupExtras"
+            placeholder='Additional payload as JSON (e.g. {"vehicleType":"bike"})'
+          ></textarea>
           <button id="submitSignup">Call signup endpoint</button>
           <pre id="signupResult">{}</pre>
         </div>
       </section>
 
       <section>
-        <h2>Raw Request Builder</h2>
+        <h2>Driver Signup Request</h2>
         <div class="stacked">
           <label for="rawPath">Endpoint path</label>
-          <input id="rawPath" type="text" placeholder="/client/some-endpoint" />
+          <input
+            id="rawPath"
+            type="text"
+            placeholder="/gateway/client/driver/signup"
+          />
           <label for="rawMethod">Method</label>
           <input id="rawMethod" type="text" value="POST" />
           <textarea id="rawBody" placeholder="Raw JSON body"></textarea>
@@ -180,10 +179,6 @@
         const headers = {
           'Content-Type': 'application/json',
         };
-        const authHeader = document.getElementById('authHeader').value.trim();
-        if (authHeader) {
-          headers.Authorization = authHeader;
-        }
         return headers;
       }
 
@@ -199,60 +194,65 @@
       }
 
       async function request(path, options) {
-        const response = await fetch(`${getBaseUrl()}${path}`, {
-          credentials: 'include',
-          ...options,
-          headers: {
-            ...getHeaders(),
-            ...(options.headers || {}),
-          },
-        });
-        let data;
         try {
+          const response = await fetch(`${getBaseUrl()}${path}`, {
+            // credentials: 'include',
+            ...options,
+            headers: {
+              ...getHeaders(),
+              ...(options.headers || {}),
+            },
+          });
+          let data;
+
           data = await response.clone().json();
         } catch (error) {
+          console.log(error);
           data = await response.text();
         }
         return { response, data };
       }
 
-      document.getElementById('submitSignup').addEventListener('click', async () => {
-        const path = document.getElementById('signupPath').value.trim() || '/client/signup';
-        const payload = {
-          role: document.getElementById('signupRole').value,
-          phone: document.getElementById('signupPhone').value.trim(),
-          name: document.getElementById('signupName').value.trim(),
-        };
-        const email = document.getElementById('signupEmail').value.trim();
-        if (email) {
-          payload.email = email;
-        }
-        const extras = document.getElementById('signupExtras').value.trim();
-        if (extras) {
-          try {
-            Object.assign(payload, JSON.parse(extras));
-          } catch (error) {
-            return (document.getElementById('signupResult').textContent =
-              'Extras payload must be valid JSON.');
+      document
+        .getElementById('submitSignup')
+        .addEventListener('click', async () => {
+          const path =
+            document.getElementById('signupPath').value.trim() ||
+            '/gateway/client/rider/signup';
+          const payload = {
+            msisdn: document.getElementById('signupPhone').value.trim(),
+            name: document.getElementById('signupName').value.trim(),
+          };
+          const extras = document.getElementById('signupExtras').value.trim();
+          if (extras) {
+            try {
+              Object.assign(payload, JSON.parse(extras));
+            } catch (error) {
+              return (document.getElementById('signupResult').textContent =
+                'Extras payload must be valid JSON.');
+            }
           }
-        }
-        try {
-          const { response, data } = await request(path, {
-            method: 'POST',
-            body: JSON.stringify(payload),
-          });
-          document.getElementById('signupResult').textContent = stringify(data || response);
-        } catch (error) {
-          document.getElementById('signupResult').textContent = error.message;
-        }
-      });
+          try {
+            const { response, data } = await request(path, {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            });
+            document.getElementById('signupResult').textContent = stringify(
+              data || response,
+            );
+          } catch (error) {
+            document.getElementById('signupResult').textContent = error.message;
+          }
+        });
 
       document.getElementById('sendRaw').addEventListener('click', async () => {
         const path = document.getElementById('rawPath').value.trim();
         if (!path) {
-          return (document.getElementById('rawResult').textContent = 'Provide an endpoint path.');
+          return (document.getElementById('rawResult').textContent =
+            'Provide an endpoint path.');
         }
-        const method = document.getElementById('rawMethod').value.trim() || 'POST';
+        const method =
+          document.getElementById('rawMethod').value.trim() || 'POST';
         const bodyText = document.getElementById('rawBody').value.trim();
         let body = bodyText ? bodyText : undefined;
         if (body && !method.match(/^GET|HEAD$/i)) {
@@ -268,7 +268,9 @@
             method,
             body: body && !method.match(/^GET|HEAD$/i) ? body : undefined,
           });
-          document.getElementById('rawResult').textContent = stringify(data || response);
+          document.getElementById('rawResult').textContent = stringify(
+            data || response,
+          );
         } catch (error) {
           document.getElementById('rawResult').textContent = error.message;
         }

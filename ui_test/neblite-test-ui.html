@@ -7,7 +7,11 @@
     <style>
       :root {
         color-scheme: light;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+        font-family:
+          'Inter',
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
           sans-serif;
       }
       * {
@@ -116,7 +120,9 @@
         font: inherit;
         font-weight: 500;
         cursor: pointer;
-        transition: background 0.18s ease, transform 0.18s ease;
+        transition:
+          background 0.18s ease,
+          transform 0.18s ease;
       }
       button.secondary {
         background: #e2e8f0;
@@ -140,8 +146,8 @@
         padding: 12px;
         border-radius: 8px;
         min-height: 60px;
-        font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas,
-          monospace;
+        font-family:
+          'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
         white-space: pre-wrap;
         word-break: break-word;
       }
@@ -179,8 +185,8 @@
         color: #e2e8f0;
         border-radius: 8px;
         padding: 10px;
-        font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas,
-          monospace;
+        font-family:
+          'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
         height: 130px;
         overflow-y: auto;
         font-size: 12px;
@@ -229,11 +235,21 @@
         <div class="grid-two cols-2">
           <div>
             <label for="baseUrl">Base URL</label>
-            <input id="baseUrl" type="text" placeholder="http://localhost:3000" />
+            <input
+              id="baseUrl"
+              type="text"
+              placeholder="http://localhost:3000"
+            />
           </div>
           <div>
-            <label for="otpToken">OTP simulation token (x-otp-simulation-token)</label>
-            <input id="otpToken" type="text" placeholder="token for /simulate/{msisdn}/get-otp" />
+            <label for="otpToken"
+              >OTP simulation token (x-otp-simulation-token)</label
+            >
+            <input
+              id="otpToken"
+              type="text"
+              placeholder="token for /simulate/{msisdn}/get-otp"
+            />
           </div>
           <div>
             <label for="activeRole">Active client</label>
@@ -244,19 +260,25 @@
           </div>
           <div>
             <label for="lastRide">Last ride id</label>
-            <input id="lastRide" type="text" placeholder="auto-filled after create ride" />
+            <input
+              id="lastRide"
+              type="text"
+              placeholder="auto-filled after create ride"
+            />
           </div>
         </div>
         <div class="pill-group" id="tokenSummary"></div>
         <div class="actions">
           <button id="saveConfig" class="secondary">Save configuration</button>
-          <button id="loadConfig" class="ghost">Load saved configuration</button>
+          <button id="loadConfig" class="ghost">
+            Load saved configuration
+          </button>
           <button id="clearSaved" class="ghost">Clear saved data</button>
         </div>
         <p class="note">
           Tokens are stored per client type after verifying OTP. Selecting an
-          active client tells the playground which token to use for Bearer-protected
-          calls.
+          active client tells the playground which token to use for
+          Bearer-protected calls.
         </p>
       </section>
 
@@ -275,16 +297,26 @@
         <div class="actions">
           <button id="signupRider">Create rider</button>
         </div>
-        <pre id="signupRiderResult" class="result empty">Waiting for response…</pre>
+        <pre id="signupRiderResult" class="result empty">
+Waiting for response…</pre
+        >
         <hr />
         <div class="grid-two cols-2">
           <div>
             <label for="signupDriverMsisdn">Driver MSISDN</label>
-            <input id="signupDriverMsisdn" type="text" placeholder="+62811..." />
+            <input
+              id="signupDriverMsisdn"
+              type="text"
+              placeholder="+62811..."
+            />
           </div>
           <div>
             <label for="signupDriverName">Driver name</label>
-            <input id="signupDriverName" type="text" placeholder="Driver Name" />
+            <input
+              id="signupDriverName"
+              type="text"
+              placeholder="Driver Name"
+            />
           </div>
           <div>
             <label for="signupDriverLicense">Driver license number</label>
@@ -292,17 +324,26 @@
           </div>
           <div>
             <label for="signupDriverVehicle">Vehicle license plate</label>
-            <input id="signupDriverVehicle" type="text" placeholder="B 1234 CD" />
+            <input
+              id="signupDriverVehicle"
+              type="text"
+              placeholder="B 1234 CD"
+            />
           </div>
         </div>
         <div class="actions">
           <button id="signupDriver">Create driver</button>
         </div>
-        <pre id="signupDriverResult" class="result empty">Waiting for response…</pre>
+        <pre id="signupDriverResult" class="result empty">
+Waiting for response…</pre
+        >
       </section>
 
       <section class="card" id="auth">
-        <h2>2. Authenticate <span>Request OTP, verify, refresh, and simulate SSE</span></h2>
+        <h2>
+          2. Authenticate
+          <span>Request OTP, verify, refresh, and simulate SSE</span>
+        </h2>
         <div class="grid-two cols-2">
           <div>
             <label for="authMsisdn">MSISDN</label>
@@ -326,7 +367,9 @@
           <button id="refreshToken" class="ghost">Refresh access token</button>
           <button id="logout" class="ghost">Logout</button>
         </div>
-        <pre id="authResult" class="result empty">Responses will appear here</pre>
+        <pre id="authResult" class="result empty">
+Responses will appear here</pre
+        >
         <div>
           <div class="inline">
             <div>
@@ -336,7 +379,9 @@
           </div>
           <div class="actions">
             <button id="connectOtpStream">Connect OTP stream</button>
-            <span class="status-pill" id="otpStreamStatus"><span class="dot"></span>disconnected</span>
+            <span class="status-pill" id="otpStreamStatus"
+              ><span class="dot"></span>disconnected</span
+            >
             <button id="disconnectOtpStream" class="ghost">Disconnect</button>
             <button id="clearOtpStream" class="ghost">Clear</button>
           </div>
@@ -345,25 +390,44 @@
       </section>
 
       <section class="card" id="location">
-        <h2>3. Driver updates location <span>Requires driver bearer token</span></h2>
+        <h2>
+          3. Driver updates location <span>Requires driver bearer token</span>
+        </h2>
         <div class="grid-two cols-2">
           <div>
             <label for="driverLongitude">Longitude</label>
-            <input id="driverLongitude" type="number" step="any" placeholder="106.8" />
+            <input
+              id="driverLongitude"
+              type="number"
+              step="any"
+              placeholder="106.8"
+            />
           </div>
           <div>
             <label for="driverLatitude">Latitude</label>
-            <input id="driverLatitude" type="number" step="any" placeholder="-6.2" />
+            <input
+              id="driverLatitude"
+              type="number"
+              step="any"
+              placeholder="-6.2"
+            />
           </div>
           <div>
             <label for="driverAccuracy">Accuracy (meters)</label>
-            <input id="driverAccuracy" type="number" step="any" placeholder="optional" />
+            <input
+              id="driverAccuracy"
+              type="number"
+              step="any"
+              placeholder="optional"
+            />
           </div>
         </div>
         <div class="actions">
           <button id="updateLocation">POST /location/driver</button>
         </div>
-        <pre id="locationResult" class="result empty">Waiting for response…</pre>
+        <pre id="locationResult" class="result empty">
+Waiting for response…</pre
+        >
       </section>
 
       <section class="card" id="ride-create">
@@ -371,19 +435,39 @@
         <div class="grid-two cols-2">
           <div>
             <label for="pickupLongitude">Pickup longitude</label>
-            <input id="pickupLongitude" type="number" step="any" placeholder="106.8" />
+            <input
+              id="pickupLongitude"
+              type="number"
+              step="any"
+              placeholder="106.8"
+            />
           </div>
           <div>
             <label for="pickupLatitude">Pickup latitude</label>
-            <input id="pickupLatitude" type="number" step="any" placeholder="-6.2" />
+            <input
+              id="pickupLatitude"
+              type="number"
+              step="any"
+              placeholder="-6.2"
+            />
           </div>
           <div>
             <label for="dropoffLongitude">Dropoff longitude</label>
-            <input id="dropoffLongitude" type="number" step="any" placeholder="106.9" />
+            <input
+              id="dropoffLongitude"
+              type="number"
+              step="any"
+              placeholder="106.9"
+            />
           </div>
           <div>
             <label for="dropoffLatitude">Dropoff latitude</label>
-            <input id="dropoffLatitude" type="number" step="any" placeholder="-6.1" />
+            <input
+              id="dropoffLatitude"
+              type="number"
+              step="any"
+              placeholder="-6.1"
+            />
           </div>
           <div>
             <label for="rideDriverId">Driver id</label>
@@ -397,15 +481,24 @@
         <div class="actions">
           <button id="createRide">POST /rides</button>
         </div>
-        <pre id="createRideResult" class="result empty">Waiting for response…</pre>
+        <pre id="createRideResult" class="result empty">
+Waiting for response…</pre
+        >
       </section>
 
       <section class="card" id="ride-lifecycle">
-        <h2>5. Ride lifecycle <span>Continue operations using stored ride id</span></h2>
+        <h2>
+          5. Ride lifecycle
+          <span>Continue operations using stored ride id</span>
+        </h2>
         <div class="grid-two cols-2">
           <div>
             <label for="rideId">Ride id</label>
-            <input id="rideId" type="text" placeholder="Use the last ride id or paste manually" />
+            <input
+              id="rideId"
+              type="text"
+              placeholder="Use the last ride id or paste manually"
+            />
           </div>
           <div>
             <label for="rideReason">Reason (for cancel / reject)</label>
@@ -413,21 +506,30 @@
           </div>
         </div>
         <div class="actions">
-          <button id="getRide" class="secondary">GET /rides/:id (active client)</button>
+          <button id="getRide" class="secondary">
+            GET /rides/:id (active client)
+          </button>
           <button id="driverAccept">Driver accept</button>
           <button id="riderAccept" class="secondary">Rider accept</button>
           <button id="riderReject" class="ghost">Rider reject</button>
           <button id="riderCancel" class="ghost">Rider cancel</button>
           <button id="driverComplete">Driver complete</button>
         </div>
-        <pre id="rideActionsResult" class="result empty">Responses from ride operations will appear here</pre>
+        <pre id="rideActionsResult" class="result empty">
+Responses from ride operations will appear here</pre
+        >
       </section>
 
       <section class="card" id="notifications">
-        <h2>6. Notifications stream <span>Server-sent events from /notifications/stream</span></h2>
+        <h2>
+          6. Notifications stream
+          <span>Server-sent events from /notifications/stream</span>
+        </h2>
         <div class="actions">
           <button id="connectNotifications">Connect stream</button>
-          <span class="status-pill" id="notificationStatus"><span class="dot"></span>disconnected</span>
+          <span class="status-pill" id="notificationStatus"
+            ><span class="dot"></span>disconnected</span
+          >
           <button id="disconnectNotifications" class="ghost">Disconnect</button>
           <button id="clearNotifications" class="ghost">Clear</button>
         </div>
@@ -440,7 +542,7 @@
     </main>
 
     <script>
-      const storageKey = 'neblite-gateway-playground';
+      const storageKey = 'nebeng-lite-gateway-playground';
       const $ = (id) => document.getElementById(id);
 
       const state = {
@@ -629,7 +731,11 @@
             }
           }
           if (target) {
-            renderResult(target, formatResponse(response, formattedBody), response.ok);
+            renderResult(
+              target,
+              formatResponse(response, formattedBody),
+              response.ok,
+            );
           }
           return { ok: response.ok, data: parsed ?? text, response };
         } catch (err) {
@@ -673,7 +779,8 @@
           pill.innerHTML = '<span class="dot"></span>connected';
         } else if (status === 'connecting') {
           pill.classList.remove('connected');
-          pill.innerHTML = '<span class="dot" style="background:#fbbf24"></span>connecting';
+          pill.innerHTML =
+            '<span class="dot" style="background:#fbbf24"></span>connecting';
         } else {
           pill.classList.remove('connected');
           pill.innerHTML = '<span class="dot"></span>disconnected';
@@ -982,7 +1089,11 @@
           target: 'authResult',
         });
         if (result.ok) {
-          state.tokens[role] = { accessToken: '', refreshToken: '', msisdn: '' };
+          state.tokens[role] = {
+            accessToken: '',
+            refreshToken: '',
+            msisdn: '',
+          };
           updateTokenSummary();
           persistState();
         }
@@ -990,7 +1101,9 @@
 
       $('connectOtpStream').addEventListener('click', connectOtpSse);
       $('disconnectOtpStream').addEventListener('click', disconnectOtpSse);
-      $('clearOtpStream').addEventListener('click', () => clearSse('otpStream'));
+      $('clearOtpStream').addEventListener('click', () =>
+        clearSse('otpStream'),
+      );
 
       $('updateLocation').addEventListener('click', async () => {
         const longitude = $('driverLongitude').value;
@@ -1038,7 +1151,12 @@
           requireAuth: true,
           role: 'RIDER',
         });
-        if (result.ok && result.data && result.data.data && result.data.data.id) {
+        if (
+          result.ok &&
+          result.data &&
+          result.data.data &&
+          result.data.data.id
+        ) {
           setLastRideId(result.data.data.id);
         }
       });
@@ -1127,9 +1245,17 @@
         });
       });
 
-      $('connectNotifications').addEventListener('click', connectNotificationSse);
-      $('disconnectNotifications').addEventListener('click', disconnectNotificationSse);
-      $('clearNotifications').addEventListener('click', () => clearSse('notificationStream'));
+      $('connectNotifications').addEventListener(
+        'click',
+        connectNotificationSse,
+      );
+      $('disconnectNotifications').addEventListener(
+        'click',
+        disconnectNotificationSse,
+      );
+      $('clearNotifications').addEventListener('click', () =>
+        clearSse('notificationStream'),
+      );
 
       // Initial load
       loadState();
