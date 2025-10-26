@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Rides Module API Tester</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #0d1117;
+        color: #f0f6fc;
+      }
+      h1,
+      h2 {
+        margin-top: 0;
+      }
+      section {
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+        background: rgba(13, 17, 23, 0.85);
+      }
+      label {
+        display: block;
+        font-size: 0.85rem;
+        margin-bottom: 4px;
+        color: #9da5b4;
+      }
+      input,
+      button,
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px;
+        margin-bottom: 12px;
+        border-radius: 6px;
+        border: 1px solid #30363d;
+        background: #161b22;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+        border: 1px solid #238636;
+        background: #238636;
+        font-weight: 600;
+      }
+      button.secondary {
+        background: transparent;
+        border-color: #30363d;
+      }
+      pre {
+        background: #161b22;
+        border: 1px solid #30363d;
+        padding: 12px;
+        border-radius: 6px;
+        overflow: auto;
+        max-height: 240px;
+        font-size: 0.9rem;
+      }
+      .stacked {
+        display: grid;
+        gap: 12px;
+      }
+      .inline {
+        display: flex;
+        gap: 8px;
+      }
+      .inline > * {
+        flex: 1;
+        margin-bottom: 0;
+      }
+      .badge {
+        display: inline-flex;
+        padding: 2px 6px;
+        border-radius: 12px;
+        background: #30363d;
+        font-size: 0.75rem;
+        color: #9da5b4;
+        margin-left: 8px;
+      }
+      .muted {
+        color: #8b949e;
+        font-size: 0.85rem;
+      }
+      textarea {
+        min-height: 120px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stacked">
+      <header>
+        <h1>
+          Rides Process Testing
+          <span class="badge">Rides module</span>
+        </h1>
+        <p class="muted">
+          Capture each step of a booking lifecycle, from requesting a ride to finishing it.
+          Adjust endpoint paths as needed to match the deployed gateway.
+        </p>
+      </header>
+
+      <section>
+        <h2>Environment</h2>
+        <div class="stacked">
+          <label for="baseUrl">Gateway base URL</label>
+          <input
+            id="baseUrl"
+            type="url"
+            value="http://localhost:3000/api/v1"
+            placeholder="http://localhost:3000/api/v1"
+          />
+          <label for="authHeader">Authorization header</label>
+          <input id="authHeader" type="text" placeholder="Bearer &lt;token&gt;" />
+          <label for="rideId">Ride identifier (persisted between calls)</label>
+          <input id="rideId" type="text" placeholder="uuid" />
+        </div>
+      </section>
+
+      <section>
+        <h2>Create ride</h2>
+        <div class="stacked">
+          <label for="createPath">Endpoint path</label>
+          <input id="createPath" type="text" value="/rides" placeholder="/rides" />
+          <textarea
+            id="createBody"
+            placeholder='{"pickup":{"lat":-6.2,"lng":106.8},"destination":{"lat":-6.9,"lng":107.6}}'
+          ></textarea>
+          <button id="createRide">Request ride</button>
+          <pre id="createResult">{}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Assign / accept ride</h2>
+        <div class="stacked">
+          <label for="acceptPath">Endpoint path</label>
+          <input
+            id="acceptPath"
+            type="text"
+            value="/rides/{id}/accept"
+            placeholder="/rides/{id}/accept"
+          />
+          <textarea id="acceptBody" placeholder='{"driverId":"..."}'></textarea>
+          <button id="acceptRide">Accept ride</button>
+          <pre id="acceptResult">{}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Complete ride</h2>
+        <div class="stacked">
+          <label for="completePath">Endpoint path</label>
+          <input
+            id="completePath"
+            type="text"
+            value="/rides/{id}/complete"
+            placeholder="/rides/{id}/complete"
+          />
+          <textarea id="completeBody" placeholder='{"fare":15000}'></textarea>
+          <button id="completeRide">Complete</button>
+          <pre id="completeResult">{}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Get ride status</h2>
+        <div class="stacked">
+          <label for="statusPath">Endpoint path</label>
+          <input id="statusPath" type="text" value="/rides/{id}" placeholder="/rides/{id}" />
+          <button id="fetchStatus">Fetch status</button>
+          <pre id="statusResult">{}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Custom request</h2>
+        <div class="stacked">
+          <label for="rawPath">Endpoint path</label>
+          <input id="rawPath" type="text" placeholder="/rides/{id}/cancel" />
+          <label for="rawMethod">Method</label>
+          <input id="rawMethod" type="text" value="POST" />
+          <textarea id="rawBody" placeholder="JSON body"></textarea>
+          <button id="sendRaw">Send</button>
+          <pre id="rawResult">{}</pre>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      function getBaseUrl() {
+        return document.getElementById('baseUrl').value.trim().replace(/\/$/, '');
+      }
+
+      function getRideId() {
+        return document.getElementById('rideId').value.trim();
+      }
+
+      function setRideId(id) {
+        if (!id) return;
+        document.getElementById('rideId').value = id;
+      }
+
+      function buildHeaders() {
+        const headers = {
+          'Content-Type': 'application/json',
+        };
+        const auth = document.getElementById('authHeader').value.trim();
+        if (auth) {
+          headers.Authorization = auth;
+        }
+        return headers;
+      }
+
+      async function send(path, options) {
+        const response = await fetch(`${getBaseUrl()}${path}`, {
+          credentials: 'include',
+          ...options,
+          headers: {
+            ...buildHeaders(),
+            ...(options.headers || {}),
+          },
+        });
+        let data;
+        try {
+          data = await response.clone().json();
+        } catch (error) {
+          data = await response.text();
+        }
+        return { response, data };
+      }
+
+      function show(target, payload) {
+        if (payload instanceof Response) {
+          target.textContent = `${payload.status} ${payload.statusText}`;
+          return;
+        }
+        try {
+          target.textContent = JSON.stringify(payload, null, 2);
+        } catch (error) {
+          target.textContent = String(payload);
+        }
+      }
+
+      function replaceRideId(path) {
+        const rideId = getRideId();
+        if (!rideId) {
+          return path;
+        }
+        return path.replace('{id}', rideId);
+      }
+
+      function parseBody(text, target) {
+        const trimmed = text.trim();
+        if (!trimmed) {
+          return undefined;
+        }
+        try {
+          JSON.parse(trimmed);
+          return trimmed;
+        } catch (error) {
+          show(target, 'Body must be valid JSON.');
+          throw error;
+        }
+      }
+
+      document.getElementById('createRide').addEventListener('click', async () => {
+        const path = document.getElementById('createPath').value.trim() || '/rides';
+        const bodyText = document.getElementById('createBody').value.trim();
+        let body = bodyText || '{}';
+        try {
+          JSON.parse(body);
+        } catch (error) {
+          return show(document.getElementById('createResult'), 'Body must be valid JSON.');
+        }
+        try {
+          const { response, data } = await send(path, {
+            method: 'POST',
+            body,
+          });
+          show(document.getElementById('createResult'), data || response);
+          if (data && data.id) {
+            setRideId(data.id);
+          }
+        } catch (error) {
+          show(document.getElementById('createResult'), error.message);
+        }
+      });
+
+      document.getElementById('acceptRide').addEventListener('click', async () => {
+        const pathTemplate = document.getElementById('acceptPath').value.trim();
+        if (!pathTemplate) {
+          return show(document.getElementById('acceptResult'), 'Provide an endpoint path.');
+        }
+        const path = replaceRideId(pathTemplate);
+        let body;
+        try {
+          body = parseBody(
+            document.getElementById('acceptBody').value,
+            document.getElementById('acceptResult'),
+          );
+        } catch (error) {
+          return;
+        }
+        try {
+          const { response, data } = await send(path, {
+            method: 'POST',
+            body,
+          });
+          show(document.getElementById('acceptResult'), data || response);
+        } catch (error) {
+          show(document.getElementById('acceptResult'), error.message);
+        }
+      });
+
+      document.getElementById('completeRide').addEventListener('click', async () => {
+        const pathTemplate = document.getElementById('completePath').value.trim();
+        if (!pathTemplate) {
+          return show(document.getElementById('completeResult'), 'Provide an endpoint path.');
+        }
+        const path = replaceRideId(pathTemplate);
+        let body;
+        try {
+          body = parseBody(
+            document.getElementById('completeBody').value,
+            document.getElementById('completeResult'),
+          );
+        } catch (error) {
+          return;
+        }
+        try {
+          const { response, data } = await send(path, {
+            method: 'POST',
+            body,
+          });
+          show(document.getElementById('completeResult'), data || response);
+        } catch (error) {
+          show(document.getElementById('completeResult'), error.message);
+        }
+      });
+
+      document.getElementById('fetchStatus').addEventListener('click', async () => {
+        const pathTemplate = document.getElementById('statusPath').value.trim();
+        if (!pathTemplate) {
+          return show(document.getElementById('statusResult'), 'Provide an endpoint path.');
+        }
+        const path = replaceRideId(pathTemplate);
+        try {
+          const { response, data } = await send(path, { method: 'GET' });
+          show(document.getElementById('statusResult'), data || response);
+        } catch (error) {
+          show(document.getElementById('statusResult'), error.message);
+        }
+      });
+
+      document.getElementById('sendRaw').addEventListener('click', async () => {
+        const pathTemplate = document.getElementById('rawPath').value.trim();
+        if (!pathTemplate) {
+          return show(document.getElementById('rawResult'), 'Provide an endpoint path.');
+        }
+        const path = replaceRideId(pathTemplate);
+        const method = document.getElementById('rawMethod').value.trim() || 'POST';
+        let body;
+        try {
+          body = method.match(/^GET|HEAD$/i)
+            ? undefined
+            : parseBody(document.getElementById('rawBody').value, document.getElementById('rawResult'));
+        } catch (error) {
+          return;
+        }
+        try {
+          const { response, data } = await send(path, {
+            method,
+            body,
+          });
+          show(document.getElementById('rawResult'), data || response);
+        } catch (error) {
+          show(document.getElementById('rawResult'), error.message);
+        }
+      });
+    </script>
+  </body>
+</html>
