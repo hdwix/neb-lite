@@ -331,13 +331,26 @@
         }
       }
 
+      function shouldIncludeCredentials(url) {
+        try {
+          const target = new URL(url, window.location.href);
+          if (window.location.protocol === 'file:') {
+            return false;
+          }
+          return target.origin === window.location.origin;
+        } catch (error) {
+          console.error('Failed to evaluate credential policy', error);
+          return false;
+        }
+      }
+
       async function requestJson(path, { method = 'GET', body, headers } = {}) {
         const url = `${getBaseUrl()}${path}`;
         console.log('url===');
         console.log(url);
         const options = {
           method,
-          credentials: 'include',
+          credentials: shouldIncludeCredentials(url) ? 'include' : 'omit',
           headers: {},
         };
         if (headers) {
@@ -619,7 +632,7 @@
             const response = await fetch(url, {
               method: 'GET',
               headers,
-              credentials: 'include',
+              credentials: shouldIncludeCredentials(url) ? 'include' : 'omit',
               signal: abortController.signal,
             });
             if (!response.ok) {
