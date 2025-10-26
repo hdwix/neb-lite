@@ -592,7 +592,13 @@
         .getElementById('startSse')
         .addEventListener('click', async () => {
           closeStream();
-          const url = `${getBaseUrl()}/simulate/${encodeURIComponent(state.msisdn)}/get-otp`;
+          rememberMsisdn();
+          const msisdn = state.msisdn;
+          if (!msisdn) {
+            appendLog('Enter phone number before starting stream.');
+            return;
+          }
+          const url = `${getBaseUrl()}/simulate/${encodeURIComponent(msisdn)}/get-otp`;
           const simulationToken = getSimulationToken();
           if (!simulationToken) {
             appendLog('Provide x-otp-simulation-token before starting stream.');
