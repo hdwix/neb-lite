@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -6,7 +6,12 @@
     <style>
       :root {
         color-scheme: light dark;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
       }
       body {
         margin: 0;
@@ -117,7 +122,8 @@
         background: #161b22;
       }
       .log-entry {
-        font-family: ui-monospace, SFMono-Regular, SFMono-Regular, "Fira Code", monospace;
+        font-family:
+          ui-monospace, SFMono-Regular, SFMono-Regular, 'Fira Code', monospace;
         font-size: 0.85rem;
         padding: 4px 6px;
         border-radius: 4px;
@@ -133,9 +139,9 @@
           <span class="badge">IAM module</span>
         </h1>
         <p class="muted">
-          Minimal controls to exercise OTP retrieval, verification, refresh, and logout
-          flows. Requests automatically include credentials so tokens emitted in cookies
-          stay attached to subsequent calls.
+          Minimal controls to exercise OTP retrieval, verification, refresh, and
+          logout flows. Requests automatically include credentials so tokens
+          emitted in cookies stay attached to subsequent calls.
         </p>
       </header>
 
@@ -230,7 +236,11 @@
       <section>
         <h2>4. Logout</h2>
         <div class="stacked">
-          <input id="logoutRefreshToken" type="text" placeholder="Refresh token" />
+          <input
+            id="logoutRefreshToken"
+            type="text"
+            placeholder="Refresh token"
+          />
           <button id="logout">Call /authentication/logout</button>
           <pre id="logoutResult">{}</pre>
         </div>
@@ -260,7 +270,8 @@
       const tokenSnapshotEl = document.getElementById('tokenSnapshot');
       const sseLogEl = document.getElementById('sseLog');
       const simulateOtpResultEl = document.getElementById('simulateOtpResult');
-      const otpSimulationTokenEl = document.getElementById('otpSimulationToken');
+      const otpSimulationTokenEl =
+        document.getElementById('otpSimulationToken');
       const latestOtpTokenEl = document.getElementById('latestOtpToken');
       const latestOtpRawEl = document.getElementById('latestOtpRaw');
 
@@ -388,8 +399,8 @@
         latestOtpTokenEl.textContent = token
           ? String(token)
           : typeof parsed === 'string'
-          ? parsed
-          : formatPayload(parsed);
+            ? parsed
+            : formatPayload(parsed);
         return token || (typeof parsed === 'string' ? parsed : undefined);
       }
 
@@ -401,92 +412,103 @@
           refreshTokenSnapshot();
         });
 
-      document.getElementById('requestOtp').addEventListener('click', async () => {
-        rememberMsisdn();
-        const phone = state.msisdn;
-        if (!phone) {
-          return setResult(otpResultEl, 'Enter phone number first.');
-        }
-        try {
-          const headers = {};
-          const simulationToken = getSimulationToken();
-          if (simulationToken) {
-            headers['x-otp-simulation-token'] = simulationToken;
+      document
+        .getElementById('requestOtp')
+        .addEventListener('click', async () => {
+          rememberMsisdn();
+          const msisdn = state.msisdn;
+          if (!msisdn) {
+            return setResult(otpResultEl, 'Enter phone number first.');
           }
-          const result = await requestJson('/authentication/request-otp', {
-            method: 'POST',
-            body: {
+          try {
+            const headers = {};
+            const simulationToken = getSimulationToken();
+            if (simulationToken) {
+              headers['x-otp-simulation-token'] = simulationToken;
+            }
+            const result = await requestJson('/auth/request-otp', {
+              method: 'POST',
+              body: {
+                msisdn,
+              },
+              headers,
+            });
+            setResult(otpResultEl, result.data || result.response);
+            const tokenFromResponse = extractOtpToken(result.data);
+            if (tokenFromResponse) {
+              otpSimulationTokenEl.value = tokenFromResponse;
+            }
+            updateLatestOtpDisplays(result.data);
+          } catch (error) {
+            setResult(otpResultEl, error.message);
+          }
+        });
+
+      document
+        .getElementById('simulateOtp')
+        .addEventListener('click', async () => {
+          rememberMsisdn();
+          const phone = state.msisdn;
+          if (!phone) {
+            return setResult(simulateOtpResultEl, 'Enter phone number first.');
+          }
+          try {
+            const headers = {};
+            const simulationToken = getSimulationToken();
+            if (simulationToken) {
+              headers['x-otp-simulation-token'] = simulationToken;
+            }
+            const result = await requestJson(
+              `/simulate/${encodeURIComponent(phone)}/get-otp`,
+              { headers },
+            );
+            setResult(simulateOtpResultEl, result.data || result.response);
+            const tokenFromResponse = extractOtpToken(result.data);
+            if (tokenFromResponse) {
+              otpSimulationTokenEl.value = tokenFromResponse;
+            }
+            updateLatestOtpDisplays(result.data);
+          } catch (error) {
+            setResult(simulateOtpResultEl, error.message);
+          }
+        });
+
+      document
+        .getElementById('verifyOtp')
+        .addEventListener('click', async () => {
+          rememberMsisdn();
+          const phone = state.msisdn;
+          const otpCode = document.getElementById('otpCode').value.trim();
+          if (!phone || !otpCode) {
+            return setResult(
+              verifyResultEl,
+              'Provide both phone number and OTP.',
+            );
+          }
+          try {
+            const result = await postJson('/auth/verify-otp', {
               phone,
-            },
-            headers,
-          });
-          setResult(otpResultEl, result.data || result.response);
-          const tokenFromResponse = extractOtpToken(result.data);
-          if (tokenFromResponse) {
-            otpSimulationTokenEl.value = tokenFromResponse;
+              otpCode,
+            });
+            setResult(verifyResultEl, result.data || result.response);
+          } catch (error) {
+            setResult(verifyResultEl, error.message);
+          } finally {
+            refreshTokenSnapshot();
           }
-          updateLatestOtpDisplays(result.data);
-        } catch (error) {
-          setResult(otpResultEl, error.message);
-        }
-      });
-
-      document.getElementById('simulateOtp').addEventListener('click', async () => {
-        rememberMsisdn();
-        const phone = state.msisdn;
-        if (!phone) {
-          return setResult(simulateOtpResultEl, 'Enter phone number first.');
-        }
-        try {
-          const headers = {};
-          const simulationToken = getSimulationToken();
-          if (simulationToken) {
-            headers['x-otp-simulation-token'] = simulationToken;
-          }
-          const result = await requestJson(
-            `/simulate/${encodeURIComponent(phone)}/get-otp`,
-            { headers },
-          );
-          setResult(simulateOtpResultEl, result.data || result.response);
-          const tokenFromResponse = extractOtpToken(result.data);
-          if (tokenFromResponse) {
-            otpSimulationTokenEl.value = tokenFromResponse;
-          }
-          updateLatestOtpDisplays(result.data);
-        } catch (error) {
-          setResult(simulateOtpResultEl, error.message);
-        }
-      });
-
-      document.getElementById('verifyOtp').addEventListener('click', async () => {
-        rememberMsisdn();
-        const phone = state.msisdn;
-        const otpCode = document.getElementById('otpCode').value.trim();
-        if (!phone || !otpCode) {
-          return setResult(verifyResultEl, 'Provide both phone number and OTP.');
-        }
-        try {
-          const result = await postJson('/authentication/verify-otp', {
-            phone,
-            otpCode,
-          });
-          setResult(verifyResultEl, result.data || result.response);
-        } catch (error) {
-          setResult(verifyResultEl, error.message);
-        } finally {
-          refreshTokenSnapshot();
-        }
-      });
+        });
 
       document
         .getElementById('refreshTokens')
         .addEventListener('click', async () => {
-          const refreshToken = document.getElementById('refreshToken').value.trim();
+          const refreshToken = document
+            .getElementById('refreshToken')
+            .value.trim();
           if (!refreshToken) {
             return setResult(refreshResultEl, 'Enter refresh token value.');
           }
           try {
-            const result = await postJson('/authentication/refresh-token', {
+            const result = await postJson('/auth/refresh-token', {
               refreshToken,
             });
             setResult(refreshResultEl, result.data || result.response);
@@ -505,7 +527,7 @@
           return setResult(logoutResultEl, 'Provide refresh token to log out.');
         }
         try {
-          const result = await postJson('/authentication/logout', {
+          const result = await postJson('/auth/logout', {
             refreshToken,
           });
           setResult(logoutResultEl, result.data || result.response);
@@ -524,7 +546,10 @@
         const pairs = Object.fromEntries(
           cookies.map((cookie) => {
             const [key, ...rest] = cookie.split('=');
-            return [decodeURIComponent(key), decodeURIComponent(rest.join('='))];
+            return [
+              decodeURIComponent(key),
+              decodeURIComponent(rest.join('=')),
+            ];
           }),
         );
         setResult(tokenSnapshotEl, pairs);
