@@ -75,6 +75,18 @@
         flex: 1;
         margin-bottom: 0;
       }
+      .two-column {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        align-items: start;
+      }
+      .panel {
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 12px;
+        background: rgba(22, 27, 34, 0.6);
+      }
       .inline button {
         flex: none;
         width: auto;
@@ -162,14 +174,30 @@
             <button id="startSse">Start stream</button>
             <button id="stopSse" class="secondary">Stop</button>
           </div>
-          <button id="requestOtp" type="button">
-            Call /authentication/request-otp
-          </button>
-          <pre id="requestOtpResult">{}</pre>
-          <button id="simulateOtp" class="secondary" type="button">
-            Call simulate/:msisdn/get-otp
-          </button>
-          <pre id="simulateOtpResult">{}</pre>
+          <label for="otpSimulationToken">x-otp-simulation-token header</label>
+          <input
+            id="otpSimulationToken"
+            type="text"
+            placeholder="Provide simulation token to forward in requests"
+          />
+          <div class="two-column">
+            <div class="panel stacked">
+              <button id="requestOtp" type="button">
+                Call /authentication/request-otp
+              </button>
+              <pre id="requestOtpResult">{}</pre>
+              <button id="simulateOtp" class="secondary" type="button">
+                Call simulate/:msisdn/get-otp
+              </button>
+              <pre id="simulateOtpResult">{}</pre>
+            </div>
+            <div class="panel stacked">
+              <label>Received OTP token</label>
+              <pre id="latestOtpToken">Waiting for stream…</pre>
+              <label class="muted">Last SSE payload</label>
+              <pre id="latestOtpRaw">{}</pre>
+            </div>
+          </div>
           <div>
             <span class="muted">Incoming OTP messages</span>
             <div id="sseLog" class="logs"></div>
@@ -232,6 +260,9 @@
       const tokenSnapshotEl = document.getElementById('tokenSnapshot');
       const sseLogEl = document.getElementById('sseLog');
       const simulateOtpResultEl = document.getElementById('simulateOtpResult');
+      const otpSimulationTokenEl = document.getElementById('otpSimulationToken');
+      const latestOtpTokenEl = document.getElementById('latestOtpToken');
+      const latestOtpRawEl = document.getElementById('latestOtpRaw');
 
       function getBaseUrl() {
         return baseUrlEl.value.replace(/\/$/, '');
@@ -268,13 +299,16 @@
         }
       }
 
-      async function requestJson(path, { method = 'GET', body } = {}) {
+      async function requestJson(path, { method = 'GET', body, headers } = {}) {
         const url = `${getBaseUrl()}${path}`;
         const options = {
           method,
           credentials: 'include',
           headers: {},
         };
+        if (headers) {
+          Object.assign(options.headers, headers);
+        }
         if (body !== undefined) {
           options.body = typeof body === 'string' ? body : JSON.stringify(body);
           options.headers['Content-Type'] = 'application/json';
@@ -310,6 +344,55 @@
         return requestJson(path, { method: 'POST', body });
       }
 
+      function getSimulationToken() {
+        return otpSimulationTokenEl.value.trim();
+      }
+
+      function extractOtpToken(payload) {
+        if (!payload || typeof payload !== 'object') {
+          return undefined;
+        }
+        return (
+          payload.otpToken ||
+          payload.token ||
+          payload.otp ||
+          payload.code ||
+          payload.value
+        );
+      }
+
+      function updateLatestOtpDisplays(payload) {
+        if (payload === undefined || payload === null || payload === '') {
+          latestOtpTokenEl.textContent = 'Waiting for stream…';
+          latestOtpRawEl.textContent = '{}';
+          return undefined;
+        }
+
+        let parsed = payload;
+        if (typeof payload === 'string') {
+          latestOtpRawEl.textContent = payload;
+        } else {
+          latestOtpRawEl.textContent = formatPayload(payload);
+        }
+
+        if (typeof payload === 'string') {
+          try {
+            parsed = JSON.parse(payload);
+          } catch (error) {
+            parsed = payload;
+          }
+        }
+
+        const token =
+          typeof parsed === 'string' ? parsed : extractOtpToken(parsed);
+        latestOtpTokenEl.textContent = token
+          ? String(token)
+          : typeof parsed === 'string'
+          ? parsed
+          : formatPayload(parsed);
+        return token || (typeof parsed === 'string' ? parsed : undefined);
+      }
+
       document
         .getElementById('rememberMsisdn')
         .addEventListener('click', (event) => {
@@ -325,10 +408,24 @@
           return setResult(otpResultEl, 'Enter phone number first.');
         }
         try {
-          const result = await postJson('/authentication/request-otp', {
-            phone,
+          const headers = {};
+          const simulationToken = getSimulationToken();
+          if (simulationToken) {
+            headers['x-otp-simulation-token'] = simulationToken;
+          }
+          const result = await requestJson('/authentication/request-otp', {
+            method: 'POST',
+            body: {
+              phone,
+            },
+            headers,
           });
           setResult(otpResultEl, result.data || result.response);
+          const tokenFromResponse = extractOtpToken(result.data);
+          if (tokenFromResponse) {
+            otpSimulationTokenEl.value = tokenFromResponse;
+          }
+          updateLatestOtpDisplays(result.data);
         } catch (error) {
           setResult(otpResultEl, error.message);
         }
@@ -341,10 +438,21 @@
           return setResult(simulateOtpResultEl, 'Enter phone number first.');
         }
         try {
+          const headers = {};
+          const simulationToken = getSimulationToken();
+          if (simulationToken) {
+            headers['x-otp-simulation-token'] = simulationToken;
+          }
           const result = await requestJson(
             `/simulate/${encodeURIComponent(phone)}/get-otp`,
+            { headers },
           );
           setResult(simulateOtpResultEl, result.data || result.response);
+          const tokenFromResponse = extractOtpToken(result.data);
+          if (tokenFromResponse) {
+            otpSimulationTokenEl.value = tokenFromResponse;
+          }
+          updateLatestOtpDisplays(result.data);
         } catch (error) {
           setResult(simulateOtpResultEl, error.message);
         }
@@ -449,10 +557,30 @@
           return appendLog('Provide an SSE endpoint path.');
         }
         const url = new URL(channel, getBaseUrl());
+        const simulationToken = getSimulationToken();
+        if (simulationToken) {
+          url.searchParams.set('x-otp-simulation-token', simulationToken);
+        }
         state.sse = new EventSource(url.toString(), { withCredentials: true });
         appendLog(`Connecting to ${url}`);
         state.sse.onmessage = (event) => {
-          appendLog(event.data || '[empty message]');
+          const message = event.data || '[empty message]';
+          appendLog(message);
+          let parsed = message;
+          if (typeof message === 'string') {
+            try {
+              parsed = JSON.parse(message);
+            } catch (error) {
+              parsed = message;
+            }
+          }
+          if (parsed && typeof parsed === 'object') {
+            const streamToken = extractOtpToken(parsed);
+            if (streamToken) {
+              otpSimulationTokenEl.value = streamToken;
+            }
+          }
+          updateLatestOtpDisplays(message);
         };
         state.sse.onerror = () => {
           appendLog('Stream reported an error.');
@@ -463,6 +591,7 @@
 
       loadMsisdn();
       refreshTokenSnapshot();
+      updateLatestOtpDisplays();
     </script>
   </body>
 </html>
