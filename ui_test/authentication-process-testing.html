@@ -179,7 +179,9 @@
             <button id="startSse">Start stream</button>
             <button id="stopSse" class="secondary">Stop</button>
           </div>
-          <label for="otpSimulationToken">x-otp-simulation-token header (SSE only)</label>
+          <label for="otpSimulationToken"
+            >x-otp-simulation-token header (SSE only)</label
+          >
           <input
             id="otpSimulationToken"
             type="text"
@@ -327,6 +329,8 @@
 
       async function requestJson(path, { method = 'GET', body, headers } = {}) {
         const url = `${getBaseUrl()}${path}`;
+        console.log('url===');
+        console.log(url);
         const options = {
           method,
           credentials: 'include',
@@ -346,6 +350,8 @@
         try {
           response = await fetch(url, options);
         } catch (error) {
+          console.log('THIS');
+          console.log(error);
           console.error(error);
           const detail =
             error instanceof Error ? error.message : 'Unknown network failure';
@@ -582,67 +588,71 @@
         }
       }
 
-      document.getElementById('startSse').addEventListener('click', async () => {
-        closeStream();
-        const url = `${getBaseUrl()}/notifications/stream`;
-        const simulationToken = getSimulationToken();
-        if (!simulationToken) {
-          appendLog('Provide x-otp-simulation-token before starting stream.');
-          return;
-        }
-        const headers = { Accept: 'text/event-stream' };
-        headers['x-otp-simulation-token'] = simulationToken;
-        const abortController = new AbortController();
-        state.sse = { abortController };
-        appendLog(`Connecting to ${url}`);
-        try {
-          const response = await fetch(url, {
-            method: 'GET',
-            headers,
-            credentials: 'include',
-            signal: abortController.signal,
-          });
-          if (!response.ok) {
-            closeStream({ reason: `SSE connection failed: ${response.status} ${response.statusText}` });
+      document
+        .getElementById('startSse')
+        .addEventListener('click', async () => {
+          closeStream();
+          const url = `${getBaseUrl()}/simulate/${encodeURIComponent(state.msisdn)}/get-otp`;
+          const simulationToken = getSimulationToken();
+          if (!simulationToken) {
+            appendLog('Provide x-otp-simulation-token before starting stream.');
             return;
           }
-          if (!response.body) {
-            closeStream({ reason: 'SSE response did not include a body.' });
-            return;
-          }
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
-          async function readStream() {
-            while (true) {
-              const { value, done } = await reader.read();
-              if (done) {
-                buffer += decoder.decode();
-                buffer = processSseBuffer(buffer, handleSseMessage);
-                if (buffer.trim()) {
-                  handleSseMessage(buffer);
+          const headers = { Accept: 'text/event-stream' };
+          headers['x-otp-simulation-token'] = simulationToken;
+          const abortController = new AbortController();
+          state.sse = { abortController };
+          appendLog(`Connecting to ${url}`);
+          try {
+            const response = await fetch(url, {
+              method: 'GET',
+              headers,
+              credentials: 'include',
+              signal: abortController.signal,
+            });
+            if (!response.ok) {
+              closeStream({
+                reason: `SSE connection failed: ${response.status} ${response.statusText}`,
+              });
+              return;
+            }
+            if (!response.body) {
+              closeStream({ reason: 'SSE response did not include a body.' });
+              return;
+            }
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            async function readStream() {
+              while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                  buffer += decoder.decode();
+                  buffer = processSseBuffer(buffer, handleSseMessage);
+                  if (buffer.trim()) {
+                    handleSseMessage(buffer);
+                  }
+                  appendLog('SSE stream ended by server.');
+                  state.sse = null;
+                  return;
                 }
-                appendLog('SSE stream ended by server.');
-                state.sse = null;
-                return;
+                buffer += decoder.decode(value, { stream: true });
+                buffer = processSseBuffer(buffer, handleSseMessage);
               }
-              buffer += decoder.decode(value, { stream: true });
-              buffer = processSseBuffer(buffer, handleSseMessage);
+            }
+            await readStream();
+          } catch (error) {
+            if (error.name === 'AbortError') {
+              appendLog('SSE connection aborted.');
+            } else {
+              appendLog(`SSE connection error: ${error.message}`);
+            }
+          } finally {
+            if (state.sse?.abortController === abortController) {
+              state.sse = null;
             }
           }
-          await readStream();
-        } catch (error) {
-          if (error.name === 'AbortError') {
-            appendLog('SSE connection aborted.');
-          } else {
-            appendLog(`SSE connection error: ${error.message}`);
-          }
-        } finally {
-          if (state.sse?.abortController === abortController) {
-            state.sse = null;
-          }
-        }
-      });
+        });
 
       document
         .getElementById('stopSse')
