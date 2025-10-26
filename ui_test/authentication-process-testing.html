@@ -162,8 +162,14 @@
             <button id="startSse">Start stream</button>
             <button id="stopSse" class="secondary">Stop</button>
           </div>
-          <button id="requestOtp">Call /authentication/request-otp</button>
+          <button id="requestOtp" type="button">
+            Call /authentication/request-otp
+          </button>
           <pre id="requestOtpResult">{}</pre>
+          <button id="simulateOtp" class="secondary" type="button">
+            Call simulate/:msisdn/get-otp
+          </button>
+          <pre id="simulateOtpResult">{}</pre>
           <div>
             <span class="muted">Incoming OTP messages</span>
             <div id="sseLog" class="logs"></div>
@@ -225,6 +231,7 @@
       const logoutResultEl = document.getElementById('logoutResult');
       const tokenSnapshotEl = document.getElementById('tokenSnapshot');
       const sseLogEl = document.getElementById('sseLog');
+      const simulateOtpResultEl = document.getElementById('simulateOtpResult');
 
       function getBaseUrl() {
         return baseUrlEl.value.replace(/\/$/, '');
@@ -261,24 +268,46 @@
         }
       }
 
-      async function postJson(path, body) {
+      async function requestJson(path, { method = 'GET', body } = {}) {
         const url = `${getBaseUrl()}${path}`;
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+        const options = {
+          method,
           credentials: 'include',
-          body: JSON.stringify(body),
-        });
+          headers: {},
+        };
+        if (body !== undefined) {
+          options.body = typeof body === 'string' ? body : JSON.stringify(body);
+          options.headers['Content-Type'] = 'application/json';
+        } else if (!method.match(/^(GET|HEAD)$/i)) {
+          options.headers['Content-Type'] = 'application/json';
+        }
+
+        let response;
+        try {
+          response = await fetch(url, options);
+        } catch (error) {
+          console.error(error);
+          const detail =
+            error instanceof Error ? error.message : 'Unknown network failure';
+          throw new Error(`Network request failed: ${detail}`);
+        }
 
         let data = null;
         try {
           data = await response.clone().json();
         } catch (error) {
-          data = await response.text();
+          console.error(error);
+          try {
+            data = await response.text();
+          } catch (textError) {
+            console.error(textError);
+          }
         }
         return { response, data };
+      }
+
+      async function postJson(path, body) {
+        return requestJson(path, { method: 'POST', body });
       }
 
       document
@@ -299,9 +328,25 @@
           const result = await postJson('/authentication/request-otp', {
             phone,
           });
-          setResult(otpResultEl, result.data);
+          setResult(otpResultEl, result.data || result.response);
         } catch (error) {
           setResult(otpResultEl, error.message);
+        }
+      });
+
+      document.getElementById('simulateOtp').addEventListener('click', async () => {
+        rememberMsisdn();
+        const phone = state.msisdn;
+        if (!phone) {
+          return setResult(simulateOtpResultEl, 'Enter phone number first.');
+        }
+        try {
+          const result = await requestJson(
+            `/simulate/${encodeURIComponent(phone)}/get-otp`,
+          );
+          setResult(simulateOtpResultEl, result.data || result.response);
+        } catch (error) {
+          setResult(simulateOtpResultEl, error.message);
         }
       });
 

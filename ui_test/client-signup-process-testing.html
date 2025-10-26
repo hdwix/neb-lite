@@ -206,7 +206,9 @@
           });
         } catch (error) {
           console.error(error);
-          throw new Error('Network error when attempting to fetch resource.');
+          const detail =
+            error instanceof Error ? error.message : 'Unknown network failure';
+          throw new Error(`Network request failed: ${detail}`);
         }
 
         let data;
