@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Authentication Process Testing</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg-color: #0f172a;
+        --card-bg: rgba(15, 23, 42, 0.75);
+        --card-border: rgba(148, 163, 184, 0.25);
+        --text-color: #e2e8f0;
+        --text-muted: #94a3b8;
+        --accent: #38bdf8;
+        --accent-strong: #0ea5e9;
+        --danger: #f87171;
+        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at top, #1e293b 0%, #020617 65%);
+        color: var(--text-color);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 32px 16px 48px;
+      }
+
+      h1 {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .subtitle {
+        margin: 0 0 32px;
+        color: var(--text-muted);
+        font-weight: 400;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(320px, 460px) minmax(320px, 420px);
+        gap: 24px;
+        width: min(1100px, 100%);
+      }
+
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        padding: 20px 24px;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 30px 60px -35px rgba(15, 23, 42, 0.85);
+      }
+
+      .card h2 {
+        margin-top: 0;
+        margin-bottom: 12px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .card p {
+        margin-top: 0;
+        margin-bottom: 16px;
+        color: var(--text-muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      label {
+        display: block;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin-bottom: 6px;
+      }
+
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(15, 23, 42, 0.4);
+        color: var(--text-color);
+        font-size: 14px;
+        transition: border 0.2s ease, background 0.2s ease;
+      }
+
+      input:focus,
+      textarea:focus,
+      select:focus {
+        outline: none;
+        border-color: var(--accent);
+        background: rgba(14, 116, 144, 0.35);
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 140px;
+        font-family: "JetBrains Mono", "Fira Mono", monospace;
+      }
+
+      button {
+        appearance: none;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 18px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-size: 13px;
+        cursor: pointer;
+        background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        color: #0f172a;
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        width: 100%;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 20px -12px rgba(14, 165, 233, 0.9);
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .inline-controls {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: end;
+        gap: 12px;
+      }
+
+      .inline-controls button {
+        width: auto;
+        min-width: 180px;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .row > div {
+        flex: 1 1 180px;
+      }
+
+      .sse-log {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .sse-log pre {
+        flex: 1;
+        margin: 0;
+        padding: 16px;
+        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.45);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        font-size: 13px;
+        line-height: 1.5;
+        overflow: auto;
+        font-family: "JetBrains Mono", "Fira Mono", monospace;
+      }
+
+      .log-entry {
+        margin-bottom: 14px;
+        padding-bottom: 14px;
+        border-bottom: 1px dashed rgba(148, 163, 184, 0.2);
+      }
+
+      .log-entry:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+      }
+
+      .log-entry time {
+        display: block;
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+      }
+
+      .log-entry code {
+        display: block;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .pill-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .pill {
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.15);
+        color: var(--text-muted);
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      @media (max-width: 980px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .sse-log {
+          height: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Authentication Process Testing</h1>
+    <p class="subtitle">
+      Quickly exercise OTP generation, delivery, and verification flows from the browser.
+    </p>
+    <div class="layout">
+      <div class="stack">
+        <section class="card">
+          <h2>Environment</h2>
+          <p>Configure the API base URL used for every call below.</p>
+          <label for="base-url">API Base URL</label>
+          <input
+            type="url"
+            id="base-url"
+            placeholder="https://api.example.com"
+            value="http://localhost:3000"
+          />
+        </section>
+
+        <section class="card" id="simulate-card">
+          <h2>Call /gateway/auth/simulate/:msisdn/get-otp</h2>
+          <p>
+            Trigger OTP generation for a subscriber. The SSE log to the right mirrors every
+            incoming OTP message in real time.
+          </p>
+          <form id="simulate-form">
+            <div class="row">
+              <div>
+                <label for="simulate-msisdn">MSISDN</label>
+                <input
+                  type="text"
+                  id="simulate-msisdn"
+                  name="msisdn"
+                  placeholder="6281234567890"
+                  required
+                />
+              </div>
+              <div>
+                <label for="simulate-channel">Channel</label>
+                <select id="simulate-channel" name="channel">
+                  <option value="sms">SMS</option>
+                  <option value="wa">WhatsApp</option>
+                </select>
+              </div>
+            </div>
+            <div class="inline-controls">
+              <div>
+                <label for="simulate-extra">Metadata (JSON)</label>
+                <textarea
+                  id="simulate-extra"
+                  name="metadata"
+                  placeholder='{"clientId": "neb-web"}'
+                ></textarea>
+              </div>
+              <button type="submit" id="simulate-submit">Trigger OTP</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card" id="verify-card">
+          <h2>Verify OTP</h2>
+          <p>Validate an OTP code previously sent to the subscriber.</p>
+          <form id="verify-form">
+            <div class="row">
+              <div>
+                <label for="verify-msisdn">MSISDN</label>
+                <input
+                  type="text"
+                  id="verify-msisdn"
+                  name="msisdn"
+                  placeholder="6281234567890"
+                  required
+                />
+              </div>
+              <div>
+                <label for="verify-token">OTP Token</label>
+                <input
+                  type="text"
+                  id="verify-token"
+                  name="otp"
+                  placeholder="123456"
+                  required
+                />
+              </div>
+            </div>
+            <div class="inline-controls">
+              <div>
+                <label for="verify-device">Device Fingerprint</label>
+                <input
+                  type="text"
+                  id="verify-device"
+                  name="deviceId"
+                  placeholder="ios-iphone15"
+                />
+              </div>
+              <button type="submit" id="verify-submit">Verify OTP</button>
+            </div>
+          </form>
+          <div class="pill-group" id="verify-status" hidden></div>
+        </section>
+      </div>
+
+      <section class="card sse-log" id="sse-card">
+        <h2>Incoming OTP messages</h2>
+        <p>
+          Live stream of OTP push notifications from the SMS/WhatsApp provider. The stream is
+          tied to the MSISDN entered in the trigger form.
+        </p>
+        <div class="row">
+          <div>
+            <label for="sse-msisdn">MSISDN to monitor</label>
+            <input
+              type="text"
+              id="sse-msisdn"
+              placeholder="6281234567890"
+              required
+            />
+          </div>
+          <div>
+            <label for="sse-status">Connection</label>
+            <input id="sse-status" type="text" value="Disconnected" disabled />
+          </div>
+        </div>
+        <div class="inline-controls">
+          <div></div>
+          <button type="button" id="sse-toggle">Connect stream</button>
+        </div>
+        <pre id="sse-log" aria-live="polite" aria-label="Incoming OTP messages"></pre>
+      </section>
+    </div>
+
+    <template id="log-entry-template">
+      <div class="log-entry">
+        <time></time>
+        <code></code>
+      </div>
+    </template>
+
+    <script>
+      const baseUrlInput = document.getElementById("base-url");
+      const simulateForm = document.getElementById("simulate-form");
+      const simulateSubmit = document.getElementById("simulate-submit");
+      const verifyForm = document.getElementById("verify-form");
+      const verifySubmit = document.getElementById("verify-submit");
+      const verifyStatus = document.getElementById("verify-status");
+      const sseToggle = document.getElementById("sse-toggle");
+      const sseStatus = document.getElementById("sse-status");
+      const sseLog = document.getElementById("sse-log");
+      const sseMsisdnInput = document.getElementById("sse-msisdn");
+      let currentEventSource = null;
+
+      const withBaseUrl = (path) => {
+        const baseUrl = baseUrlInput.value.trim().replace(/\/$/, "");
+        return `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
+      };
+
+      const appendLog = (payload) => {
+        const template = document.getElementById("log-entry-template");
+        const entry = template.content.firstElementChild.cloneNode(true);
+        entry.querySelector("time").textContent = new Date().toLocaleTimeString();
+        entry.querySelector("code").textContent = payload;
+
+        const container = document.createElement("div");
+        container.appendChild(entry);
+        const rendered = container.innerHTML;
+        sseLog.innerHTML = `${rendered}${sseLog.innerHTML}`;
+      };
+
+      const toggleSseButtonState = (state) => {
+        sseToggle.disabled = state === "connecting";
+        if (state === "connected") {
+          sseToggle.textContent = "Disconnect stream";
+          sseStatus.value = "Connected";
+        } else if (state === "connecting") {
+          sseToggle.textContent = "Connecting…";
+          sseStatus.value = "Connecting";
+        } else {
+          sseToggle.textContent = "Connect stream";
+          sseStatus.value = "Disconnected";
+        }
+      };
+
+      const connectSse = () => {
+        const msisdn = (sseMsisdnInput.value || "").trim();
+        if (!msisdn) {
+          alert("Please enter an MSISDN to subscribe to the stream.");
+          return;
+        }
+
+        toggleSseButtonState("connecting");
+        const endpoint = withBaseUrl(`/gateway/auth/sse/${encodeURIComponent(msisdn)}`);
+        currentEventSource = new EventSource(endpoint);
+
+        currentEventSource.onopen = () => {
+          toggleSseButtonState("connected");
+          appendLog(`SSE connected for ${msisdn}`);
+        };
+
+        currentEventSource.onmessage = (event) => {
+          appendLog(event.data || "<empty>");
+        };
+
+        currentEventSource.onerror = (error) => {
+          console.error("SSE error", error);
+          appendLog("[error] SSE connection lost");
+          disconnectSse();
+        };
+      };
+
+      const disconnectSse = () => {
+        if (currentEventSource) {
+          currentEventSource.close();
+          currentEventSource = null;
+        }
+        toggleSseButtonState("disconnected");
+      };
+
+      sseToggle.addEventListener("click", () => {
+        if (currentEventSource) {
+          appendLog("SSE connection closed by user");
+          disconnectSse();
+        } else {
+          connectSse();
+        }
+      });
+
+      simulateForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = new FormData(simulateForm);
+        const msisdn = form.get("msisdn");
+        const channel = form.get("channel");
+        const metadata = form.get("metadata");
+
+        simulateSubmit.disabled = true;
+        simulateSubmit.textContent = "Sending…";
+
+        try {
+          const response = await fetch(
+            withBaseUrl(`/gateway/auth/simulate/${encodeURIComponent(msisdn)}/get-otp`),
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ channel, metadata: safeJson(metadata) }),
+            }
+          );
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `Request failed with ${response.status}`);
+          }
+
+          const result = await response.json().catch(() => ({}));
+          appendLog(`OTP triggered successfully: ${JSON.stringify(result)}`);
+        } catch (error) {
+          console.error(error);
+          appendLog(`[error] ${error.message}`);
+          alert(`Failed to trigger OTP: ${error.message}`);
+        } finally {
+          simulateSubmit.disabled = false;
+          simulateSubmit.textContent = "Trigger OTP";
+        }
+      });
+
+      verifyForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = new FormData(verifyForm);
+        const payload = {
+          msisdn: form.get("msisdn"),
+          otp: form.get("otp"),
+          deviceId: form.get("deviceId") || undefined,
+        };
+
+        verifySubmit.disabled = true;
+        verifySubmit.textContent = "Verifying…";
+        verifyStatus.innerHTML = "";
+        verifyStatus.hidden = true;
+
+        try {
+          const response = await fetch(withBaseUrl("/gateway/auth/verify"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.message || `Verification failed (${response.status})`);
+          }
+
+          renderStatusPills([
+            { label: "status", value: "verified" },
+            data.sessionId ? { label: "session", value: data.sessionId } : null,
+          ]);
+        } catch (error) {
+          renderStatusPills([
+            { label: "status", value: "failed", danger: true },
+            { label: "message", value: error.message, danger: true },
+          ]);
+        } finally {
+          verifySubmit.disabled = false;
+          verifySubmit.textContent = "Verify OTP";
+        }
+      });
+
+      const safeJson = (value) => {
+        if (!value) return undefined;
+        try {
+          return JSON.parse(value);
+        } catch (error) {
+          appendLog("[warn] Invalid metadata JSON, sending as raw string");
+          return value;
+        }
+      };
+
+      const renderStatusPills = (items) => {
+        verifyStatus.innerHTML = "";
+        const fragment = document.createDocumentFragment();
+        items
+          .filter(Boolean)
+          .forEach(({ label, value, danger }) => {
+            const pill = document.createElement("div");
+            pill.className = "pill";
+            if (danger) {
+              pill.style.background = "rgba(248, 113, 113, 0.2)";
+              pill.style.color = "var(--danger)";
+            }
+            pill.innerHTML = `<strong>${label}:</strong> ${value}`;
+            fragment.appendChild(pill);
+          });
+        verifyStatus.appendChild(fragment);
+        verifyStatus.hidden = verifyStatus.childElementCount === 0;
+      };
+
+      window.addEventListener("beforeunload", () => {
+        if (currentEventSource) {
+          currentEventSource.close();
+        }
+      });
+    </script>
+  </body>
+</html>
