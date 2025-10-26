@@ -472,8 +472,10 @@
         ['RIDER', 'DRIVER'].forEach((role) => {
           const tokenInfo = state.tokens[role];
           const span = document.createElement('span');
-          const hasToken = Boolean(tokenInfo.accessToken);
-          span.textContent = `${role}: ${hasToken ? 'token stored for ' + (tokenInfo.msisdn || 'unknown') : 'no token'}`;
+          const access = tokenInfo.accessToken || '(none)';
+          const refresh = tokenInfo.refreshToken || '(none)';
+          const owner = tokenInfo.msisdn || 'unknown';
+          span.textContent = `${role} – msisdn: ${owner} | access: ${access} | refresh: ${refresh}`;
           summary.appendChild(span);
         });
       }
@@ -540,6 +542,35 @@
         return `Status ${res.status}${res.ok ? ' OK' : ''}\n${bodyText}`;
       }
 
+      function readCookie(name) {
+        const raw = document.cookie;
+        if (!raw) return '';
+        const parts = raw.split('; ');
+        for (const part of parts) {
+          const [key, ...rest] = part.split('=');
+          if (key === name) {
+            return decodeURIComponent(rest.join('='));
+          }
+        }
+        return '';
+      }
+
+      function getTokensFromCookies() {
+        return {
+          accessToken: readCookie('accesstoken'),
+          refreshToken: readCookie('refreshtoken'),
+        };
+      }
+
+      function mergeCookieTokens(tokenLike) {
+        const fromCookies = getTokensFromCookies();
+        const source = tokenLike || {};
+        return {
+          accessToken: source.accessToken || fromCookies.accessToken || '',
+          refreshToken: source.refreshToken || fromCookies.refreshToken || '',
+        };
+      }
+
       async function callApi(options) {
         const {
           method = 'GET',
@@ -584,6 +615,7 @@
             method,
             headers: requestHeaders,
             body: payload,
+            credentials: 'include',
           });
           const text = await response.text();
           let parsed;
@@ -617,6 +649,15 @@
         $('activeRole').value = role;
         updateTokenSummary();
         persistState();
+      }
+
+      function captureTokens(role, msisdn, tokensFromResponse) {
+        const merged = mergeCookieTokens(tokensFromResponse);
+        if (!merged.accessToken && !merged.refreshToken) {
+          return false;
+        }
+        storeTokens(role, msisdn, merged);
+        return true;
       }
 
       function getRefreshToken(role) {
@@ -899,8 +940,8 @@
           body: { msisdn, clientType, otpCode },
           target: 'authResult',
         });
-        if (result.ok && result.data && result.data.accessToken) {
-          storeTokens(clientType, msisdn, result.data);
+        if (result.ok) {
+          captureTokens(clientType, msisdn, result.data);
         }
       });
 
@@ -921,8 +962,9 @@
           body: { refreshToken },
           target: 'authResult',
         });
-        if (result.ok && result.data && result.data.accessToken) {
-          storeTokens(role, state.tokens[role].msisdn, result.data);
+        if (result.ok) {
+          const msisdn = state.tokens[role].msisdn;
+          captureTokens(role, msisdn, result.data);
         }
       });
 
