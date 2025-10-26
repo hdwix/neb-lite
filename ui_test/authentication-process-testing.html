@@ -285,6 +285,10 @@
         return clientTypeEl.value;
       }
 
+      function encodeMsisdnForPath(msisdn) {
+        return encodeURIComponent(msisdn).replace(/%2B/g, '+');
+      }
+
       function rememberMsisdn() {
         state.msisdn = msisdnEl.value.trim();
         localStorage.setItem('auth-msisdn', state.msisdn);
@@ -470,7 +474,7 @@
           }
           try {
             const result = await requestJson(
-              `/simulate/${encodeURIComponent(phone)}/get-otp`,
+              `/simulate/${encodeMsisdnForPath(phone)}/get-otp`,
             );
             setResult(simulateOtpResultEl, result.data || result.response);
             const tokenFromResponse = extractOtpToken(result.data);
@@ -598,7 +602,9 @@
             appendLog('Enter phone number before starting stream.');
             return;
           }
-          const url = `${getBaseUrl()}/simulate/${encodeURIComponent(msisdn)}/get-otp`;
+          const url = `${getBaseUrl()}/simulate/${encodeMsisdnForPath(
+            msisdn,
+          )}/get-otp`;
           const simulationToken = getSimulationToken();
           if (!simulationToken) {
             appendLog('Provide x-otp-simulation-token before starting stream.');
