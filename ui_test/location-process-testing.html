@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -6,7 +6,12 @@
     <style>
       :root {
         color-scheme: light dark;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
       }
       body {
         margin: 0;
@@ -109,8 +114,9 @@
           <span class="badge">Gateway location endpoints</span>
         </h1>
         <p class="muted">
-          Quick controls for POST <code>/api/v1/gateway/location/driver</code> and
-          GET <code>/api/v1/gateway/matching/nearby-drivers</code> using the
+          Quick controls for POST
+          <code>/api/v1/gateway/location/driver</code> and GET
+          <code>/api/v1/gateway/matching/nearby-drivers</code> using the
           controller DTO contracts.
         </p>
       </header>
@@ -126,9 +132,13 @@
             placeholder="http://localhost:3000/api/v1"
           />
           <label for="authHeader">Authorization header</label>
-          <input id="authHeader" type="text" placeholder="Bearer &lt;token&gt;" />
-          <label for="clientId">Client identifier header</label>
-          <input id="clientId" type="text" placeholder="UUID or numeric id" />
+          <input
+            id="authHeader"
+            type="text"
+            placeholder="Bearer &lt;token&gt;"
+          />
+          <!-- <label for="clientId">Client identifier header</label>
+          <input id="clientId" type="text" placeholder="UUID or numeric id" /> -->
           <label class="inline-checkbox">
             <input id="includeCredentials" type="checkbox" />
             Send cookies/credentials with requests
@@ -224,7 +234,11 @@
         <h2>Free-form request</h2>
         <div class="stacked">
           <label for="rawPath">Endpoint path</label>
-          <input id="rawPath" type="text" placeholder="/gateway/location/driver" />
+          <input
+            id="rawPath"
+            type="text"
+            placeholder="/gateway/location/driver"
+          />
           <label for="rawMethod">Method</label>
           <input id="rawMethod" type="text" value="POST" />
           <textarea
@@ -239,7 +253,10 @@
 
     <script>
       function getBaseUrl() {
-        return document.getElementById('baseUrl').value.trim().replace(/\/$/, '');
+        return document
+          .getElementById('baseUrl')
+          .value.trim()
+          .replace(/\/$/, '');
       }
 
       function buildHeaders() {
@@ -250,10 +267,8 @@
         if (auth) {
           headers.Authorization = auth;
         }
-        const clientId = document.getElementById('clientId').value.trim();
-        if (clientId) {
-          headers['X-Client-Id'] = clientId;
-        }
+        // const clientId = document.getElementById('clientId').value.trim();
+
         return headers;
       }
 
@@ -315,8 +330,12 @@
       document
         .getElementById('sendDriverLocation')
         .addEventListener('click', async () => {
-          const longitude = toNumber(document.getElementById('driverLongitude').value);
-          const latitude = toNumber(document.getElementById('driverLatitude').value);
+          const longitude = toNumber(
+            document.getElementById('driverLongitude').value,
+          );
+          const latitude = toNumber(
+            document.getElementById('driverLatitude').value,
+          );
           const accuracyMeters = toNumber(
             document.getElementById('driverAccuracy').value,
           );
@@ -337,19 +356,23 @@
               method: 'POST',
               body: JSON.stringify(payload),
             });
-            document.getElementById('driverLocationResult').textContent = present(
-              data || response,
-            );
+            document.getElementById('driverLocationResult').textContent =
+              present(data || response);
           } catch (error) {
-            document.getElementById('driverLocationResult').textContent = error.message;
+            document.getElementById('driverLocationResult').textContent =
+              error.message;
           }
         });
 
       document
         .getElementById('fetchNearbyDrivers')
         .addEventListener('click', async () => {
-          const longitude = toNumber(document.getElementById('nearbyLongitude').value);
-          const latitude = toNumber(document.getElementById('nearbyLatitude').value);
+          const longitude = toNumber(
+            document.getElementById('nearbyLongitude').value,
+          );
+          const latitude = toNumber(
+            document.getElementById('nearbyLatitude').value,
+          );
           const limit = toNumber(document.getElementById('nearbyLimit').value);
 
           if (typeof longitude !== 'number' || typeof latitude !== 'number') {
@@ -369,11 +392,11 @@
 
           try {
             const { response, data } = await send(path, { method: 'GET' });
-            document.getElementById('nearbyDriversResult').textContent = present(
-              data || response,
-            );
+            document.getElementById('nearbyDriversResult').textContent =
+              present(data || response);
           } catch (error) {
-            document.getElementById('nearbyDriversResult').textContent = error.message;
+            document.getElementById('nearbyDriversResult').textContent =
+              error.message;
           }
         });
 
@@ -383,7 +406,8 @@
           return (document.getElementById('rawResult').textContent =
             'Provide an endpoint path.');
         }
-        const method = document.getElementById('rawMethod').value.trim() || 'POST';
+        const method =
+          document.getElementById('rawMethod').value.trim() || 'POST';
         const body = document.getElementById('rawBody').value.trim();
         if (body && !method.match(/^GET|HEAD$/i)) {
           try {
@@ -398,7 +422,9 @@
             method,
             body: body && !method.match(/^GET|HEAD$/i) ? body : undefined,
           });
-          document.getElementById('rawResult').textContent = present(data || response);
+          document.getElementById('rawResult').textContent = present(
+            data || response,
+          );
         } catch (error) {
           document.getElementById('rawResult').textContent = error.message;
         }
