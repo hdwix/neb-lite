@@ -97,7 +97,7 @@ export class GatewayController {
     return await this.authService.getOtp(getOtpDto);
   }
 
-  @Sse('simulate/:msisdn/get-otp')
+  @Sse('auth/simulate/:msisdn/get-otp')
   @Auth(EAuthType.None)
   simulateGetOtp(
     @Param() params: MsisdnParamDto,
