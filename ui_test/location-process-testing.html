@@ -97,11 +97,12 @@
       <header>
         <h1>
           Location Process Testing
-          <span class="badge">Location module</span>
+          <span class="badge">Gateway location endpoints</span>
         </h1>
         <p class="muted">
-          Quick controls for updating a rider or driver location, reading the latest
-          stored coordinates, and exercising auxiliary endpoints.
+          Quick controls for POST <code>/api/v1/gateway/location/driver</code> and
+          GET <code>/api/v1/gateway/matching/nearby-drivers</code> using the
+          controller DTO contracts.
         </p>
       </header>
 
@@ -117,43 +118,92 @@
           />
           <label for="authHeader">Authorization header</label>
           <input id="authHeader" type="text" placeholder="Bearer &lt;token&gt;" />
-          <label for="clientId">Client identifier</label>
+          <label for="clientId">Client identifier header</label>
           <input id="clientId" type="text" placeholder="UUID or numeric id" />
         </div>
       </section>
 
       <section>
-        <h2>Update location</h2>
+        <h2>Upsert driver location</h2>
+        <p class="muted">
+          POST <code>/gateway/location/driver</code> with
+          <code>UpsertDriverLocationDto</code> fields.
+        </p>
         <div class="stacked">
-          <label for="updatePath">Endpoint path</label>
-          <input
-            id="updatePath"
-            type="text"
-            value="/location/update"
-            placeholder="/location/update"
-          />
           <div class="inline">
-            <input id="latitude" type="number" step="0.000001" placeholder="Latitude" />
-            <input id="longitude" type="number" step="0.000001" placeholder="Longitude" />
+            <div>
+              <label for="driverLongitude">Longitude *</label>
+              <input
+                id="driverLongitude"
+                type="number"
+                step="0.000001"
+                placeholder="e.g. 120.9842"
+                required
+              />
+            </div>
+            <div>
+              <label for="driverLatitude">Latitude *</label>
+              <input
+                id="driverLatitude"
+                type="number"
+                step="0.000001"
+                placeholder="e.g. 14.5995"
+                required
+              />
+            </div>
           </div>
-          <input id="bearing" type="number" step="1" placeholder="Heading (degrees)" />
-          <button id="sendUpdate">Send update</button>
-          <pre id="updateResult">{}</pre>
+          <label for="driverAccuracy">Accuracy meters (optional)</label>
+          <input
+            id="driverAccuracy"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Distance radius in meters"
+          />
+          <button id="sendDriverLocation">Send driver location</button>
+          <pre id="driverLocationResult">{}</pre>
         </div>
       </section>
 
       <section>
-        <h2>Fetch latest location</h2>
+        <h2>Find nearby drivers</h2>
+        <p class="muted">
+          GET <code>/gateway/matching/nearby-drivers</code> with
+          <code>GetNearbyDriversDto</code> query params.
+        </p>
         <div class="stacked">
-          <label for="fetchPath">Endpoint path</label>
+          <div class="inline">
+            <div>
+              <label for="nearbyLongitude">Longitude *</label>
+              <input
+                id="nearbyLongitude"
+                type="number"
+                step="0.000001"
+                placeholder="e.g. 120.9842"
+                required
+              />
+            </div>
+            <div>
+              <label for="nearbyLatitude">Latitude *</label>
+              <input
+                id="nearbyLatitude"
+                type="number"
+                step="0.000001"
+                placeholder="e.g. 14.5995"
+                required
+              />
+            </div>
+          </div>
+          <label for="nearbyLimit">Limit (optional, integer ≥ 1)</label>
           <input
-            id="fetchPath"
-            type="text"
-            value="/location/latest"
-            placeholder="/location/latest"
+            id="nearbyLimit"
+            type="number"
+            step="1"
+            min="1"
+            placeholder="Number of drivers to return"
           />
-          <button id="fetchLocation">Request location</button>
-          <pre id="fetchResult">{}</pre>
+          <button id="fetchNearbyDrivers">Fetch nearby drivers</button>
+          <pre id="nearbyDriversResult">{}</pre>
         </div>
       </section>
 
@@ -161,10 +211,13 @@
         <h2>Free-form request</h2>
         <div class="stacked">
           <label for="rawPath">Endpoint path</label>
-          <input id="rawPath" type="text" placeholder="/location/nearby" />
+          <input id="rawPath" type="text" placeholder="/gateway/location/driver" />
           <label for="rawMethod">Method</label>
           <input id="rawMethod" type="text" value="POST" />
-          <textarea id="rawBody" placeholder="JSON body"></textarea>
+          <textarea
+            id="rawBody"
+            placeholder='{"longitude":120.9842,"latitude":14.5995}'
+          ></textarea>
           <button id="sendRaw">Send</button>
           <pre id="rawResult">{}</pre>
         </div>
@@ -220,47 +273,84 @@
         }
       }
 
-      document.getElementById('sendUpdate').addEventListener('click', async () => {
-        const path = document.getElementById('updatePath').value.trim() || '/location/update';
-        const payload = {
-          latitude: Number(document.getElementById('latitude').value),
-          longitude: Number(document.getElementById('longitude').value),
-        };
-        const bearingInput = document.getElementById('bearing').value;
-        if (bearingInput) {
-          payload.bearing = Number(bearingInput);
+      function toNumber(value) {
+        if (value === '' || value === null || value === undefined) {
+          return undefined;
         }
-        const clientId = document.getElementById('clientId').value.trim();
-        if (clientId) {
-          payload.clientId = clientId;
-        }
-        try {
-          const { response, data } = await send(path, {
-            method: 'POST',
-            body: JSON.stringify(payload),
-          });
-          document.getElementById('updateResult').textContent = present(data || response);
-        } catch (error) {
-          document.getElementById('updateResult').textContent = error.message;
-        }
-      });
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : undefined;
+      }
 
-      document.getElementById('fetchLocation').addEventListener('click', async () => {
-        const path = document.getElementById('fetchPath').value.trim() || '/location/latest';
-        const clientId = document.getElementById('clientId').value.trim();
-        const query = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
-        try {
-          const { response, data } = await send(`${path}${query}`, { method: 'GET' });
-          document.getElementById('fetchResult').textContent = present(data || response);
-        } catch (error) {
-          document.getElementById('fetchResult').textContent = error.message;
-        }
-      });
+      document
+        .getElementById('sendDriverLocation')
+        .addEventListener('click', async () => {
+          const longitude = toNumber(document.getElementById('driverLongitude').value);
+          const latitude = toNumber(document.getElementById('driverLatitude').value);
+          const accuracyMeters = toNumber(
+            document.getElementById('driverAccuracy').value,
+          );
+
+          if (typeof longitude !== 'number' || typeof latitude !== 'number') {
+            document.getElementById('driverLocationResult').textContent =
+              'Longitude and latitude are required numeric values.';
+            return;
+          }
+
+          const payload = { longitude, latitude };
+          if (typeof accuracyMeters === 'number') {
+            payload.accuracyMeters = accuracyMeters;
+          }
+
+          try {
+            const { response, data } = await send('/gateway/location/driver', {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            });
+            document.getElementById('driverLocationResult').textContent = present(
+              data || response,
+            );
+          } catch (error) {
+            document.getElementById('driverLocationResult').textContent = error.message;
+          }
+        });
+
+      document
+        .getElementById('fetchNearbyDrivers')
+        .addEventListener('click', async () => {
+          const longitude = toNumber(document.getElementById('nearbyLongitude').value);
+          const latitude = toNumber(document.getElementById('nearbyLatitude').value);
+          const limit = toNumber(document.getElementById('nearbyLimit').value);
+
+          if (typeof longitude !== 'number' || typeof latitude !== 'number') {
+            document.getElementById('nearbyDriversResult').textContent =
+              'Longitude and latitude are required numeric values.';
+            return;
+          }
+
+          const params = new URLSearchParams();
+          params.set('longitude', String(longitude));
+          params.set('latitude', String(latitude));
+          if (typeof limit === 'number') {
+            params.set('limit', String(Math.trunc(limit)));
+          }
+
+          const path = `/gateway/matching/nearby-drivers?${params.toString()}`;
+
+          try {
+            const { response, data } = await send(path, { method: 'GET' });
+            document.getElementById('nearbyDriversResult').textContent = present(
+              data || response,
+            );
+          } catch (error) {
+            document.getElementById('nearbyDriversResult').textContent = error.message;
+          }
+        });
 
       document.getElementById('sendRaw').addEventListener('click', async () => {
         const path = document.getElementById('rawPath').value.trim();
         if (!path) {
-          return (document.getElementById('rawResult').textContent = 'Provide an endpoint path.');
+          return (document.getElementById('rawResult').textContent =
+            'Provide an endpoint path.');
         }
         const method = document.getElementById('rawMethod').value.trim() || 'POST';
         const body = document.getElementById('rawBody').value.trim();
