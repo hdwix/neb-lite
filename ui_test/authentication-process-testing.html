@@ -98,6 +98,18 @@
         width: auto;
         padding-inline: 16px;
       }
+      .side-by-side {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 12px;
+        align-items: stretch;
+      }
+      .side-by-side button {
+        align-self: start;
+      }
+      .side-by-side .stacked {
+        gap: 8px;
+      }
       .badge {
         display: inline-flex;
         padding: 2px 6px;
@@ -193,21 +205,17 @@
                 Call /gateway/auth/request-otp
               </button>
               <pre id="requestOtpResult">{}</pre>
-              <button id="simulateOtp" class="secondary" type="button">
-                Call /gateway/auth/simulate/:msisdn/get-otp
-              </button>
+              <div class="side-by-side">
+                <button id="simulateOtp" class="secondary" type="button">
+                  Call /gateway/auth/simulate/:msisdn/get-otp
+                </button>
+                <div class="stacked">
+                  <span class="muted">Incoming OTP messages</span>
+                  <div id="sseLog" class="logs"></div>
+                </div>
+              </div>
               <pre id="simulateOtpResult">{}</pre>
             </div>
-            <div class="panel stacked">
-              <label>Received OTP token</label>
-              <pre id="latestOtpToken">Waiting for stream…</pre>
-              <label class="muted">Last SSE payload</label>
-              <pre id="latestOtpRaw">{}</pre>
-            </div>
-          </div>
-          <div>
-            <span class="muted">Incoming OTP messages</span>
-            <div id="sseLog" class="logs"></div>
           </div>
         </div>
       </section>
@@ -273,8 +281,6 @@
       const simulateOtpResultEl = document.getElementById('simulateOtpResult');
       const otpSimulationTokenEl =
         document.getElementById('otpSimulationToken');
-      const latestOtpTokenEl = document.getElementById('latestOtpToken');
-      const latestOtpRawEl = document.getElementById('latestOtpRaw');
       const clientTypeEl = document.getElementById('clientType');
 
       function getBaseUrl() {
@@ -410,38 +416,6 @@
         );
       }
 
-      function updateLatestOtpDisplays(payload) {
-        if (payload === undefined || payload === null || payload === '') {
-          latestOtpTokenEl.textContent = 'Waiting for stream…';
-          latestOtpRawEl.textContent = '{}';
-          return undefined;
-        }
-
-        let parsed = payload;
-        if (typeof payload === 'string') {
-          latestOtpRawEl.textContent = payload;
-        } else {
-          latestOtpRawEl.textContent = formatPayload(payload);
-        }
-
-        if (typeof payload === 'string') {
-          try {
-            parsed = JSON.parse(payload);
-          } catch (error) {
-            parsed = payload;
-          }
-        }
-
-        const token =
-          typeof parsed === 'string' ? parsed : extractOtpToken(parsed);
-        latestOtpTokenEl.textContent = token
-          ? String(token)
-          : typeof parsed === 'string'
-            ? parsed
-            : formatPayload(parsed);
-        return token || (typeof parsed === 'string' ? parsed : undefined);
-      }
-
       document
         .getElementById('rememberMsisdn')
         .addEventListener('click', (event) => {
@@ -471,7 +445,6 @@
             if (tokenFromResponse) {
               otpSimulationTokenEl.value = tokenFromResponse;
             }
-            updateLatestOtpDisplays(result.data);
           } catch (error) {
             setResult(otpResultEl, error.message);
           }
@@ -494,7 +467,6 @@
             if (tokenFromResponse) {
               otpSimulationTokenEl.value = tokenFromResponse;
             }
-            updateLatestOtpDisplays(result.data);
           } catch (error) {
             setResult(simulateOtpResultEl, error.message);
           }
@@ -731,13 +703,11 @@
             otpSimulationTokenEl.value = streamToken;
           }
         }
-        updateLatestOtpDisplays(message);
       }
 
       loadClientType();
       loadMsisdn();
       refreshTokenSnapshot();
-      updateLatestOtpDisplays();
     </script>
   </body>
 </html>
