@@ -43,6 +43,15 @@
         background: #161b22;
         color: inherit;
       }
+      label.inline-checkbox {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      label.inline-checkbox > input[type='checkbox'] {
+        width: auto;
+        margin: 0;
+      }
       button {
         cursor: pointer;
         border: 1px solid #238636;
@@ -120,6 +129,10 @@
           <input id="authHeader" type="text" placeholder="Bearer &lt;token&gt;" />
           <label for="clientId">Client identifier header</label>
           <input id="clientId" type="text" placeholder="UUID or numeric id" />
+          <label class="inline-checkbox">
+            <input id="includeCredentials" type="checkbox" />
+            Send cookies/credentials with requests
+          </label>
         </div>
       </section>
 
@@ -244,15 +257,25 @@
         return headers;
       }
 
+      function shouldSendCredentials() {
+        const checkbox = document.getElementById('includeCredentials');
+        return Boolean(checkbox && checkbox.checked);
+      }
+
       async function send(path, options) {
-        const response = await fetch(`${getBaseUrl()}${path}`, {
-          credentials: 'include',
+        const fetchOptions = {
           ...options,
           headers: {
             ...buildHeaders(),
             ...(options.headers || {}),
           },
-        });
+        };
+
+        if (shouldSendCredentials()) {
+          fetchOptions.credentials = 'include';
+        }
+
+        const response = await fetch(`${getBaseUrl()}${path}`, fetchOptions);
         let data;
         try {
           data = await response.clone().json();
