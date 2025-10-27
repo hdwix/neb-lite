@@ -31,6 +31,7 @@ import { GetNearbyDriversDto } from '../../../location/app/dto/get-nearby-driver
 import { RidesService } from '../../../rides/domain/services/rides.service';
 import { CreateRideDto } from '../../../rides/app/dto/create-ride.dto';
 import { CancelRideDto } from '../../../rides/app/dto/cancel-ride.dto';
+import { DriverRespondRideDto } from '../../../rides/app/dto/driver-respond-ride.dto';
 import { Ride } from '../../../rides/domain/entities/ride.entity';
 import {
   NotificationStreamService,
@@ -349,6 +350,30 @@ export class GatewayController {
     };
   }
 
+  @Post('rides/:id/driver-reject')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER)
+  @HttpCode(HttpStatus.OK)
+  async rejectRideAsDriver(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() respondDto: DriverRespondRideDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.rejectRideByDriver(
+      rideId,
+      this.getClientId(client),
+      respondDto?.reason,
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride rejected by driver',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
   @Post('rides/:id/rider-accept')
   @Auth(EAuthType.Bearer)
   @Roles(EClientType.RIDER)
@@ -426,6 +451,16 @@ export class GatewayController {
       distanceEstimatedKm: ride.distanceEstimatedKm ?? null,
       durationEstimatedSeconds: ride.durationEstimatedSeconds ?? null,
       createdAt: ride.createdAt?.toISOString?.() ?? ride.createdAt,
+      candidates: (ride.candidates ?? []).map((candidate) => ({
+        driverId: candidate.driverId,
+        status: candidate.status,
+        reason: candidate.reason ?? null,
+        distanceMeters: candidate.distanceMeters ?? null,
+        respondedAt:
+          candidate.respondedAt?.toISOString?.() ?? candidate.respondedAt ?? null,
+        createdAt:
+          candidate.createdAt?.toISOString?.() ?? candidate.createdAt ?? null,
+      })),
     };
   }
 }

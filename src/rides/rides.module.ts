@@ -3,9 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { Ride } from './domain/entities/ride.entity';
 import { RideStatusHistory } from './domain/entities/ride-status-history.entity';
+import { RideDriverCandidate } from './domain/entities/ride-driver-candidate.entity';
 import { RidesService } from './domain/services/rides.service';
 import { RideRepository } from './infrastructure/repositories/ride.repository';
 import { RideStatusHistoryRepository } from './infrastructure/repositories/ride-status-history.repository';
+import { RideDriverCandidateRepository } from './infrastructure/repositories/ride-driver-candidate.repository';
 import { RIDE_QUEUE_NAME } from './domain/types/ride-queue.types';
 import { RideProcessor } from './domain/processors/ride.processor';
 import { BullBoardModule } from '@bull-board/nestjs';
@@ -19,6 +21,7 @@ import {
 } from './domain/constants/route-estimation-limiter.constant';
 import { RideNotificationService } from './domain/services/ride-notification.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { LocationModule } from '../location/location.module';
 
 type RideQueueRegistrationOptions = RegisterQueueOptions & {
   limiter?: QueueLimiterOptions;
@@ -35,7 +38,7 @@ const rideQueueRegistration: RideQueueRegistrationOptions = {
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Ride, RideStatusHistory]),
+    TypeOrmModule.forFeature([Ride, RideStatusHistory, RideDriverCandidate]),
     BullModule.registerQueue(rideQueueRegistration),
     BullBoardModule.forFeature({
       name: RIDE_QUEUE_NAME,
@@ -43,11 +46,13 @@ const rideQueueRegistration: RideQueueRegistrationOptions = {
     }),
     HttpModule,
     NotificationsModule,
+    LocationModule,
   ],
   providers: [
     RidesService,
     RideRepository,
     RideStatusHistoryRepository,
+    RideDriverCandidateRepository,
     RideNotificationService,
     RideProcessor,
   ],
