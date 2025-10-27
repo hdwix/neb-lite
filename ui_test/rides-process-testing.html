@@ -15,7 +15,8 @@
         color: #f0f6fc;
       }
       h1,
-      h2 {
+      h2,
+      h3 {
         margin-top: 0;
       }
       section {
@@ -33,7 +34,8 @@
       }
       input,
       button,
-      textarea {
+      textarea,
+      select {
         width: 100%;
         box-sizing: border-box;
         padding: 8px;
@@ -61,6 +63,7 @@
         overflow: auto;
         max-height: 240px;
         font-size: 0.9rem;
+        white-space: pre-wrap;
       }
       .stacked {
         display: grid;
@@ -90,6 +93,29 @@
       textarea {
         min-height: 120px;
       }
+      fieldset {
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      fieldset legend {
+        padding: 0 6px;
+        font-size: 0.8rem;
+        color: #8b949e;
+      }
+      .hint {
+        font-size: 0.75rem;
+        color: #8b949e;
+        margin-top: -8px;
+        margin-bottom: 12px;
+      }
+      .log {
+        min-height: 160px;
+      }
+      .small-gap {
+        gap: 8px;
+      }
     </style>
   </head>
   <body>
@@ -100,8 +126,9 @@
           <span class="badge">Rides module</span>
         </h1>
         <p class="muted">
-          Capture each step of a booking lifecycle, from requesting a ride to finishing it.
-          Adjust endpoint paths as needed to match the deployed gateway.
+          Exercise every API exposed by the rides workflow through the gateway.
+          Supply a valid bearer token for the relevant actor (rider or driver)
+          and walk through requesting, accepting, and completing rides.
         </p>
       </header>
 
@@ -117,115 +144,240 @@
           />
           <label for="authHeader">Authorization header</label>
           <input id="authHeader" type="text" placeholder="Bearer &lt;token&gt;" />
-          <label for="rideId">Ride identifier (persisted between calls)</label>
-          <input id="rideId" type="text" placeholder="uuid" />
+          <div class="inline small-gap">
+            <div>
+              <label for="rideId">Ride identifier (persisted between calls)</label>
+              <input id="rideId" type="text" placeholder="uuid" />
+            </div>
+            <div>
+              <label for="defaultDriverId">Default driver ID</label>
+              <input id="defaultDriverId" type="text" placeholder="uuid" />
+            </div>
+          </div>
+          <p class="hint">
+            All endpoint paths below are relative to the base URL. Defaults are
+            pre-filled for the <code>/gateway</code> controller routes.
+          </p>
         </div>
       </section>
 
       <section>
-        <h2>Create ride</h2>
+        <h2>Stream ride notifications (SSE)</h2>
+        <div class="stacked">
+          <label for="streamPath">Endpoint path</label>
+          <input
+            id="streamPath"
+            type="text"
+            value="/gateway/notifications/stream"
+            placeholder="/gateway/notifications/stream"
+          />
+          <div class="inline small-gap">
+            <button id="connectStream">Connect</button>
+            <button id="disconnectStream" class="secondary">Disconnect</button>
+          </div>
+          <pre id="streamResult" class="log">Stream idle.</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Create ride (rider)</h2>
         <div class="stacked">
           <label for="createPath">Endpoint path</label>
-          <input id="createPath" type="text" value="/rides" placeholder="/rides" />
-          <textarea
-            id="createBody"
-            placeholder='{"pickup":{"lat":-6.2,"lng":106.8},"destination":{"lat":-6.9,"lng":107.6}}'
-          ></textarea>
+          <input
+            id="createPath"
+            type="text"
+            value="/gateway/rides"
+            placeholder="/gateway/rides"
+          />
+          <fieldset>
+            <legend>Pickup coordinate</legend>
+            <div class="inline small-gap">
+              <div>
+                <label for="pickupLongitude">Longitude</label>
+                <input id="pickupLongitude" type="number" step="any" />
+              </div>
+              <div>
+                <label for="pickupLatitude">Latitude</label>
+                <input id="pickupLatitude" type="number" step="any" />
+              </div>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Dropoff coordinate</legend>
+            <div class="inline small-gap">
+              <div>
+                <label for="dropoffLongitude">Longitude</label>
+                <input id="dropoffLongitude" type="number" step="any" />
+              </div>
+              <div>
+                <label for="dropoffLatitude">Latitude</label>
+                <input id="dropoffLatitude" type="number" step="any" />
+              </div>
+            </div>
+          </fieldset>
+          <label for="note">Note (optional)</label>
+          <input id="note" type="text" placeholder="Any extra instructions" />
+          <label for="createDriverId">Driver ID (required by DTO)</label>
+          <input id="createDriverId" type="text" placeholder="uuid" />
           <button id="createRide">Request ride</button>
           <pre id="createResult">{}</pre>
         </div>
       </section>
 
       <section>
-        <h2>Assign / accept ride</h2>
-        <div class="stacked">
-          <label for="acceptPath">Endpoint path</label>
-          <input
-            id="acceptPath"
-            type="text"
-            value="/rides/{id}/accept"
-            placeholder="/rides/{id}/accept"
-          />
-          <textarea id="acceptBody" placeholder='{"driverId":"..."}'></textarea>
-          <button id="acceptRide">Accept ride</button>
-          <pre id="acceptResult">{}</pre>
-        </div>
-      </section>
-
-      <section>
-        <h2>Complete ride</h2>
-        <div class="stacked">
-          <label for="completePath">Endpoint path</label>
-          <input
-            id="completePath"
-            type="text"
-            value="/rides/{id}/complete"
-            placeholder="/rides/{id}/complete"
-          />
-          <textarea id="completeBody" placeholder='{"fare":15000}'></textarea>
-          <button id="completeRide">Complete</button>
-          <pre id="completeResult">{}</pre>
-        </div>
-      </section>
-
-      <section>
-        <h2>Get ride status</h2>
+        <h2>Retrieve ride details</h2>
         <div class="stacked">
           <label for="statusPath">Endpoint path</label>
-          <input id="statusPath" type="text" value="/rides/{id}" placeholder="/rides/{id}" />
-          <button id="fetchStatus">Fetch status</button>
+          <input
+            id="statusPath"
+            type="text"
+            value="/gateway/rides/{id}"
+            placeholder="/gateway/rides/{id}"
+          />
+          <button id="fetchStatus">Fetch ride</button>
           <pre id="statusResult">{}</pre>
         </div>
       </section>
 
       <section>
-        <h2>Custom request</h2>
+        <h2>Driver responses</h2>
         <div class="stacked">
-          <label for="rawPath">Endpoint path</label>
-          <input id="rawPath" type="text" placeholder="/rides/{id}/cancel" />
-          <label for="rawMethod">Method</label>
-          <input id="rawMethod" type="text" value="POST" />
-          <textarea id="rawBody" placeholder="JSON body"></textarea>
-          <button id="sendRaw">Send</button>
-          <pre id="rawResult">{}</pre>
+          <label for="driverAcceptPath">Driver accept endpoint</label>
+          <input
+            id="driverAcceptPath"
+            type="text"
+            value="/gateway/rides/{id}/driver-accept"
+            placeholder="/gateway/rides/{id}/driver-accept"
+          />
+          <button id="driverAccept">Accept as driver</button>
+          <pre id="driverAcceptResult">{}</pre>
+          <label for="completePath">Complete ride endpoint</label>
+          <input
+            id="completePath"
+            type="text"
+            value="/gateway/rides/{id}/complete"
+            placeholder="/gateway/rides/{id}/complete"
+          />
+          <button id="completeRide">Complete ride</button>
+          <pre id="completeResult">{}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Rider responses</h2>
+        <div class="stacked">
+          <label for="riderAcceptPath">Rider accept endpoint</label>
+          <input
+            id="riderAcceptPath"
+            type="text"
+            value="/gateway/rides/{id}/rider-accept"
+            placeholder="/gateway/rides/{id}/rider-accept"
+          />
+          <button id="riderAccept">Confirm driver</button>
+          <pre id="riderAcceptResult">{}</pre>
+          <label for="riderRejectPath">Rider reject endpoint</label>
+          <input
+            id="riderRejectPath"
+            type="text"
+            value="/gateway/rides/{id}/rider-reject"
+            placeholder="/gateway/rides/{id}/rider-reject"
+          />
+          <label for="riderRejectReason">Reason (optional)</label>
+          <input id="riderRejectReason" type="text" placeholder="Reason for rejection" />
+          <button id="riderReject">Reject driver</button>
+          <pre id="riderRejectResult">{}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Cancel ride (rider)</h2>
+        <div class="stacked">
+          <label for="cancelPath">Endpoint path</label>
+          <input
+            id="cancelPath"
+            type="text"
+            value="/gateway/rides/{id}/cancel"
+            placeholder="/gateway/rides/{id}/cancel"
+          />
+          <label for="cancelReason">Reason (optional)</label>
+          <input id="cancelReason" type="text" placeholder="Reason for cancelling" />
+          <button id="cancelRide">Cancel ride</button>
+          <pre id="cancelResult">{}</pre>
         </div>
       </section>
     </main>
 
     <script>
+      const streamState = {
+        controller: null,
+        reader: null,
+      };
+
+      function $(id) {
+        return document.getElementById(id);
+      }
+
       function getBaseUrl() {
-        return document.getElementById('baseUrl').value.trim().replace(/\/$/, '');
+        const baseUrl = $('baseUrl').value.trim();
+        return baseUrl.replace(/\/$/, '');
       }
 
-      function getRideId() {
-        return document.getElementById('rideId').value.trim();
-      }
-
-      function setRideId(id) {
-        if (!id) return;
-        document.getElementById('rideId').value = id;
-      }
-
-      function buildHeaders() {
+      function getHeaders() {
         const headers = {
           'Content-Type': 'application/json',
         };
-        const auth = document.getElementById('authHeader').value.trim();
+        const auth = $('authHeader').value.trim();
         if (auth) {
           headers.Authorization = auth;
         }
         return headers;
       }
 
-      async function send(path, options) {
-        const response = await fetch(`${getBaseUrl()}${path}`, {
-          credentials: 'include',
-          ...options,
-          headers: {
-            ...buildHeaders(),
-            ...(options.headers || {}),
-          },
-        });
+      function getRideId() {
+        return $('rideId').value.trim();
+      }
+
+      function setRideId(id) {
+        if (!id) return;
+        $('rideId').value = id;
+      }
+
+      function getDriverId() {
+        return (
+          $('createDriverId').value.trim() || $('defaultDriverId').value.trim()
+        );
+      }
+
+      function stringify(result) {
+        if (result instanceof Response) {
+          return `${result.status} ${result.statusText}`;
+        }
+        if (typeof result === 'string') {
+          return result;
+        }
+        try {
+          return JSON.stringify(result, null, 2);
+        } catch (error) {
+          return String(result);
+        }
+      }
+
+      async function request(path, options = {}) {
+        let response;
+        try {
+          response = await fetch(`${getBaseUrl()}${path}`, {
+            ...options,
+            headers: {
+              ...getHeaders(),
+              ...(options.headers || {}),
+            },
+          });
+        } catch (error) {
+          const detail =
+            error instanceof Error ? error.message : 'Unknown network failure';
+          throw new Error(`Network request failed: ${detail}`);
+        }
+
         let data;
         try {
           data = await response.clone().json();
@@ -235,153 +387,289 @@
         return { response, data };
       }
 
-      function show(target, payload) {
-        if (payload instanceof Response) {
-          target.textContent = `${payload.status} ${payload.statusText}`;
-          return;
-        }
-        try {
-          target.textContent = JSON.stringify(payload, null, 2);
-        } catch (error) {
-          target.textContent = String(payload);
-        }
+      function display(targetId, payload) {
+        const target = $(targetId);
+        target.textContent = stringify(payload);
       }
 
-      function replaceRideId(path) {
-        const rideId = getRideId();
-        if (!rideId) {
-          return path;
+      function resolvePath(templateId) {
+        const template = $(templateId).value.trim();
+        if (!template) {
+          return '';
         }
-        return path.replace('{id}', rideId);
-      }
-
-      function parseBody(text, target) {
-        const trimmed = text.trim();
-        if (!trimmed) {
-          return undefined;
-        }
-        try {
-          JSON.parse(trimmed);
-          return trimmed;
-        } catch (error) {
-          show(target, 'Body must be valid JSON.');
-          throw error;
-        }
-      }
-
-      document.getElementById('createRide').addEventListener('click', async () => {
-        const path = document.getElementById('createPath').value.trim() || '/rides';
-        const bodyText = document.getElementById('createBody').value.trim();
-        let body = bodyText || '{}';
-        try {
-          JSON.parse(body);
-        } catch (error) {
-          return show(document.getElementById('createResult'), 'Body must be valid JSON.');
-        }
-        try {
-          const { response, data } = await send(path, {
-            method: 'POST',
-            body,
-          });
-          show(document.getElementById('createResult'), data || response);
-          if (data && data.id) {
-            setRideId(data.id);
+        if (template.includes('{id}')) {
+          const rideId = getRideId();
+          if (!rideId) {
+            return null;
           }
-        } catch (error) {
-          show(document.getElementById('createResult'), error.message);
+          return template.replace('{id}', rideId);
         }
-      });
+        return template;
+      }
 
-      document.getElementById('acceptRide').addEventListener('click', async () => {
-        const pathTemplate = document.getElementById('acceptPath').value.trim();
-        if (!pathTemplate) {
-          return show(document.getElementById('acceptResult'), 'Provide an endpoint path.');
+      function extractRideId(data) {
+        if (!data) return null;
+        if (data?.data?.id) return data.data.id;
+        if (data?.id) return data.id;
+        return null;
+      }
+
+      function parseCoordinate(longitude, latitude, label) {
+        const lng = Number(longitude.value);
+        const lat = Number(latitude.value);
+        if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+          throw new Error(`${label} longitude and latitude must be numbers.`);
         }
-        const path = replaceRideId(pathTemplate);
-        let body;
+        return { longitude: lng, latitude: lat };
+      }
+
+      $('createRide').addEventListener('click', async () => {
+        const path = $('createPath').value.trim() || '/gateway/rides';
+        const driverId = getDriverId();
+        if (!driverId) {
+          return display('createResult', 'Driver ID is required.');
+        }
+        let pickup;
+        let dropoff;
         try {
-          body = parseBody(
-            document.getElementById('acceptBody').value,
-            document.getElementById('acceptResult'),
+          pickup = parseCoordinate(
+            $('pickupLongitude'),
+            $('pickupLatitude'),
+            'Pickup',
+          );
+          dropoff = parseCoordinate(
+            $('dropoffLongitude'),
+            $('dropoffLatitude'),
+            'Dropoff',
           );
         } catch (error) {
-          return;
+          return display('createResult', error instanceof Error ? error.message : String(error));
+        }
+        const payload = {
+          pickup,
+          dropoff,
+          driverId,
+        };
+        const note = $('note').value.trim();
+        if (note) {
+          payload.note = note;
         }
         try {
-          const { response, data } = await send(path, {
+          const { response, data } = await request(path, {
             method: 'POST',
-            body,
+            body: JSON.stringify(payload),
           });
-          show(document.getElementById('acceptResult'), data || response);
+          display('createResult', data || response);
+          setRideId(extractRideId(data));
         } catch (error) {
-          show(document.getElementById('acceptResult'), error.message);
+          display('createResult', error instanceof Error ? error.message : String(error));
         }
       });
 
-      document.getElementById('completeRide').addEventListener('click', async () => {
-        const pathTemplate = document.getElementById('completePath').value.trim();
-        if (!pathTemplate) {
-          return show(document.getElementById('completeResult'), 'Provide an endpoint path.');
+      $('fetchStatus').addEventListener('click', async () => {
+        const path = resolvePath('statusPath');
+        if (path === '') {
+          return display('statusResult', 'Provide an endpoint path.');
         }
-        const path = replaceRideId(pathTemplate);
-        let body;
-        try {
-          body = parseBody(
-            document.getElementById('completeBody').value,
-            document.getElementById('completeResult'),
+        if (path === null) {
+          return display(
+            'statusResult',
+            'Set the ride ID or replace {id} in the endpoint path.',
           );
-        } catch (error) {
-          return;
         }
         try {
-          const { response, data } = await send(path, {
+          const { response, data } = await request(path, { method: 'GET' });
+          display('statusResult', data || response);
+          setRideId(extractRideId(data));
+        } catch (error) {
+          display('statusResult', error instanceof Error ? error.message : String(error));
+        }
+      });
+
+      $('driverAccept').addEventListener('click', async () => {
+        const path = resolvePath('driverAcceptPath');
+        if (path === '') {
+          return display('driverAcceptResult', 'Provide an endpoint path.');
+        }
+        if (path === null) {
+          return display(
+            'driverAcceptResult',
+            'Set the ride ID so {id} can be replaced.',
+          );
+        }
+        try {
+          const { response, data } = await request(path, { method: 'POST' });
+          display('driverAcceptResult', data || response);
+        } catch (error) {
+          display(
+            'driverAcceptResult',
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      });
+
+      $('completeRide').addEventListener('click', async () => {
+        const path = resolvePath('completePath');
+        if (path === '') {
+          return display('completeResult', 'Provide an endpoint path.');
+        }
+        if (path === null) {
+          return display('completeResult', 'Set the ride ID before completing.');
+        }
+        try {
+          const { response, data } = await request(path, { method: 'POST' });
+          display('completeResult', data || response);
+        } catch (error) {
+          display('completeResult', error instanceof Error ? error.message : String(error));
+        }
+      });
+
+      $('riderAccept').addEventListener('click', async () => {
+        const path = resolvePath('riderAcceptPath');
+        if (path === '') {
+          return display('riderAcceptResult', 'Provide an endpoint path.');
+        }
+        if (path === null) {
+          return display('riderAcceptResult', 'Set the ride ID before accepting.');
+        }
+        try {
+          const { response, data } = await request(path, { method: 'POST' });
+          display('riderAcceptResult', data || response);
+        } catch (error) {
+          display('riderAcceptResult', error instanceof Error ? error.message : String(error));
+        }
+      });
+
+      $('riderReject').addEventListener('click', async () => {
+        const path = resolvePath('riderRejectPath');
+        if (path === '') {
+          return display('riderRejectResult', 'Provide an endpoint path.');
+        }
+        if (path === null) {
+          return display('riderRejectResult', 'Set the ride ID before rejecting.');
+        }
+        const reason = $('riderRejectReason').value.trim();
+        const payload = reason ? { reason } : {};
+        try {
+          const { response, data } = await request(path, {
             method: 'POST',
-            body,
+            body: JSON.stringify(payload),
           });
-          show(document.getElementById('completeResult'), data || response);
+          display('riderRejectResult', data || response);
         } catch (error) {
-          show(document.getElementById('completeResult'), error.message);
+          display('riderRejectResult', error instanceof Error ? error.message : String(error));
         }
       });
 
-      document.getElementById('fetchStatus').addEventListener('click', async () => {
-        const pathTemplate = document.getElementById('statusPath').value.trim();
-        if (!pathTemplate) {
-          return show(document.getElementById('statusResult'), 'Provide an endpoint path.');
+      $('cancelRide').addEventListener('click', async () => {
+        const path = resolvePath('cancelPath');
+        if (path === '') {
+          return display('cancelResult', 'Provide an endpoint path.');
         }
-        const path = replaceRideId(pathTemplate);
+        if (path === null) {
+          return display('cancelResult', 'Set the ride ID before cancelling.');
+        }
+        const reason = $('cancelReason').value.trim();
+        const payload = reason ? { reason } : {};
         try {
-          const { response, data } = await send(path, { method: 'GET' });
-          show(document.getElementById('statusResult'), data || response);
+          const { response, data } = await request(path, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
+          display('cancelResult', data || response);
         } catch (error) {
-          show(document.getElementById('statusResult'), error.message);
+          display('cancelResult', error instanceof Error ? error.message : String(error));
         }
       });
 
-      document.getElementById('sendRaw').addEventListener('click', async () => {
-        const pathTemplate = document.getElementById('rawPath').value.trim();
-        if (!pathTemplate) {
-          return show(document.getElementById('rawResult'), 'Provide an endpoint path.');
+      $('defaultDriverId').addEventListener('input', () => {
+        if (!$('createDriverId').value.trim()) {
+          $('createDriverId').value = $('defaultDriverId').value.trim();
         }
-        const path = replaceRideId(pathTemplate);
-        const method = document.getElementById('rawMethod').value.trim() || 'POST';
-        let body;
-        try {
-          body = method.match(/^GET|HEAD$/i)
-            ? undefined
-            : parseBody(document.getElementById('rawBody').value, document.getElementById('rawResult'));
-        } catch (error) {
-          return;
+      });
+
+      $('connectStream').addEventListener('click', async () => {
+        if (streamState.controller) {
+          return display('streamResult', 'Stream already connected.');
         }
+        const path = $('streamPath').value.trim() || '/gateway/notifications/stream';
+        const url = `${getBaseUrl()}${path}`;
+        const headers = getHeaders();
+        const controller = new AbortController();
+        streamState.controller = controller;
+        $('streamResult').textContent = 'Connecting to stream...';
         try {
-          const { response, data } = await send(path, {
-            method,
-            body,
+          const response = await fetch(url, {
+            method: 'GET',
+            headers,
+            signal: controller.signal,
           });
-          show(document.getElementById('rawResult'), data || response);
+          if (!response.ok || !response.body) {
+            streamState.controller = null;
+            throw new Error(
+              `Stream failed: ${response.status} ${response.statusText}`,
+            );
+          }
+          const reader = response.body.getReader();
+          streamState.reader = reader;
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
+          $('streamResult').textContent = 'Connected. Awaiting events...\n';
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split(/\n\n/);
+            buffer = parts.pop() ?? '';
+            for (const chunk of parts) {
+              const lines = chunk.split(/\n/).filter(Boolean);
+              if (!lines.length) continue;
+              const eventLine = lines.find((line) => line.startsWith('event:'));
+              const idLine = lines.find((line) => line.startsWith('id:'));
+              const dataLines = lines
+                .filter((line) => line.startsWith('data:'))
+                .map((line) => line.replace(/^data:\s?/, ''));
+              const payloadText = dataLines.join('\n');
+              let parsed = payloadText;
+              try {
+                parsed = JSON.parse(payloadText);
+              } catch (error) {
+                // leave as text
+              }
+              const timestamp = new Date().toLocaleTimeString();
+              const summary = {
+                time: timestamp,
+                event: eventLine ? eventLine.replace('event:', '').trim() : null,
+                id: idLine ? idLine.replace('id:', '').trim() : null,
+                data: parsed,
+              };
+              const current = $('streamResult').textContent;
+              $('streamResult').textContent = `${current}${stringify(summary)}\n`;
+              $('streamResult').scrollTop = $('streamResult').scrollHeight;
+            }
+          }
+          $('streamResult').textContent += 'Stream closed.\n';
         } catch (error) {
-          show(document.getElementById('rawResult'), error.message);
+          const message =
+            error instanceof Error ? error.message : 'Unknown stream failure';
+          $('streamResult').textContent += `${message}\n`;
+        } finally {
+          if (streamState.reader) {
+            try {
+              streamState.reader.cancel();
+            } catch (_) {}
+          }
+          streamState.controller = null;
+          streamState.reader = null;
         }
+      });
+
+      $('disconnectStream').addEventListener('click', () => {
+        if (!streamState.controller) {
+          return display('streamResult', 'Stream is not connected.');
+        }
+        streamState.controller.abort();
+        $('streamResult').textContent += 'Disconnect requested.\n';
       });
     </script>
   </body>
