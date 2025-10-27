@@ -311,25 +311,39 @@ export class RidesService {
       return ride;
     }
 
-    if (ride.driverId && ride.driverId !== driverId) {
+    const now = new Date();
+    const markCandidateSuperseded = async (currentRide: Ride) => {
       candidate.status = ERideDriverCandidateStatus.CANCELED;
       candidate.reason = 'Another driver already accepted this ride';
-      candidate.respondedAt = new Date();
+      candidate.respondedAt = now;
       await this.candidateRepository.save(candidate);
-      await this.notificationService.notifyCandidateSuperseded(ride, candidate);
+      await this.notificationService.notifyCandidateSuperseded(currentRide, candidate);
+    };
+
+    if (ride.driverId && ride.driverId !== driverId) {
+      await markCandidateSuperseded(ride);
       throw new ConflictException('Ride already accepted by another driver');
     }
 
-    const now = new Date();
+    if (!ride.driverId) {
+      const claimed = await this.rideRepository.claimDriver(ride.id, driverId);
+
+      if (!claimed) {
+        ride = (await this.rideRepository.findById(ride.id)) ?? ride;
+
+        if (ride.driverId && ride.driverId !== driverId) {
+          await markCandidateSuperseded(ride);
+          throw new ConflictException('Ride already accepted by another driver');
+        }
+      } else {
+        ride.driverId = driverId;
+      }
+    }
+
     candidate.status = ERideDriverCandidateStatus.ACCEPTED;
     candidate.reason = null;
     candidate.respondedAt = now;
     await this.candidateRepository.save(candidate);
-
-    if (!ride.driverId) {
-      ride.driverId = driverId;
-      ride = await this.rideRepository.save(ride);
-    }
 
     const assignment = await this.transitionRideStatus(
       ride.id,
