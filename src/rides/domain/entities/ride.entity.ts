@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
 import { RideStatusHistory } from './ride-status-history.entity';
+import { RideDriverCandidate } from './ride-driver-candidate.entity';
 
 @Entity('rides')
 @Index('ix_rides_rider_id', ['riderId'])
@@ -99,4 +100,7 @@ export class Ride {
 
   @OneToMany(() => RideStatusHistory, (history) => history.ride)
   statusHistory?: RideStatusHistory[];
+
+  @OneToMany(() => RideDriverCandidate, (candidate) => candidate.ride)
+  candidates?: RideDriverCandidate[];
 }

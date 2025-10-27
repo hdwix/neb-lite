@@ -23,6 +23,12 @@ export class RideRepository {
   }
 
   async findById(id: string): Promise<Ride | null> {
-    return this.repository.findOne({ where: { id } });
+    return this.repository.findOne({
+      where: { id },
+      relations: ['candidates'],
+      order: {
+        candidates: { createdAt: 'ASC' },
+      },
+    });
   }
 }

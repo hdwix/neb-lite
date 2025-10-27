@@ -46,26 +46,28 @@ describe('GatewayController', () => {
     jest.clearAllMocks();
     configServiceMock.get.mockReset();
 
-    const ridesServiceMock: jest.Mocked<
-      Pick<
-        RidesService,
-        | 'createRide'
-        | 'getRideById'
-        | 'cancelRide'
-        | 'completeRide'
-        | 'acceptRideByDriver'
-        | 'confirmDriverAcceptance'
-        | 'rejectDriverAcceptance'
-      >
-    > = {
-      createRide: jest.fn(),
-      getRideById: jest.fn(),
-      cancelRide: jest.fn(),
-      completeRide: jest.fn(),
-      acceptRideByDriver: jest.fn(),
-      confirmDriverAcceptance: jest.fn(),
-      rejectDriverAcceptance: jest.fn(),
-    };
+      const ridesServiceMock: jest.Mocked<
+        Pick<
+          RidesService,
+          | 'createRide'
+          | 'getRideById'
+          | 'cancelRide'
+          | 'completeRide'
+          | 'acceptRideByDriver'
+          | 'rejectRideByDriver'
+          | 'confirmDriverAcceptance'
+          | 'rejectDriverAcceptance'
+        >
+      > = {
+        createRide: jest.fn(),
+        getRideById: jest.fn(),
+        cancelRide: jest.fn(),
+        completeRide: jest.fn(),
+        acceptRideByDriver: jest.fn(),
+        rejectRideByDriver: jest.fn(),
+        confirmDriverAcceptance: jest.fn(),
+        rejectDriverAcceptance: jest.fn(),
+      };
 
     notificationStreamServiceMock = {
       subscribe: jest.fn(),
