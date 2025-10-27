@@ -252,7 +252,7 @@
         }
         const clientId = document.getElementById('clientId').value.trim();
         if (clientId) {
-          headers['x-client-id'] = clientId;
+          headers['X-Client-Id'] = clientId;
         }
         return headers;
       }
@@ -275,7 +275,15 @@
           fetchOptions.credentials = 'include';
         }
 
-        const response = await fetch(`${getBaseUrl()}${path}`, fetchOptions);
+        let response;
+        try {
+          response = await fetch(`${getBaseUrl()}${path}`, fetchOptions);
+        } catch (error) {
+          console.error(error);
+          const detail =
+            error instanceof Error ? error.message : 'Unknown network failure';
+          throw new Error(`Network request failed: ${detail}`);
+        }
         let data;
         try {
           data = await response.clone().json();
