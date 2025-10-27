@@ -18,11 +18,29 @@ export class RideRepository {
     return this.repository.save(ride);
   }
 
+  async claimDriver(rideId: string, driverId: string): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(Ride)
+      .set({ driverId })
+      .where('id = :rideId', { rideId })
+      .andWhere('driver_id IS NULL')
+      .execute();
+
+    return Boolean(result.affected && result.affected > 0);
+  }
+
   remove(ride: Ride): Promise<Ride> {
     return this.repository.remove(ride);
   }
 
   async findById(id: string): Promise<Ride | null> {
-    return this.repository.findOne({ where: { id } });
+    return this.repository.findOne({
+      where: { id },
+      relations: ['candidates'],
+      order: {
+        candidates: { createdAt: 'ASC' },
+      },
+    });
   }
 }
