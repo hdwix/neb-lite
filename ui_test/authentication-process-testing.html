@@ -340,8 +340,8 @@
       function shouldIncludeCredentials(url) {
         try {
           const target = new URL(url, window.location.href);
-          if (window.location.protocol === 'file:') {
-            return false;
+          if (target.protocol === 'http:' || target.protocol === 'https:') {
+            return true;
           }
           return target.origin === window.location.origin;
         } catch (error) {
