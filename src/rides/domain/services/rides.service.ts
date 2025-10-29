@@ -14,6 +14,7 @@ import { lastValueFrom } from 'rxjs';
 import {
   RIDE_QUEUE_NAME,
   RideCoordinate,
+  RideQueueJob,
   RideQueueJobData,
   RideRouteEstimationJobData,
 } from '../types/ride-queue.types';
@@ -112,9 +113,14 @@ export class RidesService {
     );
 
     const rideWithEstimates = await this.rideRepository.save(savedRide);
-    await this.recordStatusChange(rideWithEstimates, null, ERideStatus.REQUESTED, {
-      context: 'Ride requested by rider',
-    });
+    await this.recordStatusChange(
+      rideWithEstimates,
+      null,
+      ERideStatus.REQUESTED,
+      {
+        context: 'Ride requested by rider',
+      },
+    );
 
     const candidateLimit = this.resolveCandidateLimit(payload.maxDrivers);
 
@@ -306,7 +312,8 @@ export class RidesService {
       candidate.status === ERideDriverCandidateStatus.CONFIRMED ||
       (candidate.status === ERideDriverCandidateStatus.ACCEPTED &&
         ride.driverId === driverId &&
-        (ride.status === ERideStatus.ACCEPTED || ride.status === ERideStatus.ENROUTE))
+        (ride.status === ERideStatus.ACCEPTED ||
+          ride.status === ERideStatus.ENROUTE))
     ) {
       return ride;
     }
@@ -317,7 +324,10 @@ export class RidesService {
       candidate.reason = 'Another driver already accepted this ride';
       candidate.respondedAt = now;
       await this.candidateRepository.save(candidate);
-      await this.notificationService.notifyCandidateSuperseded(currentRide, candidate);
+      await this.notificationService.notifyCandidateSuperseded(
+        currentRide,
+        candidate,
+      );
     };
 
     if (ride.driverId && ride.driverId !== driverId) {
@@ -333,7 +343,9 @@ export class RidesService {
 
         if (ride.driverId && ride.driverId !== driverId) {
           await markCandidateSuperseded(ride);
-          throw new ConflictException('Ride already accepted by another driver');
+          throw new ConflictException(
+            'Ride already accepted by another driver',
+          );
         }
       } else {
         ride.driverId = driverId;
@@ -361,7 +373,10 @@ export class RidesService {
       'Driver accepted ride request',
     );
 
-    await this.notificationService.notifyDriverAccepted(acceptance.ride, candidate);
+    await this.notificationService.notifyDriverAccepted(
+      acceptance.ride,
+      candidate,
+    );
 
     const refreshed = await this.rideRepository.findById(ride.id);
     return refreshed ?? acceptance.ride;
@@ -406,8 +421,7 @@ export class RidesService {
       return ride;
     }
 
-    const rejectionReason =
-      reason ?? 'Driver declined the ride invitation';
+    const rejectionReason = reason ?? 'Driver declined the ride invitation';
     candidate.status = ERideDriverCandidateStatus.DECLINED;
     candidate.reason = rejectionReason;
     candidate.respondedAt = new Date();
@@ -453,7 +467,10 @@ export class RidesService {
     if (ride.status === ERideStatus.COMPLETED) {
       return ride;
     }
-    if (ride.status === ERideStatus.ASSIGNED || ride.status === ERideStatus.REQUESTED) {
+    if (
+      ride.status === ERideStatus.ASSIGNED ||
+      ride.status === ERideStatus.REQUESTED
+    ) {
       throw new BadRequestException('Driver has not accepted this ride yet');
     }
     if (ride.status === ERideStatus.ENROUTE) {
@@ -546,7 +563,10 @@ export class RidesService {
     if (ride.status === ERideStatus.ENROUTE) {
       throw new BadRequestException('Ride already in progress');
     }
-    if (ride.status === ERideStatus.ASSIGNED || ride.status === ERideStatus.REQUESTED) {
+    if (
+      ride.status === ERideStatus.ASSIGNED ||
+      ride.status === ERideStatus.REQUESTED
+    ) {
       throw new BadRequestException('Driver has not accepted this ride yet');
     }
     const candidate = await this.candidateRepository.findByRideAndDriver(
