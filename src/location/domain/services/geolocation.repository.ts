@@ -26,6 +26,7 @@ interface GeospatialQueryResult {
 export class GeolocationRepository implements OnModuleDestroy {
   private readonly logger = new Logger(GeolocationRepository.name);
   private readonly redis: Redis;
+  private readonly driverLocationTtlSeconds: number;
   private readonly temporaryDistanceKeyPrefix = 'geo:distance:temp';
 
   constructor(private readonly configService: ConfigService) {
@@ -36,6 +37,21 @@ export class GeolocationRepository implements OnModuleDestroy {
     this.redis.on('error', (error) =>
       this.logger.error(`Redis connection error: ${error}`),
     );
+
+    const defaultTtlSeconds = 300;
+    const configuredTtl = this.configService.get(
+      'DRIVER_LOCATION_TTL_SECONDS',
+    );
+    const parsedTtl = Number(configuredTtl);
+
+    if (Number.isFinite(parsedTtl) && parsedTtl > 0) {
+      this.driverLocationTtlSeconds = Math.max(
+        180,
+        Math.floor(parsedTtl),
+      );
+    } else {
+      this.driverLocationTtlSeconds = defaultTtlSeconds;
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -78,7 +94,7 @@ export class GeolocationRepository implements OnModuleDestroy {
         updatedAt: timestamp,
       })
       .hset(DRIVER_METADATA_HASH_KEY, driverId, JSON.stringify(entry))
-      .expire(driverLocationKey, 300) // set ttl for driver loc hash to 5 minutes
+      .expire(driverLocationKey, this.driverLocationTtlSeconds) // configurable TTL for driver location hash
       .zadd(ACTIVE_DRIVER_LOC_ZSET, Date.now(), driverId) // This gives a quick way to list recently active drivers
       .publish(
         'drivers:loc:updates', // Sends a Pub/Sub message to the channel drivers:loc:updates
