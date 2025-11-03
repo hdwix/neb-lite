@@ -171,6 +171,17 @@
             value="/gateway/notifications/stream"
             placeholder="/gateway/notifications/stream"
           />
+          <label for="streamMode">Connection mode</label>
+          <select id="streamMode">
+            <option value="auto" selected>Auto (prefer EventSource)</option>
+            <option value="eventsource">EventSource (no custom headers)</option>
+            <option value="fetch">Fetch (allows custom headers)</option>
+          </select>
+          <p class="hint">
+            EventSource connections cannot send an <code>Authorization</code>
+            header. Choose the fetch mode when you need to stream as an
+            authenticated driver token.
+          </p>
           <div class="inline small-gap">
             <button id="connectStream">Connect</button>
             <button id="disconnectStream" class="secondary">Disconnect</button>
@@ -694,8 +705,8 @@
       }
 
       async function connectStreamWithFetch(url, headers, options = {}) {
-        const { reason } = options;
-        resetStreamLog('Connecting to stream (fetch fallback)...');
+        const { reason, connectLabel = 'fetch fallback' } = options;
+        resetStreamLog(`Connecting to stream (${connectLabel})...`);
         if (reason) {
           appendStreamLog(reason);
         }
@@ -707,8 +718,12 @@
             headers: {
               ...headers,
               Accept: 'text/event-stream',
+              'Cache-Control': 'no-cache',
             },
             signal: controller.signal,
+            mode: 'cors',
+            credentials: 'include',
+            cache: 'no-store',
           });
           if (!response.ok || !response.body) {
             streamState.controller = null;
@@ -720,7 +735,9 @@
           streamState.reader = reader;
           const decoder = new TextDecoder('utf-8');
           let buffer = '';
-          appendStreamLog('Connected. Awaiting events...');
+          appendStreamLog(
+            `Connected (HTTP ${response.status}). Awaiting events...`,
+          );
           appendStreamLog('Listening for events using generic SSE parser.');
           while (true) {
             const { value, done } = await reader.read();
@@ -787,14 +804,42 @@
         const url = path.startsWith('/') ? `${baseUrl}${path}` : `${baseUrl}/${path}`;
         const headers = getHeaders({ includeJson: false });
         const authHeader = headers.Authorization;
-        if (!authHeader && typeof EventSource !== 'undefined') {
+        const mode = $('streamMode').value;
+
+        const canUseEventSource = typeof EventSource !== 'undefined';
+        const preferEventSource = mode === 'eventsource' || mode === 'auto';
+        const wantsFetch = mode === 'fetch';
+
+        if (preferEventSource && !canUseEventSource) {
+          appendStreamLog('EventSource API unavailable in this browser.');
+        }
+
+        if (wantsFetch || !canUseEventSource) {
+          const reason = wantsFetch
+            ? 'Fetch mode selected manually.'
+            : 'EventSource API unavailable; using fetch fallback.';
+          await connectStreamWithFetch(url, headers, {
+            reason,
+            connectLabel: wantsFetch ? 'fetch (manual)' : 'fetch fallback',
+          });
+          return;
+        }
+
+        if (authHeader && preferEventSource) {
+          appendStreamLog(
+            'Authorization header detected. EventSource requests cannot include custom headers; use fetch mode if authentication is required.',
+          );
+        }
+
+        if (!authHeader && preferEventSource) {
           connectEventSource(url);
           return;
         }
-        const reason = authHeader
-          ? 'Authorization header detected; using fetch fallback.'
-          : 'EventSource API unavailable; using fetch fallback.';
-        await connectStreamWithFetch(url, headers, { reason });
+
+        await connectStreamWithFetch(url, headers, {
+          reason:
+            'Authorization header present; using fetch to forward custom headers.',
+        });
       });
 
       $('disconnectStream').addEventListener('click', () => {
