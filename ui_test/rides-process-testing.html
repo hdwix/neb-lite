@@ -171,6 +171,17 @@
             value="/gateway/notifications/stream"
             placeholder="/gateway/notifications/stream"
           />
+          <label for="streamMode">Connection mode</label>
+          <select id="streamMode">
+            <option value="auto" selected>Auto (prefer EventSource)</option>
+            <option value="eventsource">EventSource (no custom headers)</option>
+            <option value="fetch">Fetch (allows custom headers)</option>
+          </select>
+          <p class="hint">
+            EventSource connections cannot send an <code>Authorization</code>
+            header. Choose the fetch mode when you need to stream as an
+            authenticated driver token.
+          </p>
           <div class="inline small-gap">
             <button id="connectStream">Connect</button>
             <button id="disconnectStream" class="secondary">Disconnect</button>
@@ -308,10 +319,67 @@
     </main>
 
     <script>
+      const KNOWN_STREAM_EVENTS = [
+        'message',
+        'ride.candidates.invited',
+        'ride.offer',
+        'ride.driver.accepted',
+        'ride.driver.declined',
+        'ride.rider.confirmed',
+        'ride.rider.rejected',
+        'ride.driver.not_selected',
+        'ride.cancelled',
+        'otp.generated',
+      ];
+
       const streamState = {
         controller: null,
         reader: null,
+        source: null,
       };
+
+      function resetStreamLog(message) {
+        const target = $('streamResult');
+        target.textContent = `${message}\n`;
+        target.scrollTop = target.scrollHeight;
+      }
+
+      function appendStreamLog(entry) {
+        const target = $('streamResult');
+        if (!target.textContent.endsWith('\n')) {
+          target.textContent += '\n';
+        }
+        target.textContent += `${entry}\n`;
+        target.scrollTop = target.scrollHeight;
+      }
+
+      function parseEventData(raw) {
+        if (raw === undefined || raw === null) {
+          return raw;
+        }
+        if (typeof raw !== 'string') {
+          return raw;
+        }
+        const trimmed = raw.trim();
+        if (!trimmed) {
+          return '';
+        }
+        try {
+          return JSON.parse(trimmed);
+        } catch (error) {
+          return raw;
+        }
+      }
+
+      function logStreamEvent(eventName, id, rawData) {
+        const summary = {
+          time: new Date().toLocaleTimeString(),
+          event: eventName ?? null,
+          id: id ?? null,
+          data: parseEventData(rawData),
+        };
+        appendStreamLog(stringify(summary));
+      }
 
       function $(id) {
         return document.getElementById(id);
@@ -322,10 +390,12 @@
         return baseUrl.replace(/\/$/, '');
       }
 
-      function getHeaders() {
-        const headers = {
-          'Content-Type': 'application/json',
-        };
+      function getHeaders(options = {}) {
+        const { includeJson = true } = options;
+        const headers = {};
+        if (includeJson) {
+          headers['Content-Type'] = 'application/json';
+        }
         const auth = $('authHeader').value.trim();
         if (auth) {
           headers.Authorization = auth;
@@ -365,10 +435,13 @@
       async function request(path, options = {}) {
         let response;
         try {
+          const includeJson =
+            options.body !== undefined ||
+            (options.method ? options.method !== 'GET' : false);
           response = await fetch(`${getBaseUrl()}${path}`, {
             ...options,
             headers: {
-              ...getHeaders(),
+              ...getHeaders({ includeJson }),
               ...(options.headers || {}),
             },
           });
@@ -588,21 +661,69 @@
         }
       });
 
-      $('connectStream').addEventListener('click', async () => {
-        if (streamState.controller) {
-          return display('streamResult', 'Stream already connected.');
+      function connectEventSource(url) {
+        resetStreamLog(`Connecting to ${url} (EventSource)...`);
+        if (typeof EventSource === 'undefined') {
+          appendStreamLog('EventSource API is not available in this browser.');
+          return;
         }
-        const path = $('streamPath').value.trim() || '/gateway/notifications/stream';
-        const url = `${getBaseUrl()}${path}`;
-        const headers = getHeaders();
+        try {
+          const source = new EventSource(url, { withCredentials: true });
+          streamState.source = source;
+          const handleEvent = (event) => {
+            logStreamEvent(event.type || 'message', event.lastEventId ?? null, event.data);
+          };
+          const eventsToWatch = new Set(KNOWN_STREAM_EVENTS);
+          eventsToWatch.add('message');
+          for (const eventName of eventsToWatch) {
+            source.addEventListener(eventName, handleEvent);
+          }
+          appendStreamLog(
+            `Listening for events: ${Array.from(eventsToWatch).join(', ')}`,
+          );
+          source.addEventListener('open', () => {
+            appendStreamLog('Connection established.');
+          });
+          source.addEventListener('error', (event) => {
+            if (source.readyState === EventSource.CLOSED) {
+              appendStreamLog('Stream closed by server.');
+              streamState.source = null;
+              return;
+            }
+            logStreamEvent(
+              event.type || 'error',
+              null,
+              `Stream error (readyState: ${source.readyState}).`,
+            );
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Failed to initialize EventSource';
+          appendStreamLog(message);
+          streamState.source = null;
+        }
+      }
+
+      async function connectStreamWithFetch(url, headers, options = {}) {
+        const { reason, connectLabel = 'fetch fallback' } = options;
+        resetStreamLog(`Connecting to stream (${connectLabel})...`);
+        if (reason) {
+          appendStreamLog(reason);
+        }
         const controller = new AbortController();
         streamState.controller = controller;
-        $('streamResult').textContent = 'Connecting to stream...';
         try {
           const response = await fetch(url, {
             method: 'GET',
-            headers,
+            headers: {
+              ...headers,
+              Accept: 'text/event-stream',
+              'Cache-Control': 'no-cache',
+            },
             signal: controller.signal,
+            mode: 'cors',
+            credentials: 'include',
+            cache: 'no-store',
           });
           if (!response.ok || !response.body) {
             streamState.controller = null;
@@ -614,48 +735,54 @@
           streamState.reader = reader;
           const decoder = new TextDecoder('utf-8');
           let buffer = '';
-          $('streamResult').textContent = 'Connected. Awaiting events...\n';
+          appendStreamLog(
+            `Connected (HTTP ${response.status}). Awaiting events...`,
+          );
+          appendStreamLog('Listening for events using generic SSE parser.');
           while (true) {
             const { value, done } = await reader.read();
-            if (done) break;
+            if (done) {
+              appendStreamLog('Stream ended by server.');
+              break;
+            }
             buffer += decoder.decode(value, { stream: true });
             const parts = buffer.split(/\r?\n\r?\n/);
             buffer = parts.pop() ?? '';
             for (const chunk of parts) {
-              const lines = chunk
-                .split(/\r?\n/)
-                .map((line) => line.replace(/\r$/, ''))
-                .filter((line) => line.trim().length > 0);
-              if (!lines.length) continue;
-              const eventLine = lines.find((line) => line.startsWith('event:'));
-              const idLine = lines.find((line) => line.startsWith('id:'));
-              const dataLines = lines
-                .filter((line) => line.startsWith('data:'))
-                .map((line) => line.replace(/^data:\s?/, '').trimStart());
-              const payloadText = dataLines.join('\n');
-              let parsed = payloadText;
-              try {
-                parsed = JSON.parse(payloadText);
-              } catch (error) {
-                // leave as text
+              const lines = chunk.split(/\r?\n/).map((line) => line.replace(/\r$/, ''));
+              let eventName = 'message';
+              let eventId = null;
+              const dataLines = [];
+              for (const line of lines) {
+                if (!line || line.startsWith(':')) {
+                  continue;
+                }
+                if (line.startsWith('event:')) {
+                  const valuePart = line.slice('event:'.length).trim();
+                  if (valuePart) {
+                    eventName = valuePart;
+                  }
+                } else if (line.startsWith('id:')) {
+                  const valuePart = line.slice('id:'.length).trim();
+                  if (valuePart) {
+                    eventId = valuePart;
+                  }
+                } else if (line.startsWith('data:')) {
+                  dataLines.push(line.slice('data:'.length).trimStart());
+                }
               }
-              const timestamp = new Date().toLocaleTimeString();
-              const summary = {
-                time: timestamp,
-                event: eventLine ? eventLine.replace('event:', '').trim() : null,
-                id: idLine ? idLine.replace('id:', '').trim() : null,
-                data: parsed,
-              };
-              const current = $('streamResult').textContent;
-              $('streamResult').textContent = `${current}${stringify(summary)}\n`;
-              $('streamResult').scrollTop = $('streamResult').scrollHeight;
+              const payloadText = dataLines.join('\n');
+              logStreamEvent(eventName, eventId, payloadText);
             }
           }
-          $('streamResult').textContent += 'Stream closed.\n';
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : 'Unknown stream failure';
-          $('streamResult').textContent += `${message}\n`;
+          if (controller.signal.aborted) {
+            appendStreamLog('Stream aborted by client.');
+          } else {
+            const message =
+              error instanceof Error ? error.message : 'Unknown stream failure';
+            appendStreamLog(message);
+          }
         } finally {
           if (streamState.reader) {
             try {
@@ -665,14 +792,69 @@
           streamState.controller = null;
           streamState.reader = null;
         }
+      }
+
+      $('connectStream').addEventListener('click', async () => {
+        if (streamState.source || streamState.controller) {
+          appendStreamLog('Stream already connected.');
+          return;
+        }
+        const path = $('streamPath').value.trim() || '/gateway/notifications/stream';
+        const baseUrl = getBaseUrl();
+        const url = path.startsWith('/') ? `${baseUrl}${path}` : `${baseUrl}/${path}`;
+        const headers = getHeaders({ includeJson: false });
+        const authHeader = headers.Authorization;
+        const mode = $('streamMode').value;
+
+        const canUseEventSource = typeof EventSource !== 'undefined';
+        const preferEventSource = mode === 'eventsource' || mode === 'auto';
+        const wantsFetch = mode === 'fetch';
+
+        if (preferEventSource && !canUseEventSource) {
+          appendStreamLog('EventSource API unavailable in this browser.');
+        }
+
+        if (wantsFetch || !canUseEventSource) {
+          const reason = wantsFetch
+            ? 'Fetch mode selected manually.'
+            : 'EventSource API unavailable; using fetch fallback.';
+          await connectStreamWithFetch(url, headers, {
+            reason,
+            connectLabel: wantsFetch ? 'fetch (manual)' : 'fetch fallback',
+          });
+          return;
+        }
+
+        if (authHeader && preferEventSource) {
+          appendStreamLog(
+            'Authorization header detected. EventSource requests cannot include custom headers; use fetch mode if authentication is required.',
+          );
+        }
+
+        if (!authHeader && preferEventSource) {
+          connectEventSource(url);
+          return;
+        }
+
+        await connectStreamWithFetch(url, headers, {
+          reason:
+            'Authorization header present; using fetch to forward custom headers.',
+        });
       });
 
       $('disconnectStream').addEventListener('click', () => {
-        if (!streamState.controller) {
-          return display('streamResult', 'Stream is not connected.');
+        if (streamState.source) {
+          streamState.source.close();
+          streamState.source = null;
+          appendStreamLog('Disconnect requested.');
+          return;
         }
-        streamState.controller.abort();
-        $('streamResult').textContent += 'Disconnect requested.\n';
+        if (streamState.controller) {
+          streamState.controller.abort();
+          appendStreamLog('Disconnect requested.');
+          return;
+        }
+        appendStreamLog('Stream is not connected.');
       });
     </script>
   </body>
