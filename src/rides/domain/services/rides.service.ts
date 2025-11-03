@@ -113,6 +113,29 @@ export class RidesService {
     );
 
     const rideWithEstimates = await this.rideRepository.save(savedRide);
+    const candidateLimit = this.resolveCandidateLimit(payload.maxDrivers);
+
+    const nearbyDrivers = await this.locationService.getNearbyDrivers(
+      payload.pickup.longitude,
+      payload.pickup.latitude,
+      candidateLimit,
+    );
+
+    if (nearbyDrivers.length === 0) {
+      await this.rollbackRideCreation(rideWithEstimates);
+      throw new BadRequestException('unable to find driver');
+    }
+
+    const candidates = await this.createDriverCandidates(
+      rideWithEstimates,
+      nearbyDrivers,
+    );
+
+    if (candidates.length === 0) {
+      await this.rollbackRideCreation(rideWithEstimates);
+      throw new BadRequestException('unable to find driver');
+    }
+
     await this.recordStatusChange(
       rideWithEstimates,
       null,
@@ -122,49 +145,34 @@ export class RidesService {
       },
     );
 
-    const candidateLimit = this.resolveCandidateLimit(payload.maxDrivers);
+    rideWithEstimates.candidates = candidates;
 
-    const nearbyDrivers = await this.locationService.getNearbyDrivers(
-      payload.pickup.longitude,
-      payload.pickup.latitude,
-      candidateLimit,
+    rideWithEstimates.status = ERideStatus.CANDIDATES_COMPUTED;
+    const updatedRide = await this.rideRepository.save(rideWithEstimates);
+    await this.recordStatusChange(
+      updatedRide,
+      ERideStatus.REQUESTED,
+      ERideStatus.CANDIDATES_COMPUTED,
+      {
+        context: `Invited ${candidates.length} drivers`,
+      },
     );
 
-    const candidates = await this.createDriverCandidates(
-      rideWithEstimates,
-      nearbyDrivers,
-    );
+    updatedRide.candidates = candidates;
 
-    if (candidates.length > 0) {
-      rideWithEstimates.status = ERideStatus.CANDIDATES_COMPUTED;
-      const updatedRide = await this.rideRepository.save(rideWithEstimates);
-      await this.recordStatusChange(
-        updatedRide,
-        ERideStatus.REQUESTED,
-        ERideStatus.CANDIDATES_COMPUTED,
-        {
-          context: `Invited ${candidates.length} drivers`,
-        },
-      );
-      updatedRide.candidates = candidates;
-
-      await Promise.all(
-        candidates.map((candidate) =>
-          this.notificationService.notifyRideOffered(
-            updatedRide,
-            candidate,
-            routeEstimates!,
-          ),
+    await Promise.all(
+      candidates.map((candidate) =>
+        this.notificationService.notifyRideOffered(
+          updatedRide,
+          candidate,
+          routeEstimates!,
         ),
-      );
+      ),
+    );
 
-      await this.notificationService.notifyRideMatched(updatedRide);
+    await this.notificationService.notifyRideMatched(updatedRide);
 
-      return updatedRide;
-    }
-
-    rideWithEstimates.candidates = [];
-    return rideWithEstimates;
+    return updatedRide;
   }
 
   async getRideById(id: string, requester: RequestingClient): Promise<Ride> {

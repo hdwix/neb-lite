@@ -619,16 +619,19 @@
             const { value, done } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
-            const parts = buffer.split(/\n\n/);
+            const parts = buffer.split(/\r?\n\r?\n/);
             buffer = parts.pop() ?? '';
             for (const chunk of parts) {
-              const lines = chunk.split(/\n/).filter(Boolean);
+              const lines = chunk
+                .split(/\r?\n/)
+                .map((line) => line.replace(/\r$/, ''))
+                .filter((line) => line.trim().length > 0);
               if (!lines.length) continue;
               const eventLine = lines.find((line) => line.startsWith('event:'));
               const idLine = lines.find((line) => line.startsWith('id:'));
               const dataLines = lines
                 .filter((line) => line.startsWith('data:'))
-                .map((line) => line.replace(/^data:\s?/, ''));
+                .map((line) => line.replace(/^data:\s?/, '').trimStart());
               const payloadText = dataLines.join('\n');
               let parsed = payloadText;
               try {
