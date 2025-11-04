@@ -1,4 +1,11 @@
-import { Global, Inject, Injectable, Logger, Module, OnModuleDestroy } from '@nestjs/common';
+import {
+  Global,
+  Inject,
+  Injectable,
+  Logger,
+  Module,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from './redis.tokens';
@@ -31,8 +38,25 @@ class RedisClientLifecycle implements OnModuleDestroy {
       useFactory: (configService: ConfigService) => {
         const host = configService.get<string>('REDIS_HOST', 'localhost');
         const port = configService.get<number>('REDIS_PORT', 6379);
+        const nodeEnv = configService.get<string>('NODE_ENV', 'dev');
 
-        return new Redis({ host, port });
+        if (nodeEnv === 'production') {
+          return new Redis.Cluster(
+            [
+              {
+                host,
+                port,
+              },
+            ],
+            {
+              redisOptions: {
+                tls: {}, // Enables TLS
+              },
+            },
+          );
+        } else {
+          return new Redis({ host, port });
+        }
       },
       inject: [ConfigService],
     },
