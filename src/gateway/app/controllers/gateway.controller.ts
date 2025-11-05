@@ -32,6 +32,12 @@ import { RidesService } from '../../../rides/domain/services/rides.service';
 import { CreateRideDto } from '../../../rides/app/dto/create-ride.dto';
 import { CancelRideDto } from '../../../rides/app/dto/cancel-ride.dto';
 import { DriverRespondRideDto } from '../../../rides/app/dto/driver-respond-ride.dto';
+import { StartRideDto } from '../../../rides/app/dto/start-ride.dto';
+import { TripLocationUpdateDto } from '../../../rides/app/dto/trip-location-update.dto';
+import { CompleteRideDto } from '../../../rides/app/dto/complete-ride.dto';
+import { ApplyDiscountDto } from '../../../rides/app/dto/apply-discount.dto';
+import { CompletePaymentDto } from '../../../rides/app/dto/complete-payment.dto';
+import { toParticipantLocation } from '../../../rides/app/dto/trip-location.dto';
 import { Ride } from '../../../rides/domain/entities/ride.entity';
 import {
   NotificationStreamService,
@@ -313,16 +319,123 @@ export class GatewayController {
   @Auth(EAuthType.Bearer)
   @Roles(EClientType.DRIVER)
   @HttpCode(HttpStatus.OK)
-  async completeRide(@Req() request: Request, @Param('id') rideId: string) {
+  async completeRide(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() completeRideDto: CompleteRideDto,
+  ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.completeRide(rideId, {
-      id: this.getClientId(client),
-      role: client.role,
-    });
+    const ride = await this.ridesService.completeRide(
+      rideId,
+      {
+        id: this.getClientId(client),
+        role: client.role,
+      },
+      toParticipantLocation(completeRideDto.driverLocation),
+    );
 
     return {
       statusCode: HttpStatus.OK,
       message: 'Ride completed',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Post('rides/:id/start')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER)
+  @HttpCode(HttpStatus.OK)
+  async startRide(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() startRideDto: StartRideDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.startRide(
+      rideId,
+      this.getClientId(client),
+      toParticipantLocation(startRideDto.driverLocation),
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride started',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Post('rides/:id/tracking')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER, EClientType.RIDER)
+  @HttpCode(HttpStatus.ACCEPTED)
+  async recordTripLocation(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() updateDto: TripLocationUpdateDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    await this.ridesService.recordTripLocation(
+      rideId,
+      {
+        id: this.getClientId(client),
+        role: client.role,
+      },
+      toParticipantLocation(updateDto.location),
+    );
+
+    return {
+      statusCode: HttpStatus.ACCEPTED,
+      message: 'Location recorded',
+      error: null,
+      data: {},
+    };
+  }
+
+  @Post('rides/:id/discount')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER)
+  @HttpCode(HttpStatus.OK)
+  async applyRideDiscount(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() applyDiscountDto: ApplyDiscountDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.applyRideDiscount(
+      rideId,
+      this.getClientId(client),
+      applyDiscountDto,
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Discount applied',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Post('rides/:id/payment/complete')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.RIDER)
+  @HttpCode(HttpStatus.OK)
+  async completeRidePayment(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() completePaymentDto: CompletePaymentDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.confirmRidePayment(
+      rideId,
+      this.getClientId(client),
+      completePaymentDto,
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Payment confirmed',
       error: null,
       data: this.toRideResponse(ride),
     };
@@ -450,6 +563,12 @@ export class GatewayController {
       fareFinal: ride.fareFinal ?? null,
       distanceEstimatedKm: ride.distanceEstimatedKm ?? null,
       durationEstimatedSeconds: ride.durationEstimatedSeconds ?? null,
+      distanceActualKm: ride.distanceActualKm ?? null,
+      discountPercent: ride.discountPercent ?? null,
+      discountAmount: ride.discountAmount ?? null,
+      appFeeAmount: ride.appFeeAmount ?? null,
+      paymentUrl: ride.paymentUrl ?? null,
+      paymentStatus: ride.paymentStatus ?? null,
       createdAt: ride.createdAt?.toISOString?.() ?? ride.createdAt,
       candidates: (ride.candidates ?? []).map((candidate) => ({
         driverId: candidate.driverId,
