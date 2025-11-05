@@ -154,8 +154,26 @@ sequenceDiagram
     Gateway-->>Driver: Notify rider confirmed
 ```
 
-⸻
+<!-- prettier-ignore -->
+```mermaid
+flowchart LR
+  subgraph client
+    A1[Rider App] -->|Location ping every 5s| G
+    A2[Driver App] -->|Location ping every 3s| G
+  end
 
-```
+  subgraph backend[Backend Services]
+    G[Gateway Service]
+    Q[Redis Stream/PubSub ride-location-stream]
+    T[Trip Tracker Service]
+    DB[(PostgreSQL or MongoDB - trip_history)]
+    C[Cache Redis GeoIndex - active_drivers]
+  end
+
+  G --> Q
+  Q --> T
+  T -->|Write batch| DB
+  T -->|Update metrics| C
+
 
 ```
