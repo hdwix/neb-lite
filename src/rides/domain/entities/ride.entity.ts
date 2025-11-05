@@ -11,6 +11,7 @@ import {
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
 import { RideStatusHistory } from './ride-status-history.entity';
 import { RideDriverCandidate } from './ride-driver-candidate.entity';
+import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
 
 @Entity('rides')
 @Index('ix_rides_rider_id', ['riderId'])
@@ -65,6 +66,31 @@ export class Ride {
   fareFinal?: string | null;
 
   @Column({
+    name: 'discount_percent',
+    type: 'double precision',
+    nullable: true,
+  })
+  discountPercent?: number | null;
+
+  @Column({
+    name: 'discount_amount',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+  })
+  discountAmount?: string | null;
+
+  @Column({
+    name: 'app_fee_amount',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+  })
+  appFeeAmount?: string | null;
+
+  @Column({
     name: 'distance_estimated_km',
     type: 'double precision',
     nullable: true,
@@ -77,6 +103,29 @@ export class Ride {
     nullable: true,
   })
   durationEstimatedSeconds?: number | null;
+
+  @Column({
+    name: 'distance_actual_km',
+    type: 'double precision',
+    nullable: true,
+  })
+  distanceActualKm?: number | null;
+
+  @Column({
+    name: 'payment_url',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  paymentUrl?: string | null;
+
+  @Column({
+    name: 'payment_status',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
+  paymentStatus?: ERidePaymentStatus | null;
 
   @Column({ name: 'note', type: 'varchar', length: 255, nullable: true })
   note?: string | null;
