@@ -152,6 +152,126 @@ export class RideNotificationService {
     );
   }
 
+  async notifyRideStarted(ride: Ride): Promise<void> {
+    const riderMessage = `Ride ${ride.id} has started.`;
+    if (!ride.driverId) {
+      await this.dispatchNotification(
+        'rider',
+        ride.riderId,
+        'ride.started.rider',
+        ride,
+        riderMessage,
+      );
+      return;
+    }
+
+    const driverMessage = `Ride ${ride.id} is now in progress.`;
+
+    await Promise.all([
+      this.dispatchNotification(
+        'rider',
+        ride.riderId,
+        'ride.started.rider',
+        ride,
+        riderMessage,
+      ),
+      this.dispatchNotification(
+        'driver',
+        ride.driverId,
+        'ride.started.driver',
+        ride,
+        driverMessage,
+      ),
+    ]);
+  }
+
+  async notifyRideCompleted(
+    ride: Ride,
+    summary: {
+      baseFare: string;
+      discountPercent: number;
+      discountAmount: string;
+      finalFare: string;
+      appFee: string;
+    },
+  ): Promise<void> {
+    const riderMessage = `Ride ${ride.id} completed. Fare due: Rp ${summary.finalFare}.`;
+    if (!ride.driverId) {
+      await this.dispatchNotification(
+        'rider',
+        ride.riderId,
+        'ride.completed.rider',
+        ride,
+        riderMessage,
+        { summary },
+      );
+      return;
+    }
+
+    const driverMessage = `Ride ${ride.id} completed. Fare: Rp ${summary.finalFare}.`;
+
+    await Promise.all([
+      this.dispatchNotification(
+        'rider',
+        ride.riderId,
+        'ride.completed.rider',
+        ride,
+        riderMessage,
+        { summary },
+      ),
+      this.dispatchNotification(
+        'driver',
+        ride.driverId,
+        'ride.completed.driver',
+        ride,
+        driverMessage,
+        { summary },
+      ),
+    ]);
+  }
+
+  async notifyRidePaid(
+    ride: Ride,
+    paymentReference?: string,
+  ): Promise<void> {
+    const extras = paymentReference
+      ? { paymentReference }
+      : {};
+    const riderMessage = `Payment for ride ${ride.id} confirmed.`;
+    if (!ride.driverId) {
+      await this.dispatchNotification(
+        'rider',
+        ride.riderId,
+        'ride.payment.completed.rider',
+        ride,
+        riderMessage,
+        extras,
+      );
+      return;
+    }
+
+    const driverMessage = `Ride ${ride.id} payment has been received.`;
+
+    await Promise.all([
+      this.dispatchNotification(
+        'rider',
+        ride.riderId,
+        'ride.payment.completed.rider',
+        ride,
+        riderMessage,
+        extras,
+      ),
+      this.dispatchNotification(
+        'driver',
+        ride.driverId,
+        'ride.payment.completed.driver',
+        ride,
+        driverMessage,
+        extras,
+      ),
+    ]);
+  }
+
   private async dispatchNotification(
     target: NotificationTarget,
     targetId: string,

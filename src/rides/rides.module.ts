@@ -22,6 +22,11 @@ import {
 import { RideNotificationService } from './domain/services/ride-notification.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LocationModule } from '../location/location.module';
+import { TripTrack } from './domain/entities/trip-track.entity';
+import { TripTrackRepository } from './infrastructure/repositories/trip-track.repository';
+import { TripTrackingService } from './domain/services/trip-tracking.service';
+import { TripTrackingProcessor } from './domain/processors/trip-tracking.processor';
+import { TRIP_TRACKING_QUEUE_NAME } from './domain/constants/trip-tracking.constants';
 
 type RideQueueRegistrationOptions = RegisterQueueOptions & {
   limiter?: QueueLimiterOptions;
@@ -36,14 +41,35 @@ const rideQueueRegistration: RideQueueRegistrationOptions = {
   limiter: ROUTE_ESTIMATION_QUEUE_LIMITER,
 };
 
+const tripTrackingQueueRegistration: RegisterQueueOptions = {
+  name: TRIP_TRACKING_QUEUE_NAME,
+  defaultJobOptions: {
+    removeOnFail: 25,
+  },
+};
+
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Ride, RideStatusHistory, RideDriverCandidate]),
-    BullModule.registerQueue(rideQueueRegistration),
-    BullBoardModule.forFeature({
-      name: RIDE_QUEUE_NAME,
-      adapter: BullMQAdapter,
-    }),
+    TypeOrmModule.forFeature([
+      Ride,
+      RideStatusHistory,
+      RideDriverCandidate,
+      TripTrack,
+    ]),
+    BullModule.registerQueue(
+      rideQueueRegistration,
+      tripTrackingQueueRegistration,
+    ),
+    BullBoardModule.forFeature(
+      {
+        name: RIDE_QUEUE_NAME,
+        adapter: BullMQAdapter,
+      },
+      {
+        name: TRIP_TRACKING_QUEUE_NAME,
+        adapter: BullMQAdapter,
+      },
+    ),
     HttpModule,
     NotificationsModule,
     LocationModule,
@@ -55,6 +81,9 @@ const rideQueueRegistration: RideQueueRegistrationOptions = {
     RideDriverCandidateRepository,
     RideNotificationService,
     RideProcessor,
+    TripTrackRepository,
+    TripTrackingService,
+    TripTrackingProcessor,
   ],
   exports: [RidesService],
 })
