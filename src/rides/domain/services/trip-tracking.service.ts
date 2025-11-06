@@ -287,7 +287,7 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
 
     pipeline.geoadd(key, lon1, lat1, 'point:origin');
     pipeline.geoadd(key, lon2, lat2, 'point:destination');
-    pipeline.geodist(key, 'point:origin', 'point:destination', 'm');
+    pipeline.geodist(key, 'point:origin', 'point:destination', 'M');
     pipeline.del(key);
 
     try {
@@ -329,7 +329,14 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
     const repeat: RepeatOptions = { every: expectedEvery };
 
     if (existingJob) {
-      if (existingJob.every === expectedEvery) {
+      const existingEvery =
+        existingJob.every == null
+          ? null
+          : typeof existingJob.every === 'string'
+          ? Number.parseInt(existingJob.every, 10)
+          : existingJob.every;
+
+      if (existingEvery === expectedEvery) {
         return;
       }
 

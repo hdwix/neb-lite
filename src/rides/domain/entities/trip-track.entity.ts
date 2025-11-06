@@ -58,4 +58,3 @@ export class TripTrack {
   createdAt!: Date;
 }
 
-export type { TripTrackParticipantRole };
