@@ -5,8 +5,7 @@ import {
   Index,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-
-export type TripTrackParticipantRole = 'driver' | 'rider';
+import { EClientType } from '../../../app/enums/client-type.enum';
 
 @Entity('trip_track')
 @Index('ix_trip_track_ride_id', ['rideId'])
@@ -18,18 +17,18 @@ export class TripTrack {
   rideId!: string;
 
   @Column({
-    name: 'participant_id',
+    name: 'client_id',
     type: 'varchar',
     length: 64,
   })
-  participantId!: string;
+  clientId!: string;
 
   @Column({
-    name: 'participant_role',
-    type: 'varchar',
-    length: 16,
+    name: 'client_role',
+    type: 'enum',
+    enum: EClientType,
   })
-  participantRole!: TripTrackParticipantRole;
+  clientRole!: EClientType;
 
   @Column({ name: 'longitude', type: 'double precision' })
   longitude!: number;

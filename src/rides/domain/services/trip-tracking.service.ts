@@ -6,12 +6,13 @@ import Redis from 'ioredis';
 import { Queue, RepeatOptions } from 'bullmq';
 import { REDIS_CLIENT } from '../../../infrastructure/redis/redis.tokens';
 import { TripTrackRepository } from '../../infrastructure/repositories/trip-track.repository';
-import { TripTrack, TripTrackParticipantRole } from '../entities/trip-track.entity';
+import { TripTrack } from '../entities/trip-track.entity';
 import {
   TRIP_TRACKING_QUEUE_NAME,
   TripTrackingQueueJob,
   TripTrackingJobData,
 } from '../constants/trip-tracking.constants';
+import { EClientType } from '../../../app/enums/client-type.enum';
 
 interface ParticipantLocation {
   longitude: number;
@@ -29,8 +30,8 @@ interface TripTrackState {
 }
 
 interface TrackEvent {
-  role: TripTrackParticipantRole;
-  participantId: string;
+  role: EClientType;
+  clientId: string;
   longitude: number;
   latitude: number;
   recordedAt: string;
@@ -75,8 +76,8 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
 
   async recordLocation(
     rideId: string,
-    participantId: string,
-    role: TripTrackParticipantRole,
+    clientId: string,
+    role: EClientType,
     location: ParticipantLocation,
   ): Promise<{ totalDistanceMeters: number; distanceDeltaMeters: number }> {
     const stateKey = this.getStateKey(rideId);
@@ -84,25 +85,29 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
 
     const state = await this.getState(rideId);
     const previousLocation =
-      role === 'driver' ? state.lastDriverLocation : state.lastRiderLocation;
+      role === EClientType.DRIVER
+        ? state.lastDriverLocation
+        : state.lastRiderLocation;
 
     const distanceDelta =
-      role === 'driver' && previousLocation
+      role === EClientType.DRIVER && previousLocation
         ? await this.calculateDistanceBetweenCoordinates(previousLocation, location)
         : 0;
 
     const totalDistance =
-      role === 'driver' ? state.totalDistanceMeters + distanceDelta : state.totalDistanceMeters;
+      role === EClientType.DRIVER
+        ? state.totalDistanceMeters + distanceDelta
+        : state.totalDistanceMeters;
 
     const updatedState: TripTrackState = {
       ...state,
       totalDistanceMeters: totalDistance,
       lastDriverLocation:
-        role === 'driver'
+        role === EClientType.DRIVER
           ? location
           : state.lastDriverLocation,
       lastRiderLocation:
-        role === 'rider'
+        role === EClientType.RIDER
           ? location
           : state.lastRiderLocation,
     };
@@ -114,7 +119,7 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
 
     const event: TrackEvent = {
       role,
-      participantId,
+      clientId,
       longitude: location.longitude,
       latitude: location.latitude,
       recordedAt: location.recordedAt,
@@ -136,10 +141,10 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
 
   async getLatestLocation(
     rideId: string,
-    role: TripTrackParticipantRole,
+    role: EClientType,
   ): Promise<ParticipantLocation | null> {
     const state = await this.getState(rideId);
-    if (role === 'driver') {
+    if (role === EClientType.DRIVER) {
       return state.lastDriverLocation ?? null;
     }
     return state.lastRiderLocation ?? null;
@@ -199,8 +204,8 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
         entries.push(
           this.tripTrackRepository.create({
             rideId,
-            participantId: event.participantId,
-            participantRole: event.role,
+            clientId: event.clientId,
+            clientRole: event.role,
             longitude: event.longitude,
             latitude: event.latitude,
             distanceDeltaMeters: event.distanceDeltaMeters,
