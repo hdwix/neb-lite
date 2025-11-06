@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
@@ -61,7 +67,8 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
       this.configService.get<number>('TRIP_TRACKING_FLUSH_INTERVAL_MS') ??
         60_000,
     );
-    this.flushIntervalMs = Number.isFinite(interval) && interval > 0 ? interval : 60_000;
+    this.flushIntervalMs =
+      Number.isFinite(interval) && interval > 0 ? interval : 60_000;
   }
 
   async onModuleInit(): Promise<void> {
@@ -70,7 +77,9 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.flushAll().catch((error) =>
-      this.logger.error(`Failed to flush trip tracking data on shutdown: ${error}`),
+      this.logger.error(
+        `Failed to flush trip tracking data on shutdown: ${error}`,
+      ),
     );
   }
 
@@ -91,7 +100,10 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
 
     const distanceDelta =
       role === EClientType.DRIVER && previousLocation
-        ? await this.calculateDistanceBetweenCoordinates(previousLocation, location)
+        ? await this.calculateDistanceBetweenCoordinates(
+            previousLocation,
+            location,
+          )
         : 0;
 
     const totalDistance =
@@ -103,13 +115,9 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
       ...state,
       totalDistanceMeters: totalDistance,
       lastDriverLocation:
-        role === EClientType.DRIVER
-          ? location
-          : state.lastDriverLocation,
+        role === EClientType.DRIVER ? location : state.lastDriverLocation,
       lastRiderLocation:
-        role === EClientType.RIDER
-          ? location
-          : state.lastRiderLocation,
+        role === EClientType.RIDER ? location : state.lastRiderLocation,
     };
 
     await Promise.all([
@@ -159,7 +167,12 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
     const state = await this.getState(rideId);
     if (!state.completed) {
       state.completed = true;
-      await this.redis.set(this.getStateKey(rideId), JSON.stringify(state), 'EX', 60 * 60);
+      await this.redis.set(
+        this.getStateKey(rideId),
+        JSON.stringify(state),
+        'EX',
+        60 * 60,
+      );
       await this.enqueueFlushRideJob(rideId);
     }
   }
@@ -292,7 +305,7 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
 
     pipeline.geoadd(key, lon1, lat1, 'point:origin');
     pipeline.geoadd(key, lon2, lat2, 'point:destination');
-    pipeline.geodist(key, 'point:origin', 'point:destination', 'm');
+    pipeline.geodist(key, 'point:origin', 'point:destination', 'M');
     pipeline.del(key);
 
     try {
@@ -338,8 +351,8 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
         existingJob.every == null
           ? null
           : typeof existingJob.every === 'string'
-          ? Number.parseInt(existingJob.every, 10)
-          : existingJob.every;
+            ? Number.parseInt(existingJob.every, 10)
+            : existingJob.every;
 
       if (existingEvery === expectedEvery) {
         return;
@@ -394,7 +407,8 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
     const name = 'name' in error ? String(error.name) : '';
 
     return (
-      name === 'JobIdAlreadyExistsError' || message.includes('JobIdAlreadyExists')
+      name === 'JobIdAlreadyExistsError' ||
+      message.includes('JobIdAlreadyExists')
     );
   }
 }
