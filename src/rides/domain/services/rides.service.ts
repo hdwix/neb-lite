@@ -319,7 +319,7 @@ export class RidesService {
 
     const riderLocation = await this.tripTrackingService.getLatestLocation(
       ride.id,
-      'rider',
+      EClientType.RIDER,
     );
 
     if (!riderLocation) {
@@ -355,7 +355,7 @@ export class RidesService {
     await this.tripTrackingService.recordLocation(
       ride.id,
       driverId,
-      'driver',
+      EClientType.DRIVER,
       driverLocation,
     );
 
@@ -405,7 +405,7 @@ export class RidesService {
       await this.tripTrackingService.recordLocation(
         ride.id,
         driverId,
-        'driver',
+        EClientType.DRIVER,
         location,
       );
       return;
@@ -415,7 +415,7 @@ export class RidesService {
       await this.tripTrackingService.recordLocation(
         ride.id,
         ride.riderId,
-        'rider',
+        EClientType.RIDER,
         location,
       );
       return;
@@ -445,7 +445,7 @@ export class RidesService {
 
     const riderLocation = await this.tripTrackingService.getLatestLocation(
       ride.id,
-      'rider',
+      EClientType.RIDER,
     );
 
     if (!riderLocation) {
@@ -482,7 +482,7 @@ export class RidesService {
       await this.tripTrackingService.recordLocation(
         ride.id,
         ride.driverId,
-        'driver',
+        EClientType.DRIVER,
         driverLocation,
       );
     }
