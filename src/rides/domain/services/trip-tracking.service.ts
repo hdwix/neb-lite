@@ -329,7 +329,14 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
     const repeat: RepeatOptions = { every: expectedEvery };
 
     if (existingJob) {
-      if (existingJob.every === expectedEvery) {
+      const existingEvery =
+        existingJob.every == null
+          ? null
+          : typeof existingJob.every === 'string'
+          ? Number.parseInt(existingJob.every, 10)
+          : existingJob.every;
+
+      if (existingEvery === expectedEvery) {
         return;
       }
 
