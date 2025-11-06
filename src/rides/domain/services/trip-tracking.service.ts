@@ -287,7 +287,7 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
 
     pipeline.geoadd(key, lon1, lat1, 'point:origin');
     pipeline.geoadd(key, lon2, lat2, 'point:destination');
-    pipeline.geodist(key, 'point:origin', 'point:destination', 'M');
+    pipeline.geodist(key, 'point:origin', 'point:destination', 'm');
     pipeline.del(key);
 
     try {
