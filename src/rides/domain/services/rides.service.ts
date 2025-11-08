@@ -29,7 +29,10 @@ import { RideDriverCandidateRepository } from '../../infrastructure/repositories
 import { RideDriverCandidate } from '../entities/ride-driver-candidate.entity';
 import { ERideDriverCandidateStatus } from '../constants/ride-driver-candidate-status.enum';
 import { NearbyDriver } from '../../../location/domain/services/location.types';
-import { TripTrackingService, ParticipantLocation } from './trip-tracking.service';
+import {
+  TripTrackingService,
+  ParticipantLocation,
+} from './trip-tracking.service';
 import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
 interface RouteSummary {
   distanceMeters: number;
@@ -87,11 +90,11 @@ export class RidesService {
   ) {
     this.tripStartProximityMeters = this.getNumberConfig(
       'TRIP_START_PROXIMITY_METERS',
-      50,
+      20,
     );
     this.tripCompletionProximityMeters = this.getNumberConfig(
       'TRIP_COMPLETION_PROXIMITY_METERS',
-      75,
+      20,
     );
     this.minDiscountPercent = this.getNumberConfig(
       'TRIP_DISCOUNT_MIN_PERCENT',
@@ -291,6 +294,8 @@ export class RidesService {
     driverLocation: ParticipantLocation,
   ): Promise<Ride> {
     const ride = await this.rideRepository.findById(rideId);
+    console.log('ride from service startRide');
+    console.log(ride);
     if (!ride) {
       throw new NotFoundException('Ride not found');
     }
@@ -322,6 +327,11 @@ export class RidesService {
       EClientType.RIDER,
     );
 
+    console.log(' driverLocation in start ride');
+    console.log(driverLocation);
+
+    console.log(' riderLocation in start ride');
+    console.log(riderLocation);
     if (!riderLocation) {
       throw new BadRequestException(
         'Rider location not available. Please wait for rider to share location.',
@@ -361,10 +371,13 @@ export class RidesService {
 
     const transition = await this.transitionRideStatus(
       ride.id,
-      [ERideStatus.ACCEPTED, ERideStatus.ASSIGNED],
-      ERideStatus.ENROUTE,
+      [ERideStatus.ACCEPTED, ERideStatus.ASSIGNED, ERideStatus.ENROUTE],
+      ERideStatus.TRIP_STARTED,
       'Driver started the trip',
     );
+
+    console.log(' transition in start-ride');
+    console.log(transition);
 
     const updated = transition.ride;
     const refreshed = await this.rideRepository.findById(updated.id);
@@ -597,7 +610,10 @@ export class RidesService {
     const saved = await this.rideRepository.save(ride);
     const refreshed = (await this.rideRepository.findById(saved.id)) ?? saved;
 
-    await this.notificationService.notifyRidePaid(refreshed, payload.paymentReference);
+    await this.notificationService.notifyRidePaid(
+      refreshed,
+      payload.paymentReference,
+    );
 
     return refreshed;
   }
@@ -1354,6 +1370,8 @@ export class RidesService {
       target.latitude,
     );
 
+    console.log(`calculating distance in ensureLocationWithinRadius `);
+
     if (distance > radiusMeters) {
       throw new BadRequestException(errorMessage);
     }
@@ -1371,7 +1389,7 @@ export class RidesService {
       second.longitude,
       second.latitude,
     );
-
+    console.log(`calculate distance in ensureParticipantsAreNearby`);
     if (distance > radiusMeters) {
       throw new BadRequestException(errorMessage);
     }

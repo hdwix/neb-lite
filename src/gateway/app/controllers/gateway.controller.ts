@@ -351,6 +351,7 @@ export class GatewayController {
     @Param('id') rideId: string,
     @Body() startRideDto: StartRideDto,
   ) {
+    console.log('from controller: ride start');
     const client = this.getAuthenticatedClient(request);
     const ride = await this.ridesService.startRide(
       rideId,
@@ -576,7 +577,9 @@ export class GatewayController {
         reason: candidate.reason ?? null,
         distanceMeters: candidate.distanceMeters ?? null,
         respondedAt:
-          candidate.respondedAt?.toISOString?.() ?? candidate.respondedAt ?? null,
+          candidate.respondedAt?.toISOString?.() ??
+          candidate.respondedAt ??
+          null,
         createdAt:
           candidate.createdAt?.toISOString?.() ?? candidate.createdAt ?? null,
       })),
