@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Ride } from '../entities/ride.entity';
+import { RideDriverCandidate } from '../entities/ride-driver-candidate.entity';
 import {
   NotificationStreamService,
   NotificationTarget,
 } from '../../../notifications/domain/services/notification-stream.service';
+import type { RouteEstimates } from './rides.service';
 
 @Injectable()
 export class RideNotificationService {
@@ -14,41 +16,71 @@ export class RideNotificationService {
   ) {}
 
   async notifyRideMatched(ride: Ride): Promise<void> {
-    if (ride.driverId) {
-      const driverMessage = `Ride ${ride.id} matched with rider ${ride.riderId}`;
-      await this.dispatchNotification(
-        'driver',
-        ride.driverId,
-        'ride.matched',
-        ride,
-        driverMessage,
-      );
-    }
-
-    const riderMessage = ride.driverId
-      ? `Driver ${ride.driverId} matched for ride ${ride.id}`
-      : `Ride ${ride.id} matched. Awaiting driver confirmation`;
+    const riderMessage = 'awaiting driver responses';
     await this.dispatchNotification(
       'rider',
       ride.riderId,
-      'ride.matched',
+      'ride.candidates.invited',
       ride,
       riderMessage,
     );
   }
 
-  async notifyDriverAccepted(ride: Ride): Promise<void> {
-    const message = `Driver ${ride.driverId ?? 'unknown'} accepted ride ${ride.id}`;
+  async notifyRideOffered(
+    ride: Ride,
+    candidate: RideDriverCandidate,
+    route: RouteEstimates,
+  ): Promise<void> {
+    const message = 'New ride requested near you';
+    await this.dispatchNotification(
+      'driver',
+      candidate.driverId,
+      'ride.offer',
+      ride,
+      message,
+      {
+        candidate: this.buildCandidatePayload(candidate),
+        route,
+      },
+    );
+  }
+
+  async notifyDriverAccepted(
+    ride: Ride,
+    candidate: RideDriverCandidate,
+  ): Promise<void> {
+    const message = `Driver ${candidate.driverId} accepted ride ${ride.id}`;
     await this.dispatchNotification(
       'rider',
       ride.riderId,
       'ride.driver.accepted',
       ride,
       message,
+      { candidate: this.buildCandidatePayload(candidate) },
     );
   }
 
-  async notifyRiderConfirmed(ride: Ride): Promise<void> {
+  async notifyDriverDeclined(
+    ride: Ride,
+    candidate: RideDriverCandidate,
+  ): Promise<void> {
+    const message = `Driver ${candidate.driverId} declined ride ${ride.id}`;
+    await this.dispatchNotification(
+      'rider',
+      ride.riderId,
+      'ride.driver.declined',
+      ride,
+      message,
+      {
+        candidate: this.buildCandidatePayload(candidate),
+      },
+    );
+  }
+
+  async notifyRiderConfirmed(
+    ride: Ride,
+    candidate: RideDriverCandidate,
+  ): Promise<void> {
     if (!ride.driverId) {
       return;
     }
@@ -60,33 +92,63 @@ export class RideNotificationService {
       'ride.rider.confirmed',
       ride,
       message,
+      { candidate: this.buildCandidatePayload(candidate) },
     );
   }
 
-  async notifyRiderRejected(ride: Ride, reason?: string): Promise<void> {
-    if (ride.driverId) {
-      const driverMessage =
-        `Rider ${ride.riderId} rejected ride ${ride.id}` + (reason ? `: ${reason}` : '');
-      await this.dispatchNotification(
-        'driver',
-        ride.driverId,
-        'ride.rider.rejected',
-        ride,
-        driverMessage,
-        { rejectionReason: reason ?? null },
-      );
-    }
+  async notifyRiderRejectedDriver(
+    ride: Ride,
+    candidate: RideDriverCandidate,
+    reason?: string,
+  ): Promise<void> {
+    const driverMessage =
+      `Rider ${ride.riderId} rejected ride ${ride.id}` + (reason ? `: ${reason}` : '');
+    await this.dispatchNotification(
+      'driver',
+      candidate.driverId,
+      'ride.rider.rejected',
+      ride,
+      driverMessage,
+      {
+        candidate: this.buildCandidatePayload(candidate),
+        rejectionReason: reason ?? null,
+      },
+    );
+  }
 
-    const riderMessage =
-      `Ride ${ride.id} cancelled after rejecting driver` +
+  async notifyCandidateSuperseded(
+    ride: Ride,
+    candidate: RideDriverCandidate,
+  ): Promise<void> {
+    const message = `Ride ${ride.id} is no longer available`;
+    await this.dispatchNotification(
+      'driver',
+      candidate.driverId,
+      'ride.driver.not_selected',
+      ride,
+      message,
+      { candidate: this.buildCandidatePayload(candidate) },
+    );
+  }
+
+  async notifyRideCanceledForCandidate(
+    ride: Ride,
+    candidate: RideDriverCandidate,
+    reason?: string,
+  ): Promise<void> {
+    const message =
+      `Ride ${ride.id} was cancelled by rider ${ride.riderId}` +
       (reason ? `: ${reason}` : '');
     await this.dispatchNotification(
-      'rider',
-      ride.riderId,
+      'driver',
+      candidate.driverId,
       'ride.cancelled',
       ride,
-      riderMessage,
-      { rejectionReason: reason ?? null },
+      message,
+      {
+        candidate: this.buildCandidatePayload(candidate),
+        cancellationReason: reason ?? null,
+      },
     );
   }
 
@@ -142,6 +204,17 @@ export class RideNotificationService {
       message,
       ...extras,
       ...ride,
+    };
+  }
+
+  private buildCandidatePayload(candidate: RideDriverCandidate) {
+    return {
+      driverId: candidate.driverId,
+      status: candidate.status,
+      reason: candidate.reason ?? null,
+      distanceMeters: candidate.distanceMeters ?? null,
+      respondedAt: candidate.respondedAt?.toISOString?.() ?? candidate.respondedAt ?? null,
+      createdAt: candidate.createdAt?.toISOString?.() ?? candidate.createdAt ?? null,
     };
   }
 }

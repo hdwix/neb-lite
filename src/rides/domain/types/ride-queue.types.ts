@@ -2,7 +2,6 @@ export const RIDE_QUEUE_NAME = 'ride-processing';
 
 export enum RideQueueJob {
   EstimateRoute = 'estimate-route',
-  ProcessSelection = 'process-selection',
 }
 
 export interface RideCoordinate {
@@ -16,11 +15,4 @@ export interface RideRouteEstimationJobData {
   dropoff: RideCoordinate;
 }
 
-export interface RideSelectionJobData {
-  rideId: string;
-  driverId: string;
-}
-
-export type RideQueueJobData =
-  | RideRouteEstimationJobData
-  | RideSelectionJobData;
+export type RideQueueJobData = RideRouteEstimationJobData;

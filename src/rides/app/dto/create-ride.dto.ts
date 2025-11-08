@@ -1,9 +1,4 @@
-import {
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  ValidateNested,
-} from 'class-validator';
+import { IsOptional, IsPositive, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CoordinateDto } from './coordinate.dto';
 
@@ -20,7 +15,8 @@ export class CreateRideDto {
   @IsString()
   note?: string;
 
-  @IsString()
-  @IsNotEmpty()
-  driverId!: string;
+  @IsOptional()
+  @Type(() => Number)
+  @IsPositive()
+  maxDrivers?: number;
 }

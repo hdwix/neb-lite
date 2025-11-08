@@ -6,10 +6,8 @@ import {
   RideQueueJob,
   RideQueueJobData,
   RideRouteEstimationJobData,
-  RideSelectionJobData,
 } from '../types/ride-queue.types';
 import { RidesService, RouteEstimates } from '../services/rides.service';
-import { ERideStatus } from '../../../app/enums/ride-status.enum';
 
 @Processor(RIDE_QUEUE_NAME, { concurrency: 2 })
 export class RideProcessor extends WorkerHost {
@@ -23,33 +21,9 @@ export class RideProcessor extends WorkerHost {
     switch (job.name) {
       case RideQueueJob.EstimateRoute:
         return this.handleRouteEstimation(job.data as RideRouteEstimationJobData);
-      case RideQueueJob.ProcessSelection:
-        await this.handleRideWorkflow(job.data as RideSelectionJobData);
-        return;
       default:
         this.logger.warn(`Received unknown ride job ${job.name}`);
     }
-  }
-
-  private async handleRideWorkflow(
-    data: RideSelectionJobData,
-  ): Promise<void> {
-    const { rideId } = data;
-
-    this.logger.debug(`Processing workflow for ride ${rideId}`);
-
-    const assignment = await this.ridesService.transitionRideStatus(
-      rideId,
-      [ERideStatus.REQUESTED, ERideStatus.CANDIDATES_COMPUTED],
-      ERideStatus.ASSIGNED,
-      'Driver selected by rider',
-    );
-
-    if (assignment.changed) {
-      await this.ridesService.notifyRideMatched(assignment.ride);
-    }
-
-    this.logger.debug(`Completed workflow for ride ${rideId}`);
   }
 
   private async handleRouteEstimation(
