@@ -31,6 +31,8 @@ import axios from 'axios';
         } else {
           sslConfig = false;
         }
+        console.log('ssl config :');
+        console.log(sslConfig);
 
         return {
           type: 'postgres',
