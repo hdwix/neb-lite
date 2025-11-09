@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RiderProfile } from '../../iam/domain/entities/rider-profile.entity';
 import { DriverProfile } from '../../iam/domain/entities/driver-profile.entity';
+import fs from 'fs';
 
 @Module({
   imports: [
@@ -22,6 +23,11 @@ import { DriverProfile } from '../../iam/domain/entities/driver-profile.entity';
         autoLoadEntities: true,
         synchronize: configService.get<boolean>('DB_SYNCHRONIZE') || false,
         entities: [RiderProfile, DriverProfile],
+        ssl: {
+          require: true,
+          rejectUnauthorized: true,
+          ca: fs.readFileSync('./ca/global-bundle.pem').toString(),
+        },
       }),
     }),
   ],
