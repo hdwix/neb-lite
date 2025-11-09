@@ -22,6 +22,12 @@ import axios from 'axios';
           sslConfig = {
             ca: caResponse.data,
           };
+          console.log('==== ca response==');
+          console.log(caResponse.data);
+          console.log(`username from secret: `);
+          console.log(configService.get<string>('POSTGRES_USER'));
+          console.log(`passwd from secret: `);
+          console.log(configService.get<string>('POSTGRES_PASSWORD'));
         } else {
           sslConfig = false;
         }
@@ -36,7 +42,7 @@ import axios from 'axios';
           entities: [RiderProfile, DriverProfile],
           migrations: [__dirname + '/../migrations/*{.ts,.js}'],
           autoLoadEntities: true,
-          synchronize: true,
+          synchronize: configService.get<boolean>('DB_SYNCHRONIZE') || false,
           logging: false,
           ssl: sslConfig, // false for local, CA for non-local
         };
