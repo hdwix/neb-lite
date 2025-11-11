@@ -12,6 +12,9 @@ import Redis from 'ioredis';
 import { Queue, RepeatOptions } from 'bullmq';
 import { REDIS_CLIENT } from '../../../infrastructure/redis/redis.tokens';
 import { TripTrackRepository } from '../../infrastructure/repositories/trip-track.repository';
+import {
+  TripSummaryUpsert,
+} from '../../infrastructure/repositories/trip-summary.repository';
 import { TripTrack } from '../entities/trip-track.entity';
 import {
   TRIP_TRACKING_QUEUE_NAME,
@@ -211,6 +214,7 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
     await this.redis.del(eventsKey);
 
     const entries: TripTrack[] = [];
+    const summaries = new Map<EClientType, TripSummaryUpsert>();
     for (const payload of eventPayloads) {
       try {
         const event = JSON.parse(payload) as TrackEvent;
@@ -226,6 +230,24 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
             recordedAt: new Date(event.recordedAt),
           }),
         );
+
+        summaries.set(event.role, {
+          rideId,
+          clientId: event.clientId,
+          clientRole: event.role,
+          locationPayload: {
+            longitude: event.longitude,
+            latitude: event.latitude,
+            accuracyMeters: event.accuracyMeters ?? null,
+            recordedAt: event.recordedAt,
+          },
+          totalDistanceMeters:
+            event.role === EClientType.DRIVER
+              ? Number.isFinite(event.totalDistanceMeters)
+                ? event.totalDistanceMeters
+                : null
+              : null,
+        });
       } catch (error) {
         this.logger.warn(
           `Unable to parse trip tracking event for ride ${rideId}: ${error}`,
@@ -233,7 +255,9 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    await this.tripTrackRepository.saveMany(entries);
+    await this.tripTrackRepository.persistFlush(entries, [
+      ...summaries.values(),
+    ]);
 
     const state = await this.getState(rideId);
     if (state.completed) {

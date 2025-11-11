@@ -23,7 +23,9 @@ import { RideNotificationService } from './domain/services/ride-notification.ser
 import { NotificationsModule } from '../notifications/notifications.module';
 import { LocationModule } from '../location/location.module';
 import { TripTrack } from './domain/entities/trip-track.entity';
+import { TripSummary } from './domain/entities/trip-summary.entity';
 import { TripTrackRepository } from './infrastructure/repositories/trip-track.repository';
+import { TripSummaryRepository } from './infrastructure/repositories/trip-summary.repository';
 import { TripTrackingService } from './domain/services/trip-tracking.service';
 import { TripTrackingProcessor } from './domain/processors/trip-tracking.processor';
 import { TRIP_TRACKING_QUEUE_NAME } from './domain/constants/trip-tracking.constants';
@@ -55,6 +57,7 @@ const tripTrackingQueueRegistration: RegisterQueueOptions = {
       RideStatusHistory,
       RideDriverCandidate,
       TripTrack,
+      TripSummary,
     ]),
     BullModule.registerQueue(
       rideQueueRegistration,
@@ -82,6 +85,7 @@ const tripTrackingQueueRegistration: RegisterQueueOptions = {
     RideNotificationService,
     RideProcessor,
     TripTrackRepository,
+    TripSummaryRepository,
     TripTrackingService,
     TripTrackingProcessor,
   ],
