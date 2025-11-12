@@ -37,7 +37,6 @@ export class PaymentService {
   private readonly paymentApiUrl: string | null;
   private readonly paymentApiKey: string | null;
   private readonly paymentProvider = 'midtrans';
-  private readonly ulidFactory = monotonicFactory();
 
   constructor(
     private readonly configService: ConfigService,
@@ -47,14 +46,18 @@ export class PaymentService {
     @InjectQueue(PAYMENT_QUEUE_NAME)
     private readonly paymentQueue: Queue<PaymentQueueJobData>,
   ) {
-    this.paymentApiUrl = this.configService.get<string>('PAYMENT_API_URL') ?? null;
-    this.paymentApiKey = this.configService.get<string>('PAYMENT_API_KEY') ?? null;
+    this.paymentApiUrl =
+      this.configService.get<string>('PAYMENT_API_URL') ?? null;
+    this.paymentApiKey =
+      this.configService.get<string>('PAYMENT_API_KEY') ?? null;
   }
 
   async initiatePayment(ride: Ride): Promise<RidePaymentDetail> {
     this.ensurePaymentConfiguration();
 
-    let paymentDetail = await this.ridePaymentDetailRepository.findByRideId(ride.id);
+    let paymentDetail = await this.ridePaymentDetailRepository.findByRideId(
+      ride.id,
+    );
     if (paymentDetail?.token && paymentDetail.redirectUrl) {
       return paymentDetail;
     }
@@ -67,7 +70,7 @@ export class PaymentService {
       });
     }
 
-    const orderId = paymentDetail.orderId ?? this.orderIdFactory(Date.now());
+    const orderId = paymentDetail.orderId ?? this.generateOrderId();
 
     const requestPayload = this.buildPaymentRequestPayload(ride, orderId);
 
@@ -129,18 +132,24 @@ export class PaymentService {
     );
 
     if (!refreshedDetail) {
-      throw new BadRequestException('Payment detail not found after processing');
+      throw new BadRequestException(
+        'Payment detail not found after processing',
+      );
     }
 
     if (!refreshedDetail.redirectUrl) {
-      throw new BadRequestException('Payment gateway did not return a redirect URL');
+      throw new BadRequestException(
+        'Payment gateway did not return a redirect URL',
+      );
     }
 
     return refreshedDetail;
   }
 
-  private orderIdFactory(seedTime?: number): string {
-    return this.ulidFactory(seedTime);
+  private generateOrderId(): string {
+    const ulid = monotonicFactory();
+    const orderId = ulid(Date.now());
+    return orderId;
   }
 
   async processOutbox(outboxId: string): Promise<PaymentJobResult> {
@@ -173,19 +182,24 @@ export class PaymentService {
         }),
       );
 
-      const responsePayload = (response?.data as Record<string, unknown>) ?? null;
+      const responsePayload =
+        (response?.data as Record<string, unknown>) ?? null;
 
       paymentDetail.status = 'initiated';
       paymentDetail.responsePayload = responsePayload;
       paymentDetail.requestPayload = outbox.requestPayload;
       paymentDetail.orderId = outbox.orderId;
-      paymentDetail.token = this.extractResponseString(responsePayload, 'token');
+      paymentDetail.token = this.extractResponseString(
+        responsePayload,
+        'token',
+      );
       paymentDetail.redirectUrl = this.extractResponseString(
         responsePayload,
         'redirect_url',
       );
 
-      const savedDetail = await this.ridePaymentDetailRepository.save(paymentDetail);
+      const savedDetail =
+        await this.ridePaymentDetailRepository.save(paymentDetail);
 
       outbox.status = PaymentOutboxStatus.Completed;
       outbox.lastError = null;
@@ -242,7 +256,8 @@ export class PaymentService {
     paymentDetail.providerTransactionId = payload.transaction_id ?? null;
     paymentDetail.notificationPayload = this.cloneNotificationPayload(payload);
 
-    const savedDetail = await this.ridePaymentDetailRepository.save(paymentDetail);
+    const savedDetail =
+      await this.ridePaymentDetailRepository.save(paymentDetail);
     const paid = this.isSuccessfulPaymentStatus(status);
 
     return { detail: savedDetail, paid };
@@ -376,7 +391,9 @@ export class PaymentService {
 
   private isSuccessfulPaymentStatus(status: string): boolean {
     const normalized = status?.toLowerCase?.() ?? '';
-    return ['capture', 'settlement', 'success', 'completed'].includes(normalized);
+    return ['capture', 'settlement', 'success', 'completed'].includes(
+      normalized,
+    );
   }
 
   private cloneNotificationPayload(
