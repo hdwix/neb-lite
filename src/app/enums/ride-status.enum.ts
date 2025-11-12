@@ -5,6 +5,7 @@ export enum ERideStatus {
   ASSIGNED = 'assigned',
   ACCEPTED = 'accepted',
   ENROUTE = 'enroute',
+  TRIP_STARTED = 'trip_started',
   COMPLETED = 'completed',
   CANCELED = 'canceled',
 }

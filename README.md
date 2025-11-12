@@ -21,10 +21,11 @@ driver can switch on/off of location activation
 
 ## Environment Variables
 
-| Variable                      | Description                                                                                                           |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `SMS_SERVICE_URL`             | Base URL for the SMS provider endpoint that delivers OTP messages.                                                    |
-| `OTP_SIMULATION_ACCESS_TOKEN` | Static token that authorizes access to the OTP simulation SSE stream. Leave unset to disable the simulation endpoint. |
+| Variable                          | Description |
+| --------------------------------- | ----------- |
+| `SMS_SERVICE_URL`                 | Base URL for the SMS provider endpoint that delivers OTP messages. |
+| `OTP_SIMULATION_ACCESS_TOKEN`     | Static token that authorizes access to the OTP simulation SSE stream. Leave unset to disable the simulation endpoint. |
+| `TRIP_TRACKING_FLUSH_INTERVAL_MS` | Interval (in milliseconds) that controls how often the trip-tracking job flushes accumulated locations to persistent storage. Defaults to `60000` when unset. |
 
 ## Architecture Design Document
 
@@ -154,8 +155,29 @@ sequenceDiagram
     Gateway-->>Driver: Notify rider confirmed
 ```
 
-⸻
+<!-- prettier-ignore -->
+```mermaid
+flowchart LR
+  subgraph client
+    A1[Rider App]
+    A2[Driver App]
+  end
 
-```
+  subgraph backend[Backend Services]
+    G[Gateway Controller]
+    Q[Redis ]
+    T[Trip Tracker Service]
+    DB[(PostgreSQL - trip_history)]
+    C[Cache Redis GeoIndex - active_drivers]
+  end
+
+  A1 -->|Location ping every 5s| G
+  A2 -->|Location ping every 3s| G
+
+  G --> Q
+  Q --> T
+  T -->|Write batch| DB
+  T -->|Update metrics| C
+
 
 ```
