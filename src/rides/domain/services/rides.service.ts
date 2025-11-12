@@ -309,7 +309,7 @@ export class RidesService {
     }
 
     if (ride.status === ERideStatus.COMPLETED) {
-      return ride;
+      throw new BadRequestException('Completed ride cannot be started');
     }
 
     const allowedStatuses = [
@@ -403,6 +403,10 @@ export class RidesService {
 
     if (ride.status === ERideStatus.CANCELED) {
       throw new BadRequestException('Cancelled ride cannot be tracked');
+    }
+
+    if (ride.status === ERideStatus.COMPLETED) {
+      throw new BadRequestException('Completed ride cannot be tracked');
     }
 
     if (!requester.role) {
@@ -522,7 +526,12 @@ export class RidesService {
 
     const { ride: updated } = await this.transitionRideStatus(
       ride.id,
-      [ERideStatus.ENROUTE, ERideStatus.ACCEPTED, ERideStatus.ASSIGNED],
+      [
+        ERideStatus.ENROUTE,
+        ERideStatus.ACCEPTED,
+        ERideStatus.ASSIGNED,
+        ERideStatus.TRIP_STARTED,
+      ],
       ERideStatus.COMPLETED,
       'Driver marked the ride as completed',
     );
