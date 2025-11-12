@@ -35,8 +35,7 @@ import { DriverRespondRideDto } from '../../../rides/app/dto/driver-respond-ride
 import { StartRideDto } from '../../../rides/app/dto/start-ride.dto';
 import { TripLocationUpdateDto } from '../../../rides/app/dto/trip-location-update.dto';
 import { CompleteRideDto } from '../../../rides/app/dto/complete-ride.dto';
-import { ApplyDiscountDto } from '../../../rides/app/dto/apply-discount.dto';
-import { CompletePaymentDto } from '../../../rides/app/dto/complete-payment.dto';
+import { PaymentNotificationDto } from '../../../rides/app/dto/payment-notification.dto';
 import { toParticipantLocation } from '../../../rides/app/dto/trip-location.dto';
 import { Ride } from '../../../rides/domain/entities/ride.entity';
 import {
@@ -331,7 +330,10 @@ export class GatewayController {
         id: this.getClientId(client),
         role: client.role,
       },
-      toParticipantLocation(completeRideDto.driverLocation),
+      {
+        driverLocation: toParticipantLocation(completeRideDto.driverLocation),
+        discountAmount: completeRideDto.discountAmount,
+      },
     );
 
     return {
@@ -394,51 +396,51 @@ export class GatewayController {
     };
   }
 
-  @Post('rides/:id/discount')
-  @Auth(EAuthType.Bearer)
-  @Roles(EClientType.DRIVER)
-  @HttpCode(HttpStatus.OK)
-  async applyRideDiscount(
-    @Req() request: Request,
-    @Param('id') rideId: string,
-    @Body() applyDiscountDto: ApplyDiscountDto,
-  ) {
-    const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.applyRideDiscount(
-      rideId,
-      this.getClientId(client),
-      applyDiscountDto,
-    );
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Discount applied',
-      error: null,
-      data: this.toRideResponse(ride),
-    };
-  }
-
-  @Post('rides/:id/payment/complete')
+  @Post('rides/:id/proceed-payment')
   @Auth(EAuthType.Bearer)
   @Roles(EClientType.RIDER)
   @HttpCode(HttpStatus.OK)
-  async completeRidePayment(
+  async proceedRidePayment(
     @Req() request: Request,
     @Param('id') rideId: string,
-    @Body() completePaymentDto: CompletePaymentDto,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.confirmRidePayment(
+    const { ride, payment } = await this.ridesService.proceedRidePayment(
       rideId,
       this.getClientId(client),
-      completePaymentDto,
     );
 
     return {
       statusCode: HttpStatus.OK,
-      message: 'Payment confirmed',
+      message: 'Payment initiated',
       error: null,
-      data: this.toRideResponse(ride),
+      data: {
+        ...this.toRideResponse(ride),
+        payment,
+      },
+    };
+  }
+
+  @Post('rides/payment/notification')
+  @Auth(EAuthType.None)
+  @HttpCode(HttpStatus.OK)
+  async handlePaymentNotification(
+    @Req() request: Request,
+    @Body() payload: PaymentNotificationDto,
+  ) {
+    const { ride, payment } = await this.ridesService.handlePaymentNotification(
+      payload,
+      this.extractClientIp(request),
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Payment notification processed',
+      error: null,
+      data: {
+        ...this.toRideResponse(ride),
+        payment,
+      },
     };
   }
 
@@ -544,6 +546,19 @@ export class GatewayController {
       throw new UnauthorizedException('Client identifier not found in request');
     }
     return String(id);
+  }
+
+  private extractClientIp(request: Request): string {
+    const remoteAddress = request.socket?.remoteAddress;
+    if (remoteAddress) {
+      return remoteAddress;
+    }
+
+    if (typeof request.ip === 'string') {
+      return request.ip;
+    }
+
+    return '';
   }
 
   private toRideResponse(ride: Ride) {

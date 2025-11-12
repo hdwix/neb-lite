@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue, QueueEvents, JobsOptions } from 'bullmq';
@@ -26,6 +27,8 @@ import { EClientType } from '../../../app/enums/client-type.enum';
 import { RideNotificationService } from './ride-notification.service';
 import { LocationService } from '../../../location/domain/services/location.service';
 import { RideDriverCandidateRepository } from '../../infrastructure/repositories/ride-driver-candidate.repository';
+import { RidePaymentDetailRepository } from '../../infrastructure/repositories/ride-payment-detail.repository';
+import { PaymentIpWhitelistRepository } from '../../infrastructure/repositories/payment-ip-whitelist.repository';
 import { RideDriverCandidate } from '../entities/ride-driver-candidate.entity';
 import { ERideDriverCandidateStatus } from '../constants/ride-driver-candidate-status.enum';
 import { NearbyDriver } from '../../../location/domain/services/location.types';
@@ -34,6 +37,8 @@ import {
   ParticipantLocation,
 } from './trip-tracking.service';
 import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
+import { PaymentNotificationDto } from '../../app/dto/payment-notification.dto';
+import { PaymentService } from './payment.service';
 interface RouteSummary {
   distanceMeters: number;
   durationSeconds: number;
@@ -69,12 +74,9 @@ export class RidesService {
   private readonly maxDriverCandidateLimit = 20;
   private readonly tripStartProximityMeters: number;
   private readonly tripCompletionProximityMeters: number;
-  private readonly minDiscountPercent: number;
-  private readonly maxDiscountPercent: number;
   private readonly appFeePercent: number;
   private readonly appFeeMinimumAmount: number;
   private readonly appFeeMinimumThreshold: number;
-  private readonly paymentBaseUrl: string | null;
 
   constructor(
     @InjectQueue(RIDE_QUEUE_NAME)
@@ -87,6 +89,9 @@ export class RidesService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly tripTrackingService: TripTrackingService,
+    private readonly ridePaymentDetailRepository: RidePaymentDetailRepository,
+    private readonly paymentWhitelistRepository: PaymentIpWhitelistRepository,
+    private readonly paymentService: PaymentService,
   ) {
     this.tripStartProximityMeters = this.getNumberConfig(
       'TRIP_START_PROXIMITY_METERS',
@@ -96,22 +101,12 @@ export class RidesService {
       'TRIP_COMPLETION_PROXIMITY_METERS',
       20,
     );
-    this.minDiscountPercent = this.getNumberConfig(
-      'TRIP_DISCOUNT_MIN_PERCENT',
-      0,
-    );
-    this.maxDiscountPercent = this.getNumberConfig(
-      'TRIP_DISCOUNT_MAX_PERCENT',
-      50,
-    );
     this.appFeePercent = this.getNumberConfig('APP_FEE_PERCENT', 5);
     this.appFeeMinimumAmount = this.getNumberConfig('APP_FEE_MIN_AMOUNT', 3000);
     this.appFeeMinimumThreshold = this.getNumberConfig(
       'APP_FEE_MIN_THRESHOLD',
       10_000,
     );
-    const paymentUrl = this.configService.get<string>('PAYMENT_BASE_URL');
-    this.paymentBaseUrl = paymentUrl ?? null;
   }
 
   async createRide(riderId: string, payload: CreateRideInput): Promise<Ride> {
@@ -444,7 +439,7 @@ export class RidesService {
   async completeRide(
     id: string,
     requester: RequestingClient,
-    driverLocation: ParticipantLocation,
+    input: { driverLocation: ParticipantLocation; discountAmount?: number },
   ): Promise<Ride> {
     const ride = await this.rideRepository.findById(id);
     if (!ride) {
@@ -477,7 +472,7 @@ export class RidesService {
     };
 
     await this.ensureLocationWithinRadius(
-      driverLocation,
+      input.driverLocation,
       dropoffPoint,
       this.tripCompletionProximityMeters,
       'Driver must arrive at the destination to complete the ride.',
@@ -489,7 +484,7 @@ export class RidesService {
       'Rider location does not match destination.',
     );
     await this.ensureParticipantsAreNearby(
-      driverLocation,
+      input.driverLocation,
       riderLocation,
       this.tripCompletionProximityMeters,
       'Driver and rider must be at the destination together to complete the ride.',
@@ -500,7 +495,7 @@ export class RidesService {
         ride.id,
         ride.driverId,
         EClientType.DRIVER,
-        driverLocation,
+        input.driverLocation,
       );
     }
 
@@ -513,14 +508,17 @@ export class RidesService {
     }
 
     const roundedDistanceKm = this.roundDistanceKm(distanceKm);
-
     const baseFare = Math.max(0, roundedDistanceKm * this.fareRatePerKm);
-    const discountPercent = this.resolveDiscountPercent(ride.discountPercent);
-    const discountAmount = this.calculateMonetaryAmount(
-      baseFare * (discountPercent / 100),
+    const normalizedDiscountAmount = this.normalizeDiscountAmount(
+      baseFare,
+      input.discountAmount,
     );
     const fareAfterDiscount = this.calculateMonetaryAmount(
-      baseFare - discountAmount,
+      baseFare - normalizedDiscountAmount,
+    );
+    const discountPercent = this.calculateDiscountPercent(
+      baseFare,
+      normalizedDiscountAmount,
     );
     const appFeeAmount = this.calculateAppFee(fareAfterDiscount);
 
@@ -538,11 +536,11 @@ export class RidesService {
 
     updated.distanceActualKm = roundedDistanceKm;
     updated.discountPercent = discountPercent;
-    updated.discountAmount = discountAmount.toFixed(2);
+    updated.discountAmount = normalizedDiscountAmount.toFixed(2);
     updated.fareFinal = fareAfterDiscount.toFixed(2);
     updated.appFeeAmount = appFeeAmount.toFixed(2);
     updated.paymentStatus = ERidePaymentStatus.PENDING;
-    updated.paymentUrl = this.buildPaymentUrl(updated, fareAfterDiscount);
+    updated.paymentUrl = null;
 
     await this.tripTrackingService.markRideCompleted(ride.id);
 
@@ -552,7 +550,7 @@ export class RidesService {
     await this.notificationService.notifyRideCompleted(refreshed, {
       baseFare: baseFare.toFixed(2),
       discountPercent,
-      discountAmount: discountAmount.toFixed(2),
+      discountAmount: normalizedDiscountAmount.toFixed(2),
       finalFare: fareAfterDiscount.toFixed(2),
       appFee: appFeeAmount.toFixed(2),
     });
@@ -560,43 +558,10 @@ export class RidesService {
     return refreshed;
   }
 
-  async applyRideDiscount(
-    rideId: string,
-    driverId: string,
-    payload: { discountPercent: number },
-  ): Promise<Ride> {
-    const ride = await this.rideRepository.findById(rideId);
-    if (!ride) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    if (ride.driverId !== driverId) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    if (ride.status === ERideStatus.CANCELED) {
-      throw new BadRequestException('Cancelled ride cannot be discounted');
-    }
-
-    if (ride.status === ERideStatus.COMPLETED) {
-      throw new BadRequestException('Completed ride cannot be discounted');
-    }
-
-    const normalized = this.resolveDiscountPercent(payload.discountPercent);
-
-    ride.discountPercent = normalized;
-    ride.discountAmount = null;
-
-    const saved = await this.rideRepository.save(ride);
-    const refreshed = await this.rideRepository.findById(saved.id);
-    return refreshed ?? saved;
-  }
-
-  async confirmRidePayment(
+  async proceedRidePayment(
     rideId: string,
     riderId: string,
-    payload: { paymentReference?: string },
-  ): Promise<Ride> {
+  ): Promise<{ ride: Ride; payment: Record<string, unknown> | null }> {
     const ride = await this.rideRepository.findById(rideId);
     if (!ride) {
       throw new NotFoundException('Ride not found');
@@ -611,20 +576,77 @@ export class RidesService {
     }
 
     if (ride.paymentStatus === ERidePaymentStatus.PAID) {
-      return ride;
+      const existingDetail =
+        await this.ridePaymentDetailRepository.findByRideId(ride.id);
+      return {
+        ride,
+        payment: this.paymentService.formatPaymentDetail(existingDetail),
+      };
     }
 
-    ride.paymentStatus = ERidePaymentStatus.PAID;
+    const paymentDetail = await this.paymentService.initiatePayment(ride);
 
-    const saved = await this.rideRepository.save(ride);
-    const refreshed = (await this.rideRepository.findById(saved.id)) ?? saved;
+    ride.paymentStatus = ERidePaymentStatus.ON_PROCESS;
+    ride.paymentUrl = paymentDetail.redirectUrl ?? null;
 
-    await this.notificationService.notifyRidePaid(
-      refreshed,
-      payload.paymentReference,
+    const savedRide = await this.rideRepository.save(ride);
+    const refreshedRide = (await this.rideRepository.findById(savedRide.id)) ?? savedRide;
+
+    return {
+      ride: refreshedRide,
+      payment: this.paymentService.formatPaymentDetail(paymentDetail),
+    };
+  }
+
+  async handlePaymentNotification(
+    payload: PaymentNotificationDto,
+    sourceIp: string,
+  ): Promise<{ ride: Ride; payment: Record<string, unknown> | null }> {
+    const allowed = await this.paymentWhitelistRepository.isIpAllowed(
+      this.normalizeIpAddresses(sourceIp),
     );
 
-    return refreshed;
+    if (!allowed) {
+      throw new UnauthorizedException('Source IP not allowed');
+    }
+
+    if (!payload.order_id) {
+      throw new BadRequestException('order_id is required');
+    }
+
+    let paymentDetail =
+      (await this.ridePaymentDetailRepository.findByOrderId(payload.order_id)) ??
+      (await this.ridePaymentDetailRepository.findByRideId(payload.order_id));
+
+    const rideId = paymentDetail?.rideId ?? payload.order_id;
+    const ride = await this.rideRepository.findById(rideId);
+    if (!ride) {
+      throw new NotFoundException('Ride not found');
+    }
+
+    const { detail: savedDetail, paid } = await this.paymentService.applyNotification(
+      ride,
+      payload,
+    );
+
+    if (paid) {
+      ride.paymentStatus = ERidePaymentStatus.PAID;
+      ride.paymentUrl = null;
+    }
+    const savedRide = await this.rideRepository.save(ride);
+    const refreshedRide = (await this.rideRepository.findById(savedRide.id)) ?? savedRide;
+
+    if (paid) {
+      await this.notificationService.notifyRidePaid(
+        refreshedRide,
+        payload.transaction_id ?? undefined,
+      );
+    }
+
+    return {
+      ride: refreshedRide,
+      payment: this.paymentService.formatPaymentDetail(savedDetail),
+    };
   }
 
   async acceptRideByDriver(rideId: string, driverId: string): Promise<Ride> {
@@ -1410,24 +1432,49 @@ export class RidesService {
     );
   }
 
-  private resolveDiscountPercent(value?: number | null): number {
-    if (value === undefined || value === null || Number.isNaN(value)) {
-      return this.minDiscountPercent;
-    }
-
-    const bounded = Math.min(
-      Math.max(value, this.minDiscountPercent),
-      this.maxDiscountPercent,
-    );
-
-    return Number.isFinite(bounded) ? bounded : this.minDiscountPercent;
-  }
-
   private calculateMonetaryAmount(value: number): number {
     if (!Number.isFinite(value) || value <= 0) {
       return 0;
     }
     return Math.round(value * 100) / 100;
+  }
+
+  private normalizeDiscountAmount(
+    baseFare: number,
+    discountAmount?: number,
+  ): number {
+    if (!Number.isFinite(baseFare) || baseFare <= 0) {
+      return 0;
+    }
+
+    if (discountAmount === undefined || discountAmount === null) {
+      return 0;
+    }
+
+    const normalized = Number(discountAmount);
+    if (!Number.isFinite(normalized) || normalized <= 0) {
+      return 0;
+    }
+
+    const bounded = Math.min(normalized, baseFare);
+    return this.calculateMonetaryAmount(bounded);
+  }
+
+  private calculateDiscountPercent(
+    baseFare: number,
+    discountAmount: number,
+  ): number {
+    if (!Number.isFinite(baseFare) || baseFare <= 0) {
+      return 0;
+    }
+
+    if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+      return 0;
+    }
+
+    const ratio = (discountAmount / baseFare) * 100;
+    const bounded = Math.min(Math.max(ratio, 0), 100);
+    return Math.round(bounded * 100) / 100;
   }
 
   private calculateAppFee(fareAfterDiscount: number): number {
@@ -1442,28 +1489,6 @@ export class RidesService {
     return this.calculateMonetaryAmount(
       (fareAfterDiscount * this.appFeePercent) / 100,
     );
-  }
-
-  private buildPaymentUrl(ride: Ride, fare: number): string | null {
-    if (!this.paymentBaseUrl) {
-      return null;
-    }
-
-    try {
-      const url = new URL(this.paymentBaseUrl);
-      url.searchParams.set('rideId', ride.id);
-      if (ride.driverId) {
-        url.searchParams.set('driverId', ride.driverId);
-      }
-      url.searchParams.set('riderId', ride.riderId);
-      url.searchParams.set('amount', (Math.round(fare * 100) / 100).toFixed(2));
-      return url.toString();
-    } catch (error) {
-      this.logger.warn(
-        `Failed to build payment URL for ride ${ride.id}: ${error}`,
-      );
-      return null;
-    }
   }
 
   private calculateEstimatedFare(distanceKm?: number | null): string | null {
@@ -1494,5 +1519,26 @@ export class RidesService {
         `Failed to remove queue job for ride ${rideId}: ${error}`,
       );
     }
+  }
+
+  private normalizeIpAddresses(ip: string): string[] {
+    if (!ip) {
+      return [];
+    }
+
+    const trimmed = ip.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    const candidates = new Set<string>([trimmed]);
+
+    if (trimmed.startsWith('::ffff:')) {
+      candidates.add(trimmed.substring(7));
+    } else if (/^\d+\.\d+\.\d+\.\d+$/.test(trimmed)) {
+      candidates.add(`::ffff:${trimmed}`);
+    }
+
+    return Array.from(candidates);
   }
 }
