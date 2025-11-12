@@ -12,9 +12,7 @@ import Redis from 'ioredis';
 import { Queue, RepeatOptions } from 'bullmq';
 import { REDIS_CLIENT } from '../../../infrastructure/redis/redis.tokens';
 import { TripTrackRepository } from '../../infrastructure/repositories/trip-track.repository';
-import {
-  TripSummaryUpsert,
-} from '../../infrastructure/repositories/trip-summary.repository';
+import { TripSummaryUpsert } from '../../infrastructure/repositories/trip-summary.repository';
 import { TripTrack } from '../entities/trip-track.entity';
 import {
   TRIP_TRACKING_QUEUE_NAME,
@@ -362,7 +360,7 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async ensureFlushScheduler(): Promise<void> {
-    const repeatableJobs = await this.tripTrackingQueue.getRepeatableJobs();
+    const repeatableJobs = await this.tripTrackingQueue.getJobSchedulers();
     const existingJob = repeatableJobs.find(
       (job) => job.name === TripTrackingQueueJob.FlushAll,
     );
@@ -382,7 +380,7 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      await this.tripTrackingQueue.removeRepeatableByKey(existingJob.key);
+      await this.tripTrackingQueue.removeJobScheduler(existingJob.key);
     }
 
     await this.tripTrackingQueue.add(

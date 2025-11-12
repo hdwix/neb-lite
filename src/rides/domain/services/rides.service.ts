@@ -457,7 +457,7 @@ export class RidesService {
       throw new BadRequestException('Cancelled ride cannot be completed');
     }
     if (ride.status === ERideStatus.COMPLETED) {
-      return ride;
+      throw new BadRequestException('Ride already completed');
     }
 
     const riderLocation = await this.tripTrackingService.getLatestLocation(
@@ -1185,12 +1185,6 @@ export class RidesService {
           headers: Object.keys(headers).length ? headers : undefined,
         }),
       );
-      console.log(' ==== baseUrl =====');
-      console.log(baseUrl);
-      console.log(' ==== headers =====');
-      console.log(headers);
-      console.log('==== response ors====');
-      console.log(response.data);
 
       return this.parseRouteSummary(response.data);
     } catch (error) {
