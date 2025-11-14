@@ -16,7 +16,7 @@ export class RideNotificationService {
   ) {}
 
   async notifyRideMatched(ride: Ride): Promise<void> {
-    const riderMessage = `Ride ${ride.id} is awaiting driver responses.`;
+    const riderMessage = 'awaiting driver responses';
     await this.dispatchNotification(
       'rider',
       ride.riderId,
@@ -31,7 +31,7 @@ export class RideNotificationService {
     candidate: RideDriverCandidate,
     route: RouteEstimates,
   ): Promise<void> {
-    const message = `New ride ${ride.id} requested near you`;
+    const message = 'New ride requested near you';
     await this.dispatchNotification(
       'driver',
       candidate.driverId,
