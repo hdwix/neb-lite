@@ -8,7 +8,7 @@ import { ResponseInterceptor } from './app/interceptors/response.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(NebengliteModule);
-  const excludedPaths = ['/healthz', '/metrics', '/api/v1/monitoring/file/'];
+  const excludedPaths = ['/healthz', '/metrics'];
   const moduleRef = app.select(NebengliteModule);
   const reflector = moduleRef.get(Reflector);
   const configService = app.get(ConfigService);
