@@ -48,6 +48,7 @@ import { ConfigService } from '@nestjs/config';
 import { ClientService } from '../../../client/domain/services/client.service';
 import { SignupRiderDto } from '../../../client/app/dto/signup-rider.dto';
 import { SignupDriverDto } from '../../../client/app/dto/signup-driver.dto';
+import { Logger } from 'nestjs-pino';
 
 interface AuthenticatedClientPayload {
   sub?: string | number;
@@ -428,6 +429,10 @@ export class GatewayController {
     @Req() request: Request,
     @Body() payload: PaymentNotificationDto,
   ) {
+    console.log('processing notification from 3rd party payment servie ...');
+    console.log(`request headers : `);
+    console.log(request.headers);
+
     const { ride, payment } = await this.ridesService.handlePaymentNotification(
       payload,
       this.extractClientIp(request),
@@ -550,6 +555,11 @@ export class GatewayController {
 
   private extractClientIp(request: Request): string {
     const remoteAddress = request.socket?.remoteAddress;
+    console.log(' remoteAddress :');
+    console.log(remoteAddress);
+    console.log('X-Forwarded-For');
+    console.log(request.headers['X-Forwarded-For']);
+
     if (remoteAddress) {
       return remoteAddress;
     }

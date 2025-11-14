@@ -590,7 +590,8 @@ export class RidesService {
     ride.paymentUrl = paymentDetail.redirectUrl ?? null;
 
     const savedRide = await this.rideRepository.save(ride);
-    const refreshedRide = (await this.rideRepository.findById(savedRide.id)) ?? savedRide;
+    const refreshedRide =
+      (await this.rideRepository.findById(savedRide.id)) ?? savedRide;
 
     return {
       ride: refreshedRide,
@@ -602,6 +603,8 @@ export class RidesService {
     payload: PaymentNotificationDto,
     sourceIp: string,
   ): Promise<{ ride: Ride; payment: Record<string, unknown> | null }> {
+    console.log('normalize ip address : ');
+    console.log(this.normalizeIpAddresses(sourceIp));
     const allowed = await this.paymentWhitelistRepository.isIpAllowed(
       this.normalizeIpAddresses(sourceIp),
     );
@@ -615,7 +618,9 @@ export class RidesService {
     }
 
     let paymentDetail =
-      (await this.ridePaymentDetailRepository.findByOrderId(payload.order_id)) ??
+      (await this.ridePaymentDetailRepository.findByOrderId(
+        payload.order_id,
+      )) ??
       (await this.ridePaymentDetailRepository.findByRideId(payload.order_id));
 
     const rideId = paymentDetail?.rideId ?? payload.order_id;
@@ -624,17 +629,16 @@ export class RidesService {
       throw new NotFoundException('Ride not found');
     }
 
-    const { detail: savedDetail, paid } = await this.paymentService.applyNotification(
-      ride,
-      payload,
-    );
+    const { detail: savedDetail, paid } =
+      await this.paymentService.applyNotification(ride, payload);
 
     if (paid) {
       ride.paymentStatus = ERidePaymentStatus.PAID;
       ride.paymentUrl = null;
     }
     const savedRide = await this.rideRepository.save(ride);
-    const refreshedRide = (await this.rideRepository.findById(savedRide.id)) ?? savedRide;
+    const refreshedRide =
+      (await this.rideRepository.findById(savedRide.id)) ?? savedRide;
 
     if (paid) {
       await this.notificationService.notifyRidePaid(

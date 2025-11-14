@@ -91,7 +91,7 @@ export class PaymentService {
     paymentDetail = persistedDetail;
 
     const jobOptions: JobsOptions & { timeout?: number } = {
-      jobId: `ride:${ride.id}:payment:${savedOutbox.id}`,
+      jobId: `ride-${ride.id}-payment-${savedOutbox.id}`,
       attempts: PAYMENT_QUEUE_ATTEMPTS,
       removeOnComplete: 50,
       removeOnFail: 50,
@@ -109,7 +109,6 @@ export class PaymentService {
     await this.paymentOutboxRepository.save(savedOutbox);
 
     const queueEvents = await this.createQueueEvents();
-
     try {
       await job.waitUntilFinished(queueEvents, PAYMENT_QUEUE_TIMEOUT_MS);
     } catch (error) {

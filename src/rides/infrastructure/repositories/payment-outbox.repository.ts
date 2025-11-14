@@ -35,6 +35,7 @@ export class PaymentOutboxRepository {
     if (!outbox.id) {
       throw new Error('Outbox id is required for updates');
     }
+    console.log('save to outbox');
 
     const rows = await this.dataSource.query(
       `
@@ -237,9 +238,7 @@ export class PaymentOutboxRepository {
     return this.mapRowToEntity(rows[0]);
   }
 
-  async findLatestPendingByRide(
-    rideId: string,
-  ): Promise<PaymentOutbox | null> {
+  async findLatestPendingByRide(rideId: string): Promise<PaymentOutbox | null> {
     const rows = await this.dataSource.query(
       `
         SELECT
@@ -287,8 +286,12 @@ export class PaymentOutboxRepository {
       ? new Date(row.last_attempted_at)
       : null;
     outbox.processedAt = row.processed_at ? new Date(row.processed_at) : null;
-    outbox.createdAt = row.created_at ? new Date(row.created_at) : outbox.createdAt;
-    outbox.updatedAt = row.updated_at ? new Date(row.updated_at) : outbox.updatedAt;
+    outbox.createdAt = row.created_at
+      ? new Date(row.created_at)
+      : outbox.createdAt;
+    outbox.updatedAt = row.updated_at
+      ? new Date(row.updated_at)
+      : outbox.updatedAt;
     return outbox;
   }
 
