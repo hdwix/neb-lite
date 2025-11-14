@@ -23,8 +23,10 @@ export class LocationService {
     private readonly geolocationRepository: GeolocationRepository,
     private readonly configService: ConfigService,
   ) {
+    const configuredRadius = configService.get('SEARCH_RADIUS_METERS');
+    const parsedRadius = Number(configuredRadius);
     this.searchRadiusMeters =
-      configService.get<number>('SEARCH_RADIUS_METERS') || 3000;
+      Number.isFinite(parsedRadius) && parsedRadius > 0 ? parsedRadius : 3000;
   }
 
   async upsertDriverLocation(

@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createCipheriv, randomBytes } from 'crypto';
 
@@ -12,7 +16,11 @@ export class DataEncryptionService {
   private readonly encryptionKey: Buffer;
 
   constructor(private readonly configService: ConfigService) {
+    const appPort = this.configService.get<string>('APP_PORT');
     const rawKey = this.configService.get<string>('CLIENT_ENCRYPTION_KEY');
+    if (!appPort) {
+      throw new InternalServerErrorException('Can not load ENV APP_PORT');
+    }
 
     if (!rawKey) {
       throw new InternalServerErrorException(
