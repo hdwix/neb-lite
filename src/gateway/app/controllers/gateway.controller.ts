@@ -223,7 +223,7 @@ export class GatewayController {
   }
 
   /*
-   * api for rides-module
+   * api for rides
    */
 
   @Sse('notifications/stream')
@@ -397,58 +397,6 @@ export class GatewayController {
     };
   }
 
-  @Post('rides/:id/proceed-payment')
-  @Auth(EAuthType.Bearer)
-  @Roles(EClientType.RIDER)
-  @HttpCode(HttpStatus.OK)
-  async proceedRidePayment(
-    @Req() request: Request,
-    @Param('id') rideId: string,
-  ) {
-    const client = this.getAuthenticatedClient(request);
-    const { ride, payment } = await this.ridesService.proceedRidePayment(
-      rideId,
-      this.getClientId(client),
-    );
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Payment initiated',
-      error: null,
-      data: {
-        ...this.toRideResponse(ride),
-        payment,
-      },
-    };
-  }
-
-  @Post('rides/payment/notification')
-  @Auth(EAuthType.None)
-  @HttpCode(HttpStatus.OK)
-  async handlePaymentNotification(
-    @Req() request: Request,
-    @Body() payload: PaymentNotificationDto,
-  ) {
-    console.log('processing notification from 3rd party payment servie ...');
-    console.log(`request headers : `);
-    console.log(request.headers);
-
-    const { ride, payment } = await this.ridesService.handlePaymentNotification(
-      payload,
-      this.extractClientIp(request),
-    );
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Payment notification processed',
-      error: null,
-      data: {
-        ...this.toRideResponse(ride),
-        payment,
-      },
-    };
-  }
-
   @Post('rides/:id/driver-accept')
   @Auth(EAuthType.Bearer)
   @Roles(EClientType.DRIVER)
@@ -538,6 +486,60 @@ export class GatewayController {
       message: 'Ride rejected by rider',
       error: null,
       data: this.toRideResponse(ride),
+    };
+  }
+  /*
+   * api for payment
+   */
+  @Post('rides/:id/proceed-payment')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.RIDER)
+  @HttpCode(HttpStatus.OK)
+  async proceedRidePayment(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const { ride, payment } = await this.ridesService.proceedRidePayment(
+      rideId,
+      this.getClientId(client),
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Payment initiated',
+      error: null,
+      data: {
+        ...this.toRideResponse(ride),
+        payment,
+      },
+    };
+  }
+
+  @Post('rides/payment/notification')
+  @Auth(EAuthType.None)
+  @HttpCode(HttpStatus.OK)
+  async handlePaymentNotification(
+    @Req() request: Request,
+    @Body() payload: PaymentNotificationDto,
+  ) {
+    console.log('processing notification from 3rd party payment servie ...');
+    console.log(`request headers : `);
+    console.log(request.headers);
+
+    const { ride, payment } = await this.ridesService.handlePaymentNotification(
+      payload,
+      this.extractClientIp(request),
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Payment notification processed',
+      error: null,
+      data: {
+        ...this.toRideResponse(ride),
+        payment,
+      },
     };
   }
 
