@@ -28,7 +28,9 @@ import { REQUEST_CLIENT_KEY } from '../../../app/constants/request-client-key';
 import { UpsertDriverLocationDto } from '../../../location/app/dto/upsert-driver-location.dto';
 import { LocationService } from '../../../location/domain/services/location.service';
 import { GetNearbyDriversDto } from '../../../location/app/dto/get-nearby-drivers.dto';
-import { RidesService } from '../../../rides/domain/services/rides.service';
+import { RidesManagementService } from '../../../rides/domain/services/rides-management.service';
+import { RidesTrackingService } from '../../../rides/domain/services/rides-tracking.service';
+import { RidesPaymentService } from '../../../rides/domain/services/rides-payment.service';
 import { CreateRideDto } from '../../../rides/app/dto/create-ride.dto';
 import { CancelRideDto } from '../../../rides/app/dto/cancel-ride.dto';
 import { DriverRespondRideDto } from '../../../rides/app/dto/driver-respond-ride.dto';
@@ -61,7 +63,9 @@ export class GatewayController {
   constructor(
     private readonly authService: AuthenticationService,
     private readonly locationService: LocationService,
-    private readonly ridesService: RidesService,
+    private readonly ridesManagementService: RidesManagementService,
+    private readonly ridesTrackingService: RidesTrackingService,
+    private readonly ridesPaymentService: RidesPaymentService,
     private readonly notificationStreamService: NotificationStreamService,
     private readonly configService: ConfigService,
     private readonly clientService: ClientService,
@@ -260,7 +264,10 @@ export class GatewayController {
     const client = this.getAuthenticatedClient(request);
     const riderId = this.getClientId(client);
 
-    const ride = await this.ridesService.createRide(riderId, createRideDto);
+    const ride = await this.ridesManagementService.createRide(
+      riderId,
+      createRideDto,
+    );
 
     return {
       statusCode: HttpStatus.CREATED,
@@ -275,7 +282,7 @@ export class GatewayController {
   @HttpCode(HttpStatus.OK)
   async getRide(@Req() request: Request, @Param('id') rideId: string) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.getRideById(rideId, {
+    const ride = await this.ridesManagementService.getRideById(rideId, {
       id: this.getClientId(client),
       role: client.role,
     });
@@ -298,7 +305,7 @@ export class GatewayController {
     @Body() cancelRideDto: CancelRideDto,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.cancelRide(
+    const ride = await this.ridesManagementService.cancelRide(
       rideId,
       {
         id: this.getClientId(client),
@@ -324,7 +331,7 @@ export class GatewayController {
     @Param('id') rideId: string,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.acceptRideByDriver(
+    const ride = await this.ridesManagementService.acceptRideByDriver(
       rideId,
       this.getClientId(client),
     );
@@ -347,7 +354,7 @@ export class GatewayController {
     @Body() respondDto: DriverRespondRideDto,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.rejectRideByDriver(
+    const ride = await this.ridesManagementService.rejectRideByDriver(
       rideId,
       this.getClientId(client),
       respondDto?.reason,
@@ -370,7 +377,7 @@ export class GatewayController {
     @Param('id') rideId: string,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.confirmDriverAcceptance(
+    const ride = await this.ridesManagementService.confirmDriverAcceptance(
       rideId,
       this.getClientId(client),
     );
@@ -393,7 +400,7 @@ export class GatewayController {
     @Body() cancelRideDto: CancelRideDto,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.rejectDriverAcceptance(
+    const ride = await this.ridesManagementService.rejectDriverAcceptance(
       rideId,
       this.getClientId(client),
       cancelRideDto?.reason,
@@ -422,7 +429,7 @@ export class GatewayController {
   ) {
     console.log('from controller: ride start');
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.startRide(
+    const ride = await this.ridesTrackingService.startRide(
       rideId,
       this.getClientId(client),
       toParticipantLocation(startRideDto.driverLocation),
@@ -446,7 +453,7 @@ export class GatewayController {
     @Body() updateDto: TripLocationUpdateDto,
   ) {
     const client = this.getAuthenticatedClient(request);
-    await this.ridesService.recordTripLocation(
+    await this.ridesTrackingService.recordTripLocation(
       rideId,
       {
         id: this.getClientId(client),
@@ -472,7 +479,7 @@ export class GatewayController {
     @Body() completeRideDto: CompleteRideDto,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.completeRide(
+    const ride = await this.ridesTrackingService.completeRide(
       rideId,
       {
         id: this.getClientId(client),
@@ -504,7 +511,7 @@ export class GatewayController {
     @Param('id') rideId: string,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const { ride, payment } = await this.ridesService.proceedRidePayment(
+    const { ride, payment } = await this.ridesPaymentService.proceedRidePayment(
       rideId,
       this.getClientId(client),
     );
@@ -531,7 +538,7 @@ export class GatewayController {
     console.log(`request headers : `);
     console.log(request.headers);
 
-    await this.ridesService.handlePaymentNotification(
+    await this.ridesPaymentService.handlePaymentNotification(
       payload,
       this.extractClientIp(request),
     );

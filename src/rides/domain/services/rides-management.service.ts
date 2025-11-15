@@ -4,7 +4,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue, QueueEvents, JobsOptions } from 'bullmq';
@@ -26,19 +25,9 @@ import { EClientType } from '../../../app/enums/client-type.enum';
 import { RideNotificationService } from './ride-notification.service';
 import { LocationService } from '../../../location/domain/services/location.service';
 import { RideDriverCandidateRepository } from '../../infrastructure/repositories/ride-driver-candidate.repository';
-import { RidePaymentDetailRepository } from '../../infrastructure/repositories/ride-payment-detail.repository';
-import { PaymentIpWhitelistRepository } from '../../infrastructure/repositories/payment-ip-whitelist.repository';
 import { RideDriverCandidate } from '../entities/ride-driver-candidate.entity';
 import { ERideDriverCandidateStatus } from '../constants/ride-driver-candidate-status.enum';
 import { NearbyDriver } from '../../../location/domain/services/location.types';
-import {
-  TripTrackingService,
-  ParticipantLocation,
-} from './trip-tracking.service';
-import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
-import { PaymentNotificationDto } from '../../app/dto/payment-notification.dto';
-import { PaymentService } from './payment.service';
-import { RidePaymentRepository } from '../../infrastructure/repositories/ride-payment.repository';
 interface RouteSummary {
   distanceMeters: number;
   durationSeconds: number;
@@ -49,7 +38,7 @@ export interface RouteEstimates {
   durationSeconds: number;
 }
 
-interface RequestingClient {
+export interface RequestingClient {
   id: string;
   role?: EClientType;
 }
@@ -66,49 +55,24 @@ interface CancelRideInput {
 }
 
 @Injectable()
-export class RidesService {
-  private readonly logger = new Logger(RidesService.name);
+export class RidesManagementService {
+  private readonly logger = new Logger(RidesManagementService.name);
   private readonly fareRatePerKm = 3000;
   private readonly routeEstimationJobTimeoutMs = 30_000;
   private readonly defaultDriverCandidateLimit = 10;
   private readonly maxDriverCandidateLimit = 20;
-  private readonly tripStartProximityMeters: number;
-  private readonly tripCompletionProximityMeters: number;
-  private readonly appFeePercent: number;
-  private readonly appFeeMinimumAmount: number;
-  private readonly appFeeMinimumThreshold: number;
 
   constructor(
     @InjectQueue(RIDE_QUEUE_NAME)
     private readonly rideQueue: Queue<RideQueueJobData>,
     private readonly rideRepository: RideRepository,
-    private readonly ridePaymentRepository: RidePaymentRepository,
     private readonly rideStatusHistoryRepository: RideStatusHistoryRepository,
     private readonly notificationService: RideNotificationService,
     private readonly candidateRepository: RideDriverCandidateRepository,
     private readonly locationService: LocationService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-    private readonly tripTrackingService: TripTrackingService,
-    private readonly ridePaymentDetailRepository: RidePaymentDetailRepository,
-    private readonly paymentWhitelistRepository: PaymentIpWhitelistRepository,
-    private readonly paymentService: PaymentService,
-  ) {
-    this.tripStartProximityMeters = this.getNumberConfig(
-      'TRIP_START_PROXIMITY_METERS',
-      20,
-    );
-    this.tripCompletionProximityMeters = this.getNumberConfig(
-      'TRIP_COMPLETION_PROXIMITY_METERS',
-      20,
-    );
-    this.appFeePercent = this.getNumberConfig('APP_FEE_PERCENT', 5);
-    this.appFeeMinimumAmount = this.getNumberConfig('APP_FEE_MIN_AMOUNT', 3000);
-    this.appFeeMinimumThreshold = this.getNumberConfig(
-      'APP_FEE_MIN_THRESHOLD',
-      10_000,
-    );
-  }
+  ) {}
 
   async createRide(riderId: string, payload: CreateRideInput): Promise<Ride> {
     const ride = this.rideRepository.create({
@@ -290,429 +254,6 @@ export class RidesService {
 
     const refreshed = await this.rideRepository.findById(updated.id);
     return refreshed ?? updated;
-  }
-
-  async startRide(
-    rideId: string,
-    driverId: string,
-    driverLocation: ParticipantLocation,
-  ): Promise<Ride> {
-    const ride = await this.rideRepository.findById(rideId);
-    console.log('ride from service startRide');
-    console.log(ride);
-    if (!ride) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    if (ride.driverId !== driverId) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    if (ride.status === ERideStatus.CANCELED) {
-      throw new BadRequestException('Cancelled ride cannot be started');
-    }
-
-    if (ride.status === ERideStatus.COMPLETED) {
-      throw new BadRequestException('Completed ride cannot be started');
-    }
-
-    const allowedStatuses = [
-      ERideStatus.ACCEPTED,
-      ERideStatus.ASSIGNED,
-      ERideStatus.ENROUTE,
-    ];
-
-    if (!allowedStatuses.includes(ride.status)) {
-      throw new BadRequestException('Ride is not ready to start');
-    }
-
-    const riderLocation = await this.tripTrackingService.getLatestLocation(
-      ride.id,
-      EClientType.RIDER,
-    );
-
-    console.log(' driverLocation in start ride');
-    console.log(driverLocation);
-
-    console.log(' riderLocation in start ride');
-    console.log(riderLocation);
-    if (!riderLocation) {
-      throw new BadRequestException(
-        'Rider location not available. Please wait for rider to share location.',
-      );
-    }
-
-    const pickupPoint = {
-      longitude: ride.pickupLongitude,
-      latitude: ride.pickupLatitude,
-    };
-
-    await this.ensureLocationWithinRadius(
-      driverLocation,
-      pickupPoint,
-      this.tripStartProximityMeters,
-      'Driver must be at pickup location to start the trip.',
-    );
-    await this.ensureLocationWithinRadius(
-      riderLocation,
-      pickupPoint,
-      this.tripStartProximityMeters,
-      'Rider is not at pickup location. Please confirm rider arrival.',
-    );
-    await this.ensureParticipantsAreNearby(
-      driverLocation,
-      riderLocation,
-      this.tripStartProximityMeters,
-      'Driver and rider must be at the same pickup point to start the trip.',
-    );
-
-    await this.tripTrackingService.recordLocation(
-      ride.id,
-      driverId,
-      EClientType.DRIVER,
-      driverLocation,
-    );
-
-    const transition = await this.transitionRideStatus(
-      ride.id,
-      [ERideStatus.ACCEPTED, ERideStatus.ASSIGNED, ERideStatus.ENROUTE],
-      ERideStatus.TRIP_STARTED,
-      'Driver started the trip',
-    );
-
-    console.log(' transition in start-ride');
-    console.log(transition);
-
-    const updated = transition.ride;
-    const refreshed = await this.rideRepository.findById(updated.id);
-    const current = refreshed ?? updated;
-
-    if (transition.changed) {
-      await this.notificationService.notifyRideStarted(current);
-    }
-    return current;
-  }
-
-  async recordTripLocation(
-    rideId: string,
-    requester: RequestingClient,
-    location: ParticipantLocation,
-  ): Promise<void> {
-    const ride = await this.rideRepository.findById(rideId);
-    if (!ride) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    this.ensureRequesterCanAccessRide(ride, requester);
-
-    if (ride.status === ERideStatus.CANCELED) {
-      throw new BadRequestException('Cancelled ride cannot be tracked');
-    }
-
-    if (ride.status === ERideStatus.COMPLETED) {
-      throw new BadRequestException('Completed ride cannot be tracked');
-    }
-
-    if (!requester.role) {
-      throw new BadRequestException('Client role required');
-    }
-
-    if (requester.role === EClientType.DRIVER) {
-      const driverId = requester.id;
-      if (!driverId || ride.driverId !== driverId) {
-        throw new NotFoundException('Ride not found');
-      }
-
-      await this.tripTrackingService.recordLocation(
-        ride.id,
-        driverId,
-        EClientType.DRIVER,
-        location,
-      );
-      return;
-    }
-
-    if (requester.role === EClientType.RIDER) {
-      await this.tripTrackingService.recordLocation(
-        ride.id,
-        ride.riderId,
-        EClientType.RIDER,
-        location,
-      );
-      return;
-    }
-
-    throw new BadRequestException('Unsupported client role for trip tracking');
-  }
-
-  async completeRide(
-    id: string,
-    requester: RequestingClient,
-    input: { driverLocation: ParticipantLocation; discountAmount?: number },
-  ): Promise<Ride> {
-    const ride = await this.rideRepository.findById(id);
-    if (!ride) {
-      throw new NotFoundException('Ride not found');
-    }
-    if (ride.driverId !== requester.id) {
-      throw new NotFoundException('Ride not found');
-    }
-    if (ride.status === ERideStatus.CANCELED) {
-      throw new BadRequestException('Cancelled ride cannot be completed');
-    }
-    if (ride.status === ERideStatus.COMPLETED) {
-      throw new BadRequestException('Ride already completed');
-    }
-
-    const riderLocation = await this.tripTrackingService.getLatestLocation(
-      ride.id,
-      EClientType.RIDER,
-    );
-
-    if (!riderLocation) {
-      throw new BadRequestException(
-        'Unable to complete ride without rider location confirmation.',
-      );
-    }
-
-    const dropoffPoint = {
-      longitude: ride.dropoffLongitude,
-      latitude: ride.dropoffLatitude,
-    };
-
-    await this.ensureLocationWithinRadius(
-      input.driverLocation,
-      dropoffPoint,
-      this.tripCompletionProximityMeters,
-      'Driver must arrive at the destination to complete the ride.',
-    );
-    await this.ensureLocationWithinRadius(
-      riderLocation,
-      dropoffPoint,
-      this.tripCompletionProximityMeters,
-      'Rider location does not match destination.',
-    );
-    await this.ensureParticipantsAreNearby(
-      input.driverLocation,
-      riderLocation,
-      this.tripCompletionProximityMeters,
-      'Driver and rider must be at the destination together to complete the ride.',
-    );
-
-    if (ride.driverId) {
-      await this.tripTrackingService.recordLocation(
-        ride.id,
-        ride.driverId,
-        EClientType.DRIVER,
-        input.driverLocation,
-      );
-    }
-
-    const totalDistanceMeters =
-      await this.tripTrackingService.getTotalDistanceMeters(ride.id);
-
-    let distanceKm = totalDistanceMeters / 1000;
-    if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
-      distanceKm = ride.distanceActualKm ?? ride.distanceEstimatedKm ?? 0;
-    }
-
-    const roundedDistanceKm = this.roundDistanceKm(distanceKm);
-    const baseFare = Math.max(0, roundedDistanceKm * this.fareRatePerKm);
-    const normalizedDiscountAmount = this.normalizeDiscountAmount(
-      baseFare,
-      input.discountAmount,
-    );
-    const fareAfterDiscount = this.calculateMonetaryAmount(
-      baseFare - normalizedDiscountAmount,
-    );
-    const discountPercent = this.calculateDiscountPercent(
-      baseFare,
-      normalizedDiscountAmount,
-    );
-    const appFeeAmount = this.calculateAppFee(fareAfterDiscount);
-
-    const { ride: updated } = await this.transitionRideStatus(
-      ride.id,
-      [
-        ERideStatus.ENROUTE,
-        ERideStatus.ACCEPTED,
-        ERideStatus.ASSIGNED,
-        ERideStatus.TRIP_STARTED,
-      ],
-      ERideStatus.COMPLETED,
-      'Driver marked the ride as completed',
-    );
-
-    updated.distanceActualKm = roundedDistanceKm;
-    updated.discountPercent = discountPercent;
-    updated.discountAmount = normalizedDiscountAmount.toFixed(2);
-    updated.fareFinal = fareAfterDiscount.toFixed(2);
-    updated.appFeeAmount = appFeeAmount.toFixed(2);
-    updated.paymentStatus = ERidePaymentStatus.PENDING;
-    updated.paymentUrl = null;
-
-    await this.tripTrackingService.markRideCompleted(ride.id);
-
-    const saved = await this.rideRepository.save(updated);
-    const refreshed = (await this.rideRepository.findById(saved.id)) ?? saved;
-
-    await this.notificationService.notifyRideCompleted(refreshed, {
-      baseFare: baseFare.toFixed(2),
-      discountPercent,
-      discountAmount: normalizedDiscountAmount.toFixed(2),
-      finalFare: fareAfterDiscount.toFixed(2),
-      appFee: appFeeAmount.toFixed(2),
-    });
-
-    return refreshed;
-  }
-
-  async proceedRidePayment(
-    rideId: string,
-    riderId: string,
-  ): Promise<{ ride: Ride; payment: Record<string, unknown> | null }> {
-    const ride = await this.ridePaymentRepository.findById(rideId);
-    if (!ride) {
-      this.logger.warn(
-        `Proceed payment failed: ride ${rideId} not found for rider ${riderId}`,
-      );
-      throw new NotFoundException('Ride not found');
-    }
-
-    if (ride.riderId !== riderId) {
-      this.logger.warn(
-        `Proceed payment unauthorized: rider ${riderId} attempted ride ${rideId} owned by ${ride.riderId}`,
-      );
-      throw new UnauthorizedException('Ride not available for this rider');
-    }
-
-    if (ride.status !== ERideStatus.COMPLETED) {
-      this.logger.warn(
-        `Proceed payment rejected: ride ${rideId} status ${ride.status} is not completed`,
-      );
-      throw new BadRequestException('Ride must be completed before payment');
-    }
-
-    if (ride.paymentStatus === ERidePaymentStatus.PAID) {
-      const existingDetail =
-        await this.ridePaymentDetailRepository.findByRideId(ride.id);
-      return {
-        ride,
-        payment: this.paymentService.formatPaymentDetail(existingDetail),
-      };
-    }
-
-    const paymentDetail = await this.paymentService.initiatePayment(ride);
-
-    const paymentStatus = ERidePaymentStatus.ON_PROCESS;
-    const paymentUrl = paymentDetail.redirectUrl ?? null;
-
-    await this.ridePaymentRepository.updatePaymentState(
-      ride.id,
-      paymentStatus,
-      paymentUrl,
-    );
-
-    const refreshedRide =
-      (await this.ridePaymentRepository.findById(ride.id)) ?? ride;
-
-    return {
-      ride: refreshedRide,
-      payment: this.paymentService.formatPaymentDetail(paymentDetail),
-    };
-  }
-
-  async handlePaymentNotification(
-    payload: PaymentNotificationDto,
-    sourceIp: string,
-  ): Promise<{ ride: Ride; payment: Record<string, unknown> | null }> {
-    const allowed = await this.paymentWhitelistRepository.isIpAllowed(
-      this.normalizeIpAddresses(sourceIp),
-    );
-
-    if (!allowed) {
-      this.logger.warn(
-        `Payment notification rejected: source IP ${sourceIp} not allowed`,
-      );
-      throw new UnauthorizedException('Source IP not allowed');
-    }
-
-    if (!payload.order_id) {
-      this.logger.warn('Payment notification rejected: missing order_id');
-      throw new BadRequestException('order_id is required');
-    }
-
-    const paymentDetail = await this.ridePaymentDetailRepository.findByOrderId(
-      payload.order_id,
-    );
-
-    if (!paymentDetail) {
-      this.logger.warn(
-        `Payment notification rejected: payment detail not found for order ${payload.order_id}`,
-      );
-      throw new NotFoundException(
-        'Payment detail not found for this notification',
-      );
-    }
-
-    const ride = await this.rideRepository.findById(paymentDetail.rideId);
-    if (!ride) {
-      this.logger.warn(
-        `Payment notification rejected: ride ${paymentDetail.rideId} not found for order ${payload.order_id}`,
-      );
-      throw new NotFoundException('Ride not found');
-    }
-
-    const {
-      detail: updatedDetail,
-      paid,
-      outboxUpdate,
-    } = await this.paymentService.applyNotification(
-      ride,
-      payload,
-      paymentDetail,
-    );
-
-    if (paid) {
-      ride.paymentStatus = ERidePaymentStatus.PAID;
-      ride.paymentUrl = null;
-    }
-
-    const savedDetail =
-      await this.ridePaymentDetailRepository.saveDetailWithRideUpdate({
-        detail: updatedDetail,
-        rideUpdate: paid
-          ? {
-              rideId: ride.id,
-              paymentStatus: ride.paymentStatus ?? null,
-              paymentUrl: ride.paymentUrl ?? null,
-            }
-          : undefined,
-        outboxUpdate: outboxUpdate
-          ? {
-              rideId: ride.id,
-              paymentDetailId: updatedDetail.id,
-              orderId: updatedDetail.orderId ?? payload.order_id,
-              status: outboxUpdate.status,
-              lastError: outboxUpdate.lastError,
-              setProcessedAt: outboxUpdate.setProcessedAt,
-            }
-          : undefined,
-      });
-
-    const refreshedRide = (await this.rideRepository.findById(ride.id)) ?? ride;
-
-    if (paid) {
-      await this.notificationService.notifyRidePaid(
-        refreshedRide,
-        payload.transaction_id ?? undefined,
-      );
-    }
-
-    return {
-      ride: refreshedRide,
-      payment: this.paymentService.formatPaymentDetail(savedDetail),
-    };
   }
 
   async acceptRideByDriver(rideId: string, driverId: string): Promise<Ride> {
@@ -1132,10 +673,7 @@ export class RidesService {
     return Math.min(parsed, this.maxDriverCandidateLimit);
   }
 
-  private ensureRequesterCanAccessRide(
-    ride: Ride,
-    requester: RequestingClient,
-  ): void {
+  ensureRequesterCanAccessRide(ride: Ride, requester: RequestingClient): void {
     if (!requester.role) {
       return;
     }
@@ -1448,115 +986,6 @@ export class RidesService {
     return defaultValue;
   }
 
-  private async ensureLocationWithinRadius(
-    location: ParticipantLocation,
-    target: { longitude: number; latitude: number },
-    radiusMeters: number,
-    errorMessage: string,
-  ): Promise<void> {
-    const distance = await this.calculateDistanceMeters(
-      location.longitude,
-      location.latitude,
-      target.longitude,
-      target.latitude,
-    );
-
-    console.log(`calculating distance in ensureLocationWithinRadius `);
-
-    if (distance > radiusMeters) {
-      throw new BadRequestException(errorMessage);
-    }
-  }
-
-  private async ensureParticipantsAreNearby(
-    first: ParticipantLocation,
-    second: ParticipantLocation,
-    radiusMeters: number,
-    errorMessage: string,
-  ): Promise<void> {
-    const distance = await this.calculateDistanceMeters(
-      first.longitude,
-      first.latitude,
-      second.longitude,
-      second.latitude,
-    );
-    console.log(`calculate distance in ensureParticipantsAreNearby`);
-    if (distance > radiusMeters) {
-      throw new BadRequestException(errorMessage);
-    }
-  }
-
-  private async calculateDistanceMeters(
-    lon1: number,
-    lat1: number,
-    lon2: number,
-    lat2: number,
-  ): Promise<number> {
-    return this.tripTrackingService.calculateDistanceBetweenCoordinates(
-      { longitude: lon1, latitude: lat1 },
-      { longitude: lon2, latitude: lat2 },
-    );
-  }
-
-  private calculateMonetaryAmount(value: number): number {
-    if (!Number.isFinite(value) || value <= 0) {
-      return 0;
-    }
-    return Math.round(value * 100) / 100;
-  }
-
-  private normalizeDiscountAmount(
-    baseFare: number,
-    discountAmount?: number,
-  ): number {
-    if (!Number.isFinite(baseFare) || baseFare <= 0) {
-      return 0;
-    }
-
-    if (discountAmount === undefined || discountAmount === null) {
-      return 0;
-    }
-
-    const normalized = Number(discountAmount);
-    if (!Number.isFinite(normalized) || normalized <= 0) {
-      return 0;
-    }
-
-    const bounded = Math.min(normalized, baseFare);
-    return this.calculateMonetaryAmount(bounded);
-  }
-
-  private calculateDiscountPercent(
-    baseFare: number,
-    discountAmount: number,
-  ): number {
-    if (!Number.isFinite(baseFare) || baseFare <= 0) {
-      return 0;
-    }
-
-    if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
-      return 0;
-    }
-
-    const ratio = (discountAmount / baseFare) * 100;
-    const bounded = Math.min(Math.max(ratio, 0), 100);
-    return Math.round(bounded * 100) / 100;
-  }
-
-  private calculateAppFee(fareAfterDiscount: number): number {
-    if (!Number.isFinite(fareAfterDiscount) || fareAfterDiscount <= 0) {
-      return this.appFeeMinimumAmount;
-    }
-
-    if (fareAfterDiscount < this.appFeeMinimumThreshold) {
-      return this.appFeeMinimumAmount;
-    }
-
-    return this.calculateMonetaryAmount(
-      (fareAfterDiscount * this.appFeePercent) / 100,
-    );
-  }
-
   private calculateEstimatedFare(distanceKm?: number | null): string | null {
     if (
       distanceKm === undefined ||
@@ -1567,10 +996,6 @@ export class RidesService {
     }
     const fare = distanceKm * this.fareRatePerKm;
     return fare.toFixed(2);
-  }
-
-  private roundDistanceKm(distanceKm: number): number {
-    return Number(distanceKm.toFixed(3));
   }
 
   private buildRouteEstimationJobId(rideId: string): string {
@@ -1587,24 +1012,7 @@ export class RidesService {
     }
   }
 
-  private normalizeIpAddresses(ip: string): string[] {
-    if (!ip) {
-      return [];
-    }
-
-    const trimmed = ip.trim();
-    if (!trimmed) {
-      return [];
-    }
-
-    const candidates = new Set<string>([trimmed]);
-
-    if (trimmed.startsWith('::ffff:')) {
-      candidates.add(trimmed.substring(7));
-    } else if (/^\d+\.\d+\.\d+\.\d+$/.test(trimmed)) {
-      candidates.add(`::ffff:${trimmed}`);
-    }
-
-    return Array.from(candidates);
+  private roundDistanceKm(distanceKm: number): number {
+    return Number(distanceKm.toFixed(3));
   }
 }

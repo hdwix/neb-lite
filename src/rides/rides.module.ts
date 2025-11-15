@@ -7,7 +7,9 @@ import { RideDriverCandidate } from './domain/entities/ride-driver-candidate.ent
 import { RidePaymentDetail } from './domain/entities/ride-payment-detail.entity';
 import { PaymentIpWhitelist } from './domain/entities/payment-ip-whitelist.entity';
 import { PaymentOutbox } from './domain/entities/payment-outbox.entity';
-import { RidesService } from './domain/services/rides.service';
+import { RidesManagementService } from './domain/services/rides-management.service';
+import { RidesTrackingService } from './domain/services/rides-tracking.service';
+import { RidesPaymentService } from './domain/services/rides-payment.service';
 import { RideRepository } from './infrastructure/repositories/ride.repository';
 import { RideStatusHistoryRepository } from './infrastructure/repositories/ride-status-history.repository';
 import { RideDriverCandidateRepository } from './infrastructure/repositories/ride-driver-candidate.repository';
@@ -110,7 +112,9 @@ const paymentQueueRegistration: RegisterQueueOptions = {
     LocationModule,
   ],
   providers: [
-    RidesService,
+    RidesManagementService,
+    RidesTrackingService,
+    RidesPaymentService,
     RideRepository,
     RideStatusHistoryRepository,
     RideDriverCandidateRepository,
@@ -127,6 +131,6 @@ const paymentQueueRegistration: RegisterQueueOptions = {
     PaymentService,
     PaymentProcessor,
   ],
-  exports: [RidesService],
+  exports: [RidesManagementService, RidesTrackingService, RidesPaymentService],
 })
 export class RidesModule {}

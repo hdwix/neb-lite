@@ -4,7 +4,9 @@ import { AuthenticationService } from '../../../iam/domain/services/authenticati
 import { LocationService } from '../../../location/domain/services/location.service';
 import { REQUEST_CLIENT_KEY } from '../../../app/constants/request-client-key';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
-import { RidesService } from '../../../rides/domain/services/rides.service';
+import { RidesManagementService } from '../../../rides/domain/services/rides-management.service';
+import { RidesTrackingService } from '../../../rides/domain/services/rides-tracking.service';
+import { RidesPaymentService } from '../../../rides/domain/services/rides-payment.service';
 import {
   NotificationStreamService,
   OTP_SIMULATION_TARGET,
@@ -46,27 +48,23 @@ describe('GatewayController', () => {
     jest.clearAllMocks();
     configServiceMock.get.mockReset();
 
-      const ridesServiceMock: jest.Mocked<
-        Pick<
-          RidesService,
-          | 'createRide'
-          | 'getRideById'
-          | 'cancelRide'
-          | 'completeRide'
-          | 'acceptRideByDriver'
-          | 'rejectRideByDriver'
-          | 'confirmDriverAcceptance'
-          | 'rejectDriverAcceptance'
-        >
-      > = {
+      const ridesManagementServiceMock: Record<string, jest.Mock> = {
         createRide: jest.fn(),
         getRideById: jest.fn(),
         cancelRide: jest.fn(),
-        completeRide: jest.fn(),
         acceptRideByDriver: jest.fn(),
         rejectRideByDriver: jest.fn(),
         confirmDriverAcceptance: jest.fn(),
         rejectDriverAcceptance: jest.fn(),
+      };
+      const ridesTrackingServiceMock: Record<string, jest.Mock> = {
+        startRide: jest.fn(),
+        recordTripLocation: jest.fn(),
+        completeRide: jest.fn(),
+      };
+      const ridesPaymentServiceMock: Record<string, jest.Mock> = {
+        proceedRidePayment: jest.fn(),
+        handlePaymentNotification: jest.fn(),
       };
 
     notificationStreamServiceMock = {
@@ -85,8 +83,16 @@ describe('GatewayController', () => {
           useValue: locationServiceMock as unknown as LocationService,
         },
         {
-          provide: RidesService,
-          useValue: ridesServiceMock as unknown as RidesService,
+          provide: RidesManagementService,
+          useValue: ridesManagementServiceMock as RidesManagementService,
+        },
+        {
+          provide: RidesTrackingService,
+          useValue: ridesTrackingServiceMock as RidesTrackingService,
+        },
+        {
+          provide: RidesPaymentService,
+          useValue: ridesPaymentServiceMock as RidesPaymentService,
         },
         {
           provide: NotificationStreamService,
