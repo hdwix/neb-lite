@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
 import { RidePaymentDetail } from '../../domain/entities/ride-payment-detail.entity';
+import { PaymentOutboxStatus } from '../../domain/constants/payment.constants';
 
 @Injectable()
 export class RidePaymentDetailRepository {
@@ -30,7 +31,13 @@ export class RidePaymentDetailRepository {
     queryRunner?: QueryRunner,
   ): Promise<RidePaymentDetail> {
     const executor = queryRunner ?? this.dataSource;
+    return this.persistDetail(detail, executor);
+  }
 
+  private async persistDetail(
+    detail: RidePaymentDetail,
+    executor: DataSource | QueryRunner,
+  ): Promise<RidePaymentDetail> {
     const rows = await executor.query(
       `
         INSERT INTO ride_payment_details (
@@ -110,8 +117,12 @@ export class RidePaymentDetailRepository {
     return this.mapRowToEntity(rows[0]);
   }
 
-  async findById(id: string): Promise<RidePaymentDetail | null> {
-    const rows = await this.dataSource.query(
+  async findById(
+    id: string,
+    queryRunner?: QueryRunner,
+  ): Promise<RidePaymentDetail | null> {
+    const executor = queryRunner ?? this.dataSource;
+    const rows = await executor.query(
       `
         SELECT
           id,
@@ -141,8 +152,12 @@ export class RidePaymentDetailRepository {
     return this.mapRowToEntity(rows[0]);
   }
 
-  async findByRideId(rideId: string): Promise<RidePaymentDetail | null> {
-    const rows = await this.dataSource.query(
+  async findByRideId(
+    rideId: string,
+    queryRunner?: QueryRunner,
+  ): Promise<RidePaymentDetail | null> {
+    const executor = queryRunner ?? this.dataSource;
+    const rows = await executor.query(
       `
         SELECT
           id,
@@ -172,8 +187,12 @@ export class RidePaymentDetailRepository {
     return this.mapRowToEntity(rows[0]);
   }
 
-  async findByOrderId(orderId: string): Promise<RidePaymentDetail | null> {
-    const rows = await this.dataSource.query(
+  async findByOrderId(
+    orderId: string,
+    queryRunner?: QueryRunner,
+  ): Promise<RidePaymentDetail | null> {
+    const executor = queryRunner ?? this.dataSource;
+    const rows = await executor.query(
       `
         SELECT
           id,
@@ -201,6 +220,91 @@ export class RidePaymentDetailRepository {
     }
 
     return this.mapRowToEntity(rows[0]);
+  }
+
+  async saveDetailWithRideUpdate(options: {
+    detail: RidePaymentDetail;
+    rideUpdate?: {
+      rideId: string;
+      paymentStatus?: string | null;
+      paymentUrl?: string | null;
+    };
+    outboxUpdate?: {
+      rideId?: string | null;
+      paymentDetailId?: string | null;
+      orderId: string;
+      status: PaymentOutboxStatus;
+      lastError?: string | null;
+      setProcessedAt?: boolean;
+    };
+  }): Promise<RidePaymentDetail> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      await queryRunner.query('BEGIN');
+      const savedDetail = await this.persistDetail(options.detail, queryRunner);
+
+      if (options.rideUpdate) {
+        const rows = await queryRunner.query(
+          `
+            UPDATE rides
+            SET
+              payment_status = $2,
+              payment_url = $3,
+              updated_at = NOW()
+            WHERE id = $1::bigint
+            RETURNING id;
+          `,
+          [
+            options.rideUpdate.rideId,
+            options.rideUpdate.paymentStatus ?? null,
+            options.rideUpdate.paymentUrl ?? null,
+          ],
+        );
+
+        if (!rows?.length) {
+          throw new Error('Ride not found while updating payment status');
+        }
+      }
+
+      if (options.outboxUpdate) {
+        const outboxRows = await queryRunner.query(
+          `
+            UPDATE ride_payment_outbox
+            SET
+              status = $4,
+              last_error = $5,
+              processed_at = CASE WHEN $6 THEN NOW() ELSE processed_at END,
+              updated_at = NOW()
+            WHERE order_id = $1
+              AND ($2::bigint IS NULL OR ride_id = $2::bigint)
+              AND ($3::bigint IS NULL OR payment_detail_id = $3::bigint)
+            RETURNING id;
+          `,
+          [
+            options.outboxUpdate.orderId,
+            options.outboxUpdate.rideId ?? null,
+            options.outboxUpdate.paymentDetailId ?? null,
+            options.outboxUpdate.status,
+            options.outboxUpdate.lastError ?? null,
+            options.outboxUpdate.setProcessedAt ? true : false,
+          ],
+        );
+
+        if (!outboxRows?.length) {
+          throw new Error('Payment outbox entry not found while updating status');
+        }
+      }
+
+      await queryRunner.query('COMMIT');
+      return savedDetail;
+    } catch (error) {
+      await queryRunner.query('ROLLBACK');
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   private mapRowToEntity(row: Record<string, any>): RidePaymentDetail {

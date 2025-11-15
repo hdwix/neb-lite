@@ -223,7 +223,7 @@ export class GatewayController {
   }
 
   /*
-   * api for rides
+   * api for rides management
    */
 
   @Sse('notifications/stream')
@@ -312,88 +312,6 @@ export class GatewayController {
       message: 'Ride cancelled',
       error: null,
       data: this.toRideResponse(ride),
-    };
-  }
-
-  @Post('rides/:id/complete')
-  @Auth(EAuthType.Bearer)
-  @Roles(EClientType.DRIVER)
-  @HttpCode(HttpStatus.OK)
-  async completeRide(
-    @Req() request: Request,
-    @Param('id') rideId: string,
-    @Body() completeRideDto: CompleteRideDto,
-  ) {
-    const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.completeRide(
-      rideId,
-      {
-        id: this.getClientId(client),
-        role: client.role,
-      },
-      {
-        driverLocation: toParticipantLocation(completeRideDto.driverLocation),
-        discountAmount: completeRideDto.discountAmount,
-      },
-    );
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Ride completed',
-      error: null,
-      data: this.toRideResponse(ride),
-    };
-  }
-
-  @Post('rides/:id/start')
-  @Auth(EAuthType.Bearer)
-  @Roles(EClientType.DRIVER)
-  @HttpCode(HttpStatus.OK)
-  async startRide(
-    @Req() request: Request,
-    @Param('id') rideId: string,
-    @Body() startRideDto: StartRideDto,
-  ) {
-    console.log('from controller: ride start');
-    const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.startRide(
-      rideId,
-      this.getClientId(client),
-      toParticipantLocation(startRideDto.driverLocation),
-    );
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Ride started',
-      error: null,
-      data: this.toRideResponse(ride),
-    };
-  }
-
-  @Post('rides/:id/tracking')
-  @Auth(EAuthType.Bearer)
-  @Roles(EClientType.DRIVER, EClientType.RIDER)
-  @HttpCode(HttpStatus.ACCEPTED)
-  async recordTripLocation(
-    @Req() request: Request,
-    @Param('id') rideId: string,
-    @Body() updateDto: TripLocationUpdateDto,
-  ) {
-    const client = this.getAuthenticatedClient(request);
-    await this.ridesService.recordTripLocation(
-      rideId,
-      {
-        id: this.getClientId(client),
-        role: client.role,
-      },
-      toParticipantLocation(updateDto.location),
-    );
-
-    return {
-      statusCode: HttpStatus.ACCEPTED,
-      message: 'Location recorded',
-      error: null,
-      data: {},
     };
   }
 
@@ -488,6 +406,92 @@ export class GatewayController {
       data: this.toRideResponse(ride),
     };
   }
+
+  /*
+   * api for rides tracking
+   */
+
+  @Post('rides/:id/start')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER)
+  @HttpCode(HttpStatus.OK)
+  async startRide(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() startRideDto: StartRideDto,
+  ) {
+    console.log('from controller: ride start');
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.startRide(
+      rideId,
+      this.getClientId(client),
+      toParticipantLocation(startRideDto.driverLocation),
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride started',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Post('rides/:id/tracking')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER, EClientType.RIDER)
+  @HttpCode(HttpStatus.ACCEPTED)
+  async recordTripLocation(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() updateDto: TripLocationUpdateDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    await this.ridesService.recordTripLocation(
+      rideId,
+      {
+        id: this.getClientId(client),
+        role: client.role,
+      },
+      toParticipantLocation(updateDto.location),
+    );
+
+    return {
+      statusCode: HttpStatus.ACCEPTED,
+      message: 'Location recorded',
+      error: null,
+      data: {},
+    };
+  }
+  @Post('rides/:id/complete')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER)
+  @HttpCode(HttpStatus.OK)
+  async completeRide(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() completeRideDto: CompleteRideDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesService.completeRide(
+      rideId,
+      {
+        id: this.getClientId(client),
+        role: client.role,
+      },
+      {
+        driverLocation: toParticipantLocation(completeRideDto.driverLocation),
+        discountAmount: completeRideDto.discountAmount,
+      },
+    );
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Ride completed',
+      error: null,
+      data: this.toRideResponse(ride),
+    };
+  }
+
   /*
    * api for payment
    */
@@ -527,19 +531,13 @@ export class GatewayController {
     console.log(`request headers : `);
     console.log(request.headers);
 
-    const { ride, payment } = await this.ridesService.handlePaymentNotification(
+    await this.ridesService.handlePaymentNotification(
       payload,
       this.extractClientIp(request),
     );
 
     return {
-      statusCode: HttpStatus.OK,
-      message: 'Payment notification processed',
-      error: null,
-      data: {
-        ...this.toRideResponse(ride),
-        payment,
-      },
+      messageResponse: `Payment info for order ${payload.order_id} is successfully updated`,
     };
   }
 

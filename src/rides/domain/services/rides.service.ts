@@ -17,7 +17,6 @@ import {
   RideCoordinate,
   RideQueueJob,
   RideQueueJobData,
-  RideRouteEstimationJobData,
 } from '../types/ride-queue.types';
 import { RideRepository } from '../../infrastructure/repositories/ride.repository';
 import { Ride } from '../entities/ride.entity';
@@ -39,6 +38,7 @@ import {
 import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
 import { PaymentNotificationDto } from '../../app/dto/payment-notification.dto';
 import { PaymentService } from './payment.service';
+import { RidePaymentRepository } from '../../infrastructure/repositories/ride-payment.repository';
 interface RouteSummary {
   distanceMeters: number;
   durationSeconds: number;
@@ -82,6 +82,7 @@ export class RidesService {
     @InjectQueue(RIDE_QUEUE_NAME)
     private readonly rideQueue: Queue<RideQueueJobData>,
     private readonly rideRepository: RideRepository,
+    private readonly ridePaymentRepository: RidePaymentRepository,
     private readonly rideStatusHistoryRepository: RideStatusHistoryRepository,
     private readonly notificationService: RideNotificationService,
     private readonly candidateRepository: RideDriverCandidateRepository,
@@ -570,16 +571,25 @@ export class RidesService {
     rideId: string,
     riderId: string,
   ): Promise<{ ride: Ride; payment: Record<string, unknown> | null }> {
-    const ride = await this.rideRepository.findById(rideId);
+    const ride = await this.ridePaymentRepository.findById(rideId);
     if (!ride) {
+      this.logger.warn(
+        `Proceed payment failed: ride ${rideId} not found for rider ${riderId}`,
+      );
       throw new NotFoundException('Ride not found');
     }
 
     if (ride.riderId !== riderId) {
-      throw new NotFoundException('Ride not found');
+      this.logger.warn(
+        `Proceed payment unauthorized: rider ${riderId} attempted ride ${rideId} owned by ${ride.riderId}`,
+      );
+      throw new UnauthorizedException('Ride not available for this rider');
     }
 
     if (ride.status !== ERideStatus.COMPLETED) {
+      this.logger.warn(
+        `Proceed payment rejected: ride ${rideId} status ${ride.status} is not completed`,
+      );
       throw new BadRequestException('Ride must be completed before payment');
     }
 
@@ -594,12 +604,17 @@ export class RidesService {
 
     const paymentDetail = await this.paymentService.initiatePayment(ride);
 
-    ride.paymentStatus = ERidePaymentStatus.ON_PROCESS;
-    ride.paymentUrl = paymentDetail.redirectUrl ?? null;
+    const paymentStatus = ERidePaymentStatus.ON_PROCESS;
+    const paymentUrl = paymentDetail.redirectUrl ?? null;
 
-    const savedRide = await this.rideRepository.save(ride);
+    await this.ridePaymentRepository.updatePaymentState(
+      ride.id,
+      paymentStatus,
+      paymentUrl,
+    );
+
     const refreshedRide =
-      (await this.rideRepository.findById(savedRide.id)) ?? savedRide;
+      (await this.ridePaymentRepository.findById(ride.id)) ?? ride;
 
     return {
       ride: refreshedRide,
@@ -611,42 +626,81 @@ export class RidesService {
     payload: PaymentNotificationDto,
     sourceIp: string,
   ): Promise<{ ride: Ride; payment: Record<string, unknown> | null }> {
-    console.log('normalize ip address : ');
-    console.log(this.normalizeIpAddresses(sourceIp));
     const allowed = await this.paymentWhitelistRepository.isIpAllowed(
       this.normalizeIpAddresses(sourceIp),
     );
 
     if (!allowed) {
+      this.logger.warn(
+        `Payment notification rejected: source IP ${sourceIp} not allowed`,
+      );
       throw new UnauthorizedException('Source IP not allowed');
     }
 
     if (!payload.order_id) {
+      this.logger.warn('Payment notification rejected: missing order_id');
       throw new BadRequestException('order_id is required');
     }
 
-    let paymentDetail =
-      (await this.ridePaymentDetailRepository.findByOrderId(
-        payload.order_id,
-      )) ??
-      (await this.ridePaymentDetailRepository.findByRideId(payload.order_id));
+    const paymentDetail = await this.ridePaymentDetailRepository.findByOrderId(
+      payload.order_id,
+    );
 
-    const rideId = paymentDetail?.rideId ?? payload.order_id;
-    const ride = await this.rideRepository.findById(rideId);
+    if (!paymentDetail) {
+      this.logger.warn(
+        `Payment notification rejected: payment detail not found for order ${payload.order_id}`,
+      );
+      throw new NotFoundException(
+        'Payment detail not found for this notification',
+      );
+    }
+
+    const ride = await this.rideRepository.findById(paymentDetail.rideId);
     if (!ride) {
+      this.logger.warn(
+        `Payment notification rejected: ride ${paymentDetail.rideId} not found for order ${payload.order_id}`,
+      );
       throw new NotFoundException('Ride not found');
     }
 
-    const { detail: savedDetail, paid } =
-      await this.paymentService.applyNotification(ride, payload);
+    const {
+      detail: updatedDetail,
+      paid,
+      outboxUpdate,
+    } = await this.paymentService.applyNotification(
+      ride,
+      payload,
+      paymentDetail,
+    );
 
     if (paid) {
       ride.paymentStatus = ERidePaymentStatus.PAID;
       ride.paymentUrl = null;
     }
-    const savedRide = await this.rideRepository.save(ride);
-    const refreshedRide =
-      (await this.rideRepository.findById(savedRide.id)) ?? savedRide;
+
+    const savedDetail =
+      await this.ridePaymentDetailRepository.saveDetailWithRideUpdate({
+        detail: updatedDetail,
+        rideUpdate: paid
+          ? {
+              rideId: ride.id,
+              paymentStatus: ride.paymentStatus ?? null,
+              paymentUrl: ride.paymentUrl ?? null,
+            }
+          : undefined,
+        outboxUpdate: outboxUpdate
+          ? {
+              rideId: ride.id,
+              paymentDetailId: updatedDetail.id,
+              orderId: updatedDetail.orderId ?? payload.order_id,
+              status: outboxUpdate.status,
+              lastError: outboxUpdate.lastError,
+              setProcessedAt: outboxUpdate.setProcessedAt,
+            }
+          : undefined,
+      });
+
+    const refreshedRide = (await this.rideRepository.findById(ride.id)) ?? ride;
 
     if (paid) {
       await this.notificationService.notifyRidePaid(

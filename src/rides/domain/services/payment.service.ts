@@ -232,21 +232,17 @@ export class PaymentService {
   async applyNotification(
     ride: Ride,
     payload: PaymentNotificationDto,
-  ): Promise<{ detail: RidePaymentDetail; paid: boolean }> {
+    paymentDetail: RidePaymentDetail,
+  ): Promise<{
+    detail: RidePaymentDetail;
+    paid: boolean;
+    outboxUpdate: {
+      status: PaymentOutboxStatus;
+      setProcessedAt: boolean;
+      lastError: string | null;
+    } | null;
+  }> {
     const orderId = payload.order_id ?? ride.id;
-
-    let paymentDetail =
-      (await this.ridePaymentDetailRepository.findByOrderId(orderId)) ??
-      (await this.ridePaymentDetailRepository.findByRideId(ride.id));
-
-    if (!paymentDetail) {
-      paymentDetail = this.ridePaymentDetailRepository.create({
-        rideId: ride.id,
-        provider: this.paymentProvider,
-        status: 'unknown',
-        orderId,
-      });
-    }
 
     const status = payload.transaction_status?.toLowerCase?.() ?? 'unknown';
 
@@ -255,11 +251,10 @@ export class PaymentService {
     paymentDetail.providerTransactionId = payload.transaction_id ?? null;
     paymentDetail.notificationPayload = this.cloneNotificationPayload(payload);
 
-    const savedDetail =
-      await this.ridePaymentDetailRepository.save(paymentDetail);
     const paid = this.isSuccessfulPaymentStatus(status);
+    const outboxUpdate = this.buildOutboxUpdateForStatus(status, paid);
 
-    return { detail: savedDetail, paid };
+    return { detail: paymentDetail, paid, outboxUpdate };
   }
 
   formatPaymentDetail(
@@ -393,6 +388,71 @@ export class PaymentService {
     return ['capture', 'settlement', 'success', 'completed'].includes(
       normalized,
     );
+  }
+
+  private isFinalFailureStatus(status: string): boolean {
+    const normalized = status?.toLowerCase?.() ?? '';
+    return [
+      'deny',
+      'cancel',
+      'cancelled',
+      'expired',
+      'expire',
+      'failure',
+      'failed',
+    ].includes(normalized);
+  }
+
+  private isPendingPaymentStatus(status: string): boolean {
+    const normalized = status?.toLowerCase?.() ?? '';
+    return ['pending', 'authorize', 'authorized', 'challenge'].includes(
+      normalized,
+    );
+  }
+
+  private buildOutboxUpdateForStatus(
+    status: string,
+    paid: boolean,
+  ): {
+    status: PaymentOutboxStatus;
+    setProcessedAt: boolean;
+    lastError: string | null;
+  } | null {
+    if (this.isSuccessfulPaymentStatus(status)) {
+      return {
+        status: PaymentOutboxStatus.Completed,
+        setProcessedAt: true,
+        lastError: null,
+      };
+    }
+
+    if (this.isFinalFailureStatus(status)) {
+      const normalized = status?.toLowerCase?.() ?? 'unknown';
+      return {
+        status: PaymentOutboxStatus.Failed,
+        setProcessedAt: true,
+        lastError: `Payment failed with status ${normalized}`,
+      };
+    }
+
+    if (this.isPendingPaymentStatus(status)) {
+      return {
+        status: PaymentOutboxStatus.Processing,
+        setProcessedAt: false,
+        lastError: null,
+      };
+    }
+
+    if (!paid) {
+      const normalized = status?.toLowerCase?.() ?? 'unknown';
+      return {
+        status: PaymentOutboxStatus.Failed,
+        setProcessedAt: true,
+        lastError: `Payment resulted in status ${normalized}`,
+      };
+    }
+
+    return null;
   }
 
   private cloneNotificationPayload(

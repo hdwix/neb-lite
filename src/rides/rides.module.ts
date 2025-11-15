@@ -42,6 +42,7 @@ import {
 } from './domain/constants/payment.constants';
 import { PaymentService } from './domain/services/payment.service';
 import { PaymentProcessor } from './domain/processors/payment.processor';
+import { RidePaymentRepository } from './infrastructure/repositories/ride-payment.repository';
 
 type RideQueueRegistrationOptions = RegisterQueueOptions & {
   limiter?: QueueLimiterOptions;
@@ -120,6 +121,7 @@ const paymentQueueRegistration: RegisterQueueOptions = {
     TripTrackingService,
     TripTrackingProcessor,
     RidePaymentDetailRepository,
+    RidePaymentRepository,
     PaymentIpWhitelistRepository,
     PaymentOutboxRepository,
     PaymentService,
