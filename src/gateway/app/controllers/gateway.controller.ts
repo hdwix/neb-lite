@@ -52,7 +52,6 @@ import { ClientService } from '../../../client/domain/services/client.service';
 import { SignupRiderDto } from '../../../client/app/dto/signup-rider.dto';
 import { SignupDriverDto } from '../../../client/app/dto/signup-driver.dto';
 import { Logger } from 'nestjs-pino';
-import { DEFAULT_FARE_RATE_PER_KM } from '../../../rides/domain/constants/fare.constants';
 
 interface AuthenticatedClientPayload {
   sub?: string | number;
@@ -62,6 +61,8 @@ interface AuthenticatedClientPayload {
 
 @Controller({ path: 'gateway', version: '1' })
 export class GatewayController {
+  private readonly defaultFareRatePerKm: number;
+
   constructor(
     private readonly authService: AuthenticationService,
     private readonly locationService: LocationService,
@@ -71,7 +72,9 @@ export class GatewayController {
     private readonly notificationStreamService: NotificationStreamService,
     private readonly configService: ConfigService,
     private readonly clientService: ClientService,
-  ) {}
+  ) {
+    this.defaultFareRatePerKm = this.getNumberConfig('DEFAULT_FARE_RATE_PER_KM', 3000);
+  }
 
   /*
    * api for client-module
@@ -599,7 +602,7 @@ export class GatewayController {
     const distanceActualKm = ride.distanceActualKm ?? null;
     const baseFare =
       distanceActualKm !== null
-        ? parseCurrency(distanceActualKm * DEFAULT_FARE_RATE_PER_KM)
+        ? parseCurrency(distanceActualKm * this.defaultFareRatePerKm)
         : null;
     const discountAmountByDriver = parseCurrency(ride.discountAmount) ?? 0;
     const fareAfterDiscount =
@@ -640,7 +643,7 @@ export class GatewayController {
 
     if (baseFare !== null) {
       response.baseFare = baseFare.toFixed(2);
-      response.fareRatePerKm = DEFAULT_FARE_RATE_PER_KM;
+      response.fareRatePerKm = this.defaultFareRatePerKm;
       response.discountAmountByDriver = discountAmountByDriver.toFixed(2);
       response.fareAfterDiscount = fareAfterDiscount?.toFixed(2) ?? null;
       response.finalFare = finalFare?.toFixed(2) ?? null;
@@ -662,5 +665,22 @@ export class GatewayController {
     }
 
     return response;
+  }
+
+  private getNumberConfig(key: string, defaultValue: number): number {
+    const value = this.configService.get(key);
+
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+
+    return defaultValue;
   }
 }

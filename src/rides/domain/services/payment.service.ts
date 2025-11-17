@@ -294,8 +294,7 @@ export class PaymentService {
     transaction_details: { order_id: string; gross_amount: number };
   } {
     const finalFare = this.parseCurrency(ride.fareFinal);
-    const appFee = this.parseCurrency(ride.appFeeAmount);
-    const grossAmount = this.roundCurrency(finalFare + appFee);
+    const grossAmount = this.roundCurrency(finalFare);
 
     if (grossAmount <= 0) {
       throw new BadRequestException('Ride does not have a payable amount');

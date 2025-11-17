@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DEFAULT_FARE_RATE_PER_KM } from '../constants/fare.constants';
 
 export interface FareCalculationInput {
   distanceKm: number;
@@ -19,12 +18,13 @@ export interface FareCalculationResult {
 
 @Injectable()
 export class FareEngineService {
-  private readonly fareRatePerKm = DEFAULT_FARE_RATE_PER_KM;
+  private readonly fareRatePerKm: number;
   private readonly appFeePercent: number;
   private readonly appFeeMinimumAmount: number;
   private readonly appFeeMinimumThreshold: number;
 
   constructor(private readonly configService: ConfigService) {
+    this.fareRatePerKm = this.getNumberConfig('DEFAULT_FARE_RATE_PER_KM', 3000);
     this.appFeePercent = this.getNumberConfig('APP_FEE_PERCENT', 5);
     this.appFeeMinimumAmount = this.getNumberConfig('APP_FEE_MIN_AMOUNT', 3000);
     this.appFeeMinimumThreshold = this.getNumberConfig('APP_FEE_MIN_THRESHOLD', 10_000);
