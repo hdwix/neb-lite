@@ -4,16 +4,14 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import { Repository, DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DriverProfile } from '../../domain/entities/driver-profile.entity';
 
 @Injectable()
-export class DriverProfileRepository extends Repository<DriverProfile> {
+export class DriverProfileRepository {
   private readonly logger = new Logger(DriverProfileRepository.name);
 
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {
-    super(DriverProfile, dataSource.createEntityManager());
   }
 
   private getExecutor(manager?: EntityManager) {

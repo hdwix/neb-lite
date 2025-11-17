@@ -3,12 +3,9 @@ import {
   CreateDateColumn,
   Entity,
   Index,
-  JoinColumn,
-  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Ride } from './ride.entity';
 
 @Entity('ride_payment_details')
 @Index('ux_ride_payment_details_ride_id', ['rideId'], { unique: true })
@@ -18,10 +15,6 @@ export class RidePaymentDetail {
 
   @Column({ name: 'ride_id', type: 'bigint' })
   rideId!: string;
-
-  @ManyToOne(() => Ride)
-  @JoinColumn({ name: 'ride_id' })
-  ride?: Ride;
 
   @Column({ name: 'provider', type: 'varchar', length: 64 })
   provider!: string;

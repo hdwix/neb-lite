@@ -3,12 +3,9 @@ import {
   CreateDateColumn,
   Entity,
   Index,
-  JoinColumn,
-  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Ride } from './ride.entity';
 import { ERideDriverCandidateStatus } from '../constants/ride-driver-candidate-status.enum';
 
 @Entity('ride_driver_candidates')
@@ -20,10 +17,6 @@ export class RideDriverCandidate {
 
   @Column({ name: 'ride_id', type: 'bigint' })
   rideId!: string;
-
-  @ManyToOne(() => Ride, (ride) => ride.candidates, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'ride_id' })
-  ride!: Ride;
 
   @Column({ name: 'driver_id', type: 'varchar', length: 64 })
   driverId!: string;

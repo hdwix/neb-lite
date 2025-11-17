@@ -2,13 +2,9 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  JoinColumn,
-  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Ride } from './ride.entity';
-import { RidePaymentDetail } from './ride-payment-detail.entity';
 import { PaymentOutboxStatus } from '../constants/payment.constants';
 
 @Entity('ride_payment_outbox')
@@ -19,16 +15,8 @@ export class PaymentOutbox {
   @Column({ name: 'ride_id', type: 'bigint' })
   rideId!: string;
 
-  @ManyToOne(() => Ride)
-  @JoinColumn({ name: 'ride_id' })
-  ride?: Ride;
-
   @Column({ name: 'payment_detail_id', type: 'bigint' })
   paymentDetailId!: string;
-
-  @ManyToOne(() => RidePaymentDetail)
-  @JoinColumn({ name: 'payment_detail_id' })
-  paymentDetail?: RidePaymentDetail;
 
   @Column({ name: 'order_id', type: 'varchar', length: 128 })
   orderId!: string;
