@@ -103,69 +103,69 @@ export class RideRepository {
     return this.mapRideRow(rows[0]);
   }
 
-  async insertRide(ride: Ride): Promise<Ride> {
-    if (!ride.riderId) {
-      throw new Error('Ride riderId is required for inserts');
-    }
-    const rows = await this.dataSource.query(
-      `
-        INSERT INTO rides (
-          rider_id,
-          driver_id,
-          pickup_lon,
-          pickup_lat,
-          dropoff_lon,
-          dropoff_lat,
-          status,
-          fare_estimated,
-          fare_final,
-          discount_percent,
-          discount_amount,
-          app_fee_amount,
-          distance_estimated_km,
-          duration_estimated_seconds,
-          distance_actual_km,
-          payment_url,
-          payment_status,
-          note,
-          cancel_reason
-        ) VALUES (
-          $1,
-          $2,
-          $3::double precision,
-          $4::double precision,
-          $5::double precision,
-          $6::double precision,
-          $7,
-          $8,
-          $9,
-          $10,
-          $11,
-          $12,
-          $13,
-          $14,
-          $15,
-          $16,
-          $17,
-          $18,
-          $19
-        )
-            RETURNING id;
-      `,
-      this.extractRideParams(ride),
-    );
+  // async insertRide(ride: Ride): Promise<Ride> {
+  //   if (!ride.riderId) {
+  //     throw new Error('Ride riderId is required for inserts');
+  //   }
+  //   const rows = await this.dataSource.query(
+  //     `
+  //       INSERT INTO rides (
+  //         rider_id,
+  //         driver_id,
+  //         pickup_lon,
+  //         pickup_lat,
+  //         dropoff_lon,
+  //         dropoff_lat,
+  //         status,
+  //         fare_estimated,
+  //         fare_final,
+  //         discount_percent,
+  //         discount_amount,
+  //         app_fee_amount,
+  //         distance_estimated_km,
+  //         duration_estimated_seconds,
+  //         distance_actual_km,
+  //         payment_url,
+  //         payment_status,
+  //         note,
+  //         cancel_reason
+  //       ) VALUES (
+  //         $1,
+  //         $2,
+  //         $3::double precision,
+  //         $4::double precision,
+  //         $5::double precision,
+  //         $6::double precision,
+  //         $7,
+  //         $8,
+  //         $9,
+  //         $10,
+  //         $11,
+  //         $12,
+  //         $13,
+  //         $14,
+  //         $15,
+  //         $16,
+  //         $17,
+  //         $18,
+  //         $19
+  //       )
+  //           RETURNING id;
+  //     `,
+  //     this.extractRideParams(ride),
+  //   );
 
-    if (!rows?.length) {
-      throw new Error('Failed to insert ride');
-    }
+  //   if (!rows?.length) {
+  //     throw new Error('Failed to insert ride');
+  //   }
 
-    const insertedId = rows[0].id?.toString?.() ?? String(rows[0].id);
-    const persisted = await this.findById(insertedId);
-    if (!persisted) {
-      throw new Error('Failed to load ride after insert');
-    }
-    return persisted;
-  }
+  //   const insertedId = rows[0].id?.toString?.() ?? String(rows[0].id);
+  //   const persisted = await this.findById(insertedId);
+  //   if (!persisted) {
+  //     throw new Error('Failed to load ride after insert');
+  //   }
+  //   return persisted;
+  // }
 
   async updateRide(ride: Ride): Promise<Ride> {
     if (!ride.id) {

@@ -301,9 +301,7 @@ export class GatewayController {
     }
 
     return {
-      statusCode: HttpStatus.OK,
-      message: 'Ride retrieved',
-      error: null,
+      messageResponse: 'Ride retrieved',
       data: this.toRideResponse(ride, candidates),
     };
   }
@@ -449,9 +447,7 @@ export class GatewayController {
     );
 
     return {
-      statusCode: HttpStatus.OK,
-      message: 'Ride started',
-      error: null,
+      messageResponse: 'Ride started',
       data: this.toRideResponse(ride),
     };
   }
@@ -476,9 +472,7 @@ export class GatewayController {
     );
 
     return {
-      statusCode: HttpStatus.ACCEPTED,
-      message: 'Location recorded',
-      error: null,
+      messageResponse: 'Location recorded',
       data: {},
     };
   }
@@ -505,9 +499,7 @@ export class GatewayController {
     );
 
     return {
-      statusCode: HttpStatus.OK,
-      message: 'Ride completed',
-      error: null,
+      messageResponse: 'Ride completed',
       data: this.toRideResponse(ride),
     };
   }
@@ -530,9 +522,7 @@ export class GatewayController {
     );
 
     return {
-      statusCode: HttpStatus.OK,
-      message: 'Payment initiated',
-      error: null,
+      messageResponse: 'Payment initiated',
       data: {
         ...this.toRideResponse(ride),
         payment,
