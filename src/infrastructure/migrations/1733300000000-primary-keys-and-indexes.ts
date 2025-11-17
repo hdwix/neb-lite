@@ -40,7 +40,7 @@ export class PrimaryKeysAndIndexes1733300000000 implements MigrationInterface {
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS ix_ride_driver_candidates_ride_created
         ON ride_driver_candidates(ride_id, created_at)
-        INCLUDE (driver_id, status, distance_meters, reason, responded_at, updated_at);
+        INCLUDE (driver_id, status, distance_meters);
     `);
 
     await queryRunner.query(`
@@ -52,13 +52,7 @@ export class PrimaryKeysAndIndexes1733300000000 implements MigrationInterface {
           provider,
           status,
           token,
-          redirect_url,
-          provider_transaction_id,
-          request_payload,
-          response_payload,
-          notification_payload,
-          created_at,
-          updated_at
+          redirect_url
         );
     `);
 
@@ -68,22 +62,14 @@ export class PrimaryKeysAndIndexes1733300000000 implements MigrationInterface {
         INCLUDE (
           id,
           payment_detail_id,
-          order_id,
-          attempts,
-          job_id,
-          request_payload,
-          last_error,
-          last_attempted_at,
-          processed_at,
-          created_at,
-          updated_at
+          order_id
         );
     `);
 
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS ix_ride_status_history_ride
         ON ride_status_history(ride_id)
-        INCLUDE (from_status, to_status, context, created_at);
+        INCLUDE (from_status, to_status);
     `);
   }
 
