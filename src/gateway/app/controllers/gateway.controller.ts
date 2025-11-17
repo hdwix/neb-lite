@@ -24,6 +24,7 @@ import { AuthenticationService } from '../../../iam/domain/services/authenticati
 import { Request, Response } from 'express';
 import { Roles } from '../../../iam/app/decorators/role.decorator';
 import { EClientType } from '../../../app/enums/client-type.enum';
+import { ERideStatus } from '../../../app/enums/ride-status.enum';
 import { REQUEST_CLIENT_KEY } from '../../../app/constants/request-client-key';
 import { UpsertDriverLocationDto } from '../../../location/app/dto/upsert-driver-location.dto';
 import { LocationService } from '../../../location/domain/services/location.service';
@@ -51,6 +52,7 @@ import { ClientService } from '../../../client/domain/services/client.service';
 import { SignupRiderDto } from '../../../client/app/dto/signup-rider.dto';
 import { SignupDriverDto } from '../../../client/app/dto/signup-driver.dto';
 import { Logger } from 'nestjs-pino';
+import { DEFAULT_FARE_RATE_PER_KM } from '../../../rides/domain/constants/fare.constants';
 
 interface AuthenticatedClientPayload {
   sub?: string | number;
@@ -579,7 +581,38 @@ export class GatewayController {
   }
 
   private toRideResponse(ride: Ride) {
-    return {
+    const parseCurrency = (value?: string | number | null): number | null => {
+      if (value === undefined || value === null) {
+        return null;
+      }
+
+      const normalized = typeof value === 'string' ? Number(value) : value;
+
+      if (!Number.isFinite(normalized)) {
+        return null;
+      }
+
+      const rounded = Math.round(normalized * 100) / 100;
+      return rounded < 0 ? null : rounded;
+    };
+
+    const distanceActualKm = ride.distanceActualKm ?? null;
+    const baseFare =
+      distanceActualKm !== null
+        ? parseCurrency(distanceActualKm * DEFAULT_FARE_RATE_PER_KM)
+        : null;
+    const discountAmountByDriver = parseCurrency(ride.discountAmount) ?? 0;
+    const fareAfterDiscount =
+      baseFare !== null
+        ? Math.max(0, parseCurrency(baseFare - discountAmountByDriver) ?? 0)
+        : null;
+    const appFeeAmount = parseCurrency(ride.appFeeAmount);
+    const finalFare =
+      fareAfterDiscount !== null
+        ? parseCurrency(fareAfterDiscount + (appFeeAmount ?? 0))
+        : parseCurrency(ride.fareFinal);
+
+    const response: any = {
       id: ride.id,
       riderId: ride.riderId,
       driverId: ride.driverId,
@@ -603,7 +636,18 @@ export class GatewayController {
       paymentUrl: ride.paymentUrl ?? null,
       paymentStatus: ride.paymentStatus ?? null,
       createdAt: ride.createdAt?.toISOString?.() ?? ride.createdAt,
-      candidates: (ride.candidates ?? []).map((candidate) => ({
+    };
+
+    if (baseFare !== null) {
+      response.baseFare = baseFare.toFixed(2);
+      response.fareRatePerKm = DEFAULT_FARE_RATE_PER_KM;
+      response.discountAmountByDriver = discountAmountByDriver.toFixed(2);
+      response.fareAfterDiscount = fareAfterDiscount?.toFixed(2) ?? null;
+      response.finalFare = finalFare?.toFixed(2) ?? null;
+    }
+
+    if (ride.status !== ERideStatus.COMPLETED) {
+      response.candidates = (ride.candidates ?? []).map((candidate) => ({
         driverId: candidate.driverId,
         status: candidate.status,
         reason: candidate.reason ?? null,
@@ -614,7 +658,9 @@ export class GatewayController {
           null,
         createdAt:
           candidate.createdAt?.toISOString?.() ?? candidate.createdAt ?? null,
-      })),
-    };
+      }));
+    }
+
+    return response;
   }
 }

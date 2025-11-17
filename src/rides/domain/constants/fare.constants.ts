@@ -1,0 +1,1 @@
+export const DEFAULT_FARE_RATE_PER_KM = 3000;

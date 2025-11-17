@@ -14,21 +14,19 @@ import {
   RequestingClient,
 } from './rides-management.service';
 import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
+import { FareEngineService } from './fare-engine.service';
 
 @Injectable()
 export class RidesTrackingService {
-  private readonly fareRatePerKm = 3000;
   private readonly tripStartProximityMeters: number;
   private readonly tripCompletionProximityMeters: number;
-  private readonly appFeePercent: number;
-  private readonly appFeeMinimumAmount: number;
-  private readonly appFeeMinimumThreshold: number;
 
   constructor(
     private readonly rideRepository: RideRepository,
     private readonly tripTrackingService: TripTrackingService,
     private readonly notificationService: RideNotificationService,
     private readonly ridesManagementService: RidesManagementService,
+    private readonly fareEngine: FareEngineService,
     private readonly configService: ConfigService,
   ) {
     this.tripStartProximityMeters = this.getNumberConfig(
@@ -38,12 +36,6 @@ export class RidesTrackingService {
     this.tripCompletionProximityMeters = this.getNumberConfig(
       'TRIP_COMPLETION_PROXIMITY_METERS',
       20,
-    );
-    this.appFeePercent = this.getNumberConfig('APP_FEE_PERCENT', 5);
-    this.appFeeMinimumAmount = this.getNumberConfig('APP_FEE_MIN_AMOUNT', 3000);
-    this.appFeeMinimumThreshold = this.getNumberConfig(
-      'APP_FEE_MIN_THRESHOLD',
-      10_000,
     );
   }
 
@@ -261,20 +253,10 @@ export class RidesTrackingService {
       distanceKm = ride.distanceActualKm ?? ride.distanceEstimatedKm ?? 0;
     }
 
-    const roundedDistanceKm = this.roundDistanceKm(distanceKm);
-    const baseFare = Math.max(0, roundedDistanceKm * this.fareRatePerKm);
-    const normalizedDiscountAmount = this.normalizeDiscountAmount(
-      baseFare,
-      input.discountAmount,
-    );
-    const fareAfterDiscount = this.calculateMonetaryAmount(
-      baseFare - normalizedDiscountAmount,
-    );
-    const discountPercent = this.calculateDiscountPercent(
-      baseFare,
-      normalizedDiscountAmount,
-    );
-    const appFeeAmount = this.calculateAppFee(fareAfterDiscount);
+    const fare = this.fareEngine.calculateFare({
+      distanceKm,
+      discountAmount: input.discountAmount,
+    });
 
     const { ride: updated } =
       await this.ridesManagementService.transitionRideStatus(
@@ -289,11 +271,11 @@ export class RidesTrackingService {
         'Driver marked the ride as completed',
       );
 
-    updated.distanceActualKm = roundedDistanceKm;
-    updated.discountPercent = discountPercent;
-    updated.discountAmount = normalizedDiscountAmount.toFixed(2);
-    updated.fareFinal = fareAfterDiscount.toFixed(2);
-    updated.appFeeAmount = appFeeAmount.toFixed(2);
+    updated.distanceActualKm = fare.roundedDistanceKm;
+    updated.discountPercent = fare.discountPercent;
+    updated.discountAmount = fare.discountAmount.toFixed(2);
+    updated.fareFinal = fare.finalFare.toFixed(2);
+    updated.appFeeAmount = fare.appFeeAmount.toFixed(2);
     updated.paymentStatus = ERidePaymentStatus.PENDING;
     updated.paymentUrl = null;
 
@@ -303,11 +285,11 @@ export class RidesTrackingService {
     const refreshed = (await this.rideRepository.findById(saved.id)) ?? saved;
 
     await this.notificationService.notifyRideCompleted(refreshed, {
-      baseFare: baseFare.toFixed(2),
-      discountPercent,
-      discountAmount: normalizedDiscountAmount.toFixed(2),
-      finalFare: fareAfterDiscount.toFixed(2),
-      appFee: appFeeAmount.toFixed(2),
+      baseFare: fare.baseFare.toFixed(2),
+      discountPercent: fare.discountPercent,
+      discountAmount: fare.discountAmount.toFixed(2),
+      finalFare: fare.finalFare.toFixed(2),
+      appFee: fare.appFeeAmount.toFixed(2),
     });
 
     return refreshed;
@@ -358,69 +340,6 @@ export class RidesTrackingService {
       { longitude: lon1, latitude: lat1 },
       { longitude: lon2, latitude: lat2 },
     );
-  }
-
-  private calculateMonetaryAmount(value: number): number {
-    if (!Number.isFinite(value) || value <= 0) {
-      return 0;
-    }
-    return Math.round(value * 100) / 100;
-  }
-
-  private normalizeDiscountAmount(
-    baseFare: number,
-    discountAmount?: number,
-  ): number {
-    if (!Number.isFinite(baseFare) || baseFare <= 0) {
-      return 0;
-    }
-
-    if (discountAmount === undefined || discountAmount === null) {
-      return 0;
-    }
-
-    const normalized = Number(discountAmount);
-    if (!Number.isFinite(normalized) || normalized <= 0) {
-      return 0;
-    }
-
-    const bounded = Math.min(normalized, baseFare);
-    return this.calculateMonetaryAmount(bounded);
-  }
-
-  private calculateDiscountPercent(
-    baseFare: number,
-    discountAmount: number,
-  ): number {
-    if (!Number.isFinite(baseFare) || baseFare <= 0) {
-      return 0;
-    }
-
-    if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
-      return 0;
-    }
-
-    const ratio = (discountAmount / baseFare) * 100;
-    const bounded = Math.min(Math.max(ratio, 0), 100);
-    return Math.round(bounded * 100) / 100;
-  }
-
-  private calculateAppFee(fareAfterDiscount: number): number {
-    if (!Number.isFinite(fareAfterDiscount) || fareAfterDiscount <= 0) {
-      return this.appFeeMinimumAmount;
-    }
-
-    if (fareAfterDiscount < this.appFeeMinimumThreshold) {
-      return this.appFeeMinimumAmount;
-    }
-
-    return this.calculateMonetaryAmount(
-      (fareAfterDiscount * this.appFeePercent) / 100,
-    );
-  }
-
-  private roundDistanceKm(distanceKm: number): number {
-    return Number(distanceKm.toFixed(3));
   }
 
   private getNumberConfig(key: string, defaultValue: number): number {
