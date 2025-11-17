@@ -304,8 +304,9 @@ export class RideRepository {
             Math.round(driver.distanceMeters),
           ],
         );
-
-        candidateEntities.push(candidateRows);
+        console.log('candidateRows : ');
+        console.log(candidateRows);
+        candidateEntities.push(candidateRows[0]);
       });
 
       if (options.historyEntries.length > 0) {
@@ -340,6 +341,9 @@ export class RideRepository {
       if (!ride) {
         throw new Error('Failed to load ride after creation');
       }
+
+      console.log(' candidateEntities : ');
+      console.log(candidateEntities);
 
       return { ride, candidates: candidateEntities };
     } catch (error) {

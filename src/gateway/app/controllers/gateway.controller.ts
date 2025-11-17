@@ -74,7 +74,10 @@ export class GatewayController {
     private readonly configService: ConfigService,
     private readonly clientService: ClientService,
   ) {
-    this.defaultFareRatePerKm = this.getNumberConfig('DEFAULT_FARE_RATE_PER_KM', 3000);
+    this.defaultFareRatePerKm = this.getNumberConfig(
+      'DEFAULT_FARE_RATE_PER_KM',
+      3000,
+    );
   }
 
   /*
@@ -262,7 +265,7 @@ export class GatewayController {
   @Post('rides')
   @Auth(EAuthType.Bearer)
   @Roles(EClientType.RIDER)
-  @HttpCode(HttpStatus.CREATED)
+  @HttpCode(HttpStatus.OK)
   async createRide(
     @Req() request: Request,
     @Body() createRideDto: CreateRideDto,
@@ -270,16 +273,14 @@ export class GatewayController {
     const client = this.getAuthenticatedClient(request);
     const riderId = this.getClientId(client);
 
-    const { ride, candidates } = await this.ridesManagementService.createRide(
+    const result = await this.ridesManagementService.createRide(
       riderId,
       createRideDto,
     );
 
     return {
-      statusCode: HttpStatus.CREATED,
-      message: 'Ride requested',
-      error: null,
-      data: this.toRideResponse(ride, candidates),
+      messageResponse: 'Ride requested',
+      data: result,
     };
   }
 
@@ -294,7 +295,9 @@ export class GatewayController {
     });
     let candidates: RideDriverCandidate[] | undefined;
     if (ride.status !== ERideStatus.COMPLETED) {
-      candidates = await this.ridesManagementService.listRideCandidates(ride.id);
+      candidates = await this.ridesManagementService.listRideCandidates(
+        ride.id,
+      );
     }
 
     return {
@@ -588,10 +591,7 @@ export class GatewayController {
     return '';
   }
 
-  private toRideResponse(
-    ride: Ride,
-    candidates?: RideDriverCandidate[],
-  ) {
+  private toRideResponse(ride: Ride, candidates?: RideDriverCandidate[]) {
     const parseCurrency = (value?: string | number | null): number | null => {
       if (value === undefined || value === null) {
         return null;

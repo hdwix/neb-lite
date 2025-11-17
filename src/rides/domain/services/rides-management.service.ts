@@ -142,7 +142,8 @@ export class RidesManagementService {
       //     return driverCandidate;
       //   },
       // );
-
+      console.log(' candidates from service : ');
+      console.log(candidates);
       await Promise.all(
         candidates.map((candidate) =>
           this.notificationService.notifyRideOffered(
