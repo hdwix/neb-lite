@@ -2,16 +2,18 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
 
 @Entity('ride_status_history')
+@Index('ix_ride_status_history_ride', ['rideId'], { synchronize: false })
 export class RideStatusHistory {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;
 
-  @Column({ name: 'ride_id', type: 'uuid' })
+  @Column({ name: 'ride_id', type: 'bigint' })
   rideId!: string;
 
   @Column({ name: 'from_status', type: 'varchar', length: 32, nullable: true })

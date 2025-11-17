@@ -11,6 +11,9 @@ import { ERideDriverCandidateStatus } from '../constants/ride-driver-candidate-s
 @Entity('ride_driver_candidates')
 @Index('ix_ride_driver_candidates_ride_id', ['rideId'])
 @Index('ix_ride_driver_candidates_driver_id', ['driverId'])
+@Index('ix_ride_driver_candidates_ride_created', ['rideId', 'createdAt'], {
+  synchronize: false,
+})
 export class RideDriverCandidate {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;

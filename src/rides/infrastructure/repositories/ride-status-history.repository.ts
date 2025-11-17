@@ -20,7 +20,7 @@ export class RideStatusHistoryRepository {
           to_status,
           context
         ) VALUES (
-          $1,
+          $1::bigint,
           $2,
           $3,
           $4

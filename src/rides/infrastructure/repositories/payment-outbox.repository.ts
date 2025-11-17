@@ -225,7 +225,7 @@ export class PaymentOutboxRepository {
           created_at,
           updated_at
         FROM ride_payment_outbox
-        WHERE id = $1::uuid
+        WHERE id = $1::bigint
         LIMIT 1;
       `,
       [id],
@@ -273,7 +273,7 @@ export class PaymentOutboxRepository {
 
   private mapRowToEntity(row: Record<string, any>): PaymentOutbox {
     const outbox = new PaymentOutbox();
-    outbox.id = row.id ?? outbox.id;
+    outbox.id = row.id?.toString?.() ?? row.id ?? outbox.id;
     outbox.rideId = row.ride_id?.toString();
     outbox.paymentDetailId = row.payment_detail_id?.toString();
     outbox.orderId = row.order_id;

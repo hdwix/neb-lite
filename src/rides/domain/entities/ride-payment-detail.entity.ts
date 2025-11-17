@@ -9,6 +9,7 @@ import {
 
 @Entity('ride_payment_details')
 @Index('ux_ride_payment_details_ride_id', ['rideId'], { unique: true })
+@Index('ix_ride_payment_details_order_id', ['orderId'], { synchronize: false })
 export class RidePaymentDetail {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;
