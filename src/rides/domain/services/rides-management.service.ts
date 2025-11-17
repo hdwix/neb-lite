@@ -28,6 +28,7 @@ import { RideDriverCandidateRepository } from '../../infrastructure/repositories
 import { RideDriverCandidate } from '../entities/ride-driver-candidate.entity';
 import { ERideDriverCandidateStatus } from '../constants/ride-driver-candidate-status.enum';
 import { NearbyDriver } from '../../../location/domain/services/location.types';
+import { FareEngineService } from './fare-engine.service';
 interface RouteSummary {
   distanceMeters: number;
   durationSeconds: number;
@@ -57,7 +58,6 @@ interface CancelRideInput {
 @Injectable()
 export class RidesManagementService {
   private readonly logger = new Logger(RidesManagementService.name);
-  private readonly fareRatePerKm = 3000;
   private readonly routeEstimationJobTimeoutMs = 30_000;
   private readonly defaultDriverCandidateLimit = 10;
   private readonly maxDriverCandidateLimit = 20;
@@ -71,6 +71,7 @@ export class RidesManagementService {
     private readonly candidateRepository: RideDriverCandidateRepository,
     private readonly locationService: LocationService,
     private readonly httpService: HttpService,
+    private readonly fareEngine: FareEngineService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -987,15 +988,7 @@ export class RidesManagementService {
   }
 
   private calculateEstimatedFare(distanceKm?: number | null): string | null {
-    if (
-      distanceKm === undefined ||
-      distanceKm === null ||
-      Number.isNaN(distanceKm)
-    ) {
-      return null;
-    }
-    const fare = distanceKm * this.fareRatePerKm;
-    return fare.toFixed(2);
+    return this.fareEngine.calculateEstimatedFare(distanceKm);
   }
 
   private buildRouteEstimationJobId(rideId: string): string {
