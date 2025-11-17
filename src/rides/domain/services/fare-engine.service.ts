@@ -33,9 +33,8 @@ export class FareEngineService {
   calculateFare({ distanceKm, discountAmount }: FareCalculationInput): FareCalculationResult {
     const roundedDistanceKm = this.roundDistanceKm(distanceKm);
     const baseFare = Math.max(0, roundedDistanceKm * this.fareRatePerKm);
-    this.ensureValidDiscount(baseFare, discountAmount);
 
-    const normalizedDiscount = this.normalizeDiscountAmount(baseFare, discountAmount);
+    const normalizedDiscount = this.resolveDiscountAmount(baseFare, discountAmount);
     const fareAfterDiscount = this.calculateMonetaryAmount(baseFare - normalizedDiscount);
     const discountPercent = this.calculateDiscountPercent(baseFare, normalizedDiscount);
     const appFeeAmount = this.calculateAppFee(fareAfterDiscount);
@@ -72,13 +71,13 @@ export class FareEngineService {
     return Math.round(value * 100) / 100;
   }
 
-  private ensureValidDiscount(baseFare: number, discountAmount?: number): void {
+  private resolveDiscountAmount(baseFare: number, discountAmount?: number): number {
     if (!Number.isFinite(baseFare) || baseFare <= 0) {
-      return;
+      return 0;
     }
 
     if (discountAmount === undefined || discountAmount === null) {
-      return;
+      return 0;
     }
 
     const normalized = Number(discountAmount);
@@ -90,24 +89,12 @@ export class FareEngineService {
     if (normalized > baseFare) {
       throw new BadRequestException('Discount amount exceeds calculated fare');
     }
-  }
 
-  private normalizeDiscountAmount(baseFare: number, discountAmount?: number): number {
-    if (!Number.isFinite(baseFare) || baseFare <= 0) {
+    if (normalized === 0) {
       return 0;
     }
 
-    if (discountAmount === undefined || discountAmount === null) {
-      return 0;
-    }
-
-    const normalized = Number(discountAmount);
-    if (!Number.isFinite(normalized) || normalized <= 0) {
-      return 0;
-    }
-
-    const bounded = Math.min(normalized, baseFare);
-    return this.calculateMonetaryAmount(bounded);
+    return this.calculateMonetaryAmount(normalized);
   }
 
   private calculateDiscountPercent(baseFare: number, discountAmount: number): number {
