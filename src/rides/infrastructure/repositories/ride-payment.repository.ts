@@ -42,9 +42,7 @@ export class RidePaymentRepository {
       return null;
     }
 
-    const ride = this.mapRideRowToEntity(rides[0]);
-    ride.candidates = await this.findCandidatesForRide(rideId);
-    return ride;
+    return this.mapRideRowToEntity(rides[0]);
   }
 
   async updatePaymentState(

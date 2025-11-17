@@ -8,7 +8,7 @@ import {
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
 
 @Entity('ride_status_history')
-@Index('ix_ride_status_history_ride', ['rideId'], { synchronize: false })
+@Index('ix_ride_status_history_ride', ['rideId'])
 export class RideStatusHistory {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;

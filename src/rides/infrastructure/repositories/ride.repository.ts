@@ -2,52 +2,59 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { Ride } from '../../domain/entities/ride.entity';
-import { RideDriverCandidateRepository } from './ride-driver-candidate.repository';
+import { RideDriverCandidate } from '../../domain/entities/ride-driver-candidate.entity';
+import { ERideDriverCandidateStatus } from '../../domain/constants/ride-driver-candidate-status.enum';
+import { ERideStatus } from '../../../app/enums/ride-status.enum';
+import { NearbyDriver } from '../../../location/domain/services/location.types';
+
+type RideInsertAttributes = {
+  riderId: string;
+  driverId?: string | null;
+  pickupLongitude: number;
+  pickupLatitude: number;
+  dropoffLongitude: number;
+  dropoffLatitude: number;
+  status: ERideStatus;
+  fareEstimated?: string | null;
+  fareFinal?: string | null;
+  discountPercent?: number | null;
+  discountAmount?: string | null;
+  appFeeAmount?: string | null;
+  distanceEstimatedKm?: number | null;
+  durationEstimatedSeconds?: number | null;
+  distanceActualKm?: number | null;
+  paymentUrl?: string | null;
+  paymentStatus?: string | null;
+  note?: string | null;
+  cancelReason?: string | null;
+};
+
+export type RideCreationCandidateInput = {
+  driverId: string;
+  status: ERideDriverCandidateStatus;
+  distanceMeters?: number | null;
+  reason?: string | null;
+  respondedAt?: Date | null;
+};
+
+export type RideHistoryCreationInput = {
+  fromStatus: ERideStatus | null;
+  toStatus: ERideStatus;
+  context?: string | null;
+};
+
+export interface RideCreationOptions {
+  ride: RideInsertAttributes;
+  nearbyDrivers: NearbyDriver[];
+  historyEntries: RideHistoryCreationInput[];
+}
 
 @Injectable()
 export class RideRepository {
-  private readonly rideSelectFields = [
-    `id::text AS "id"`,
-    `rider_id AS "riderId"`,
-    `driver_id AS "driverId"`,
-    `pickup_lon AS "pickupLongitude"`,
-    `pickup_lat AS "pickupLatitude"`,
-    `dropoff_lon AS "dropoffLongitude"`,
-    `dropoff_lat AS "dropoffLatitude"`,
-    `status`,
-    `fare_estimated::text AS "fareEstimated"`,
-    `fare_final::text AS "fareFinal"`,
-    `discount_percent AS "discountPercent"`,
-    `discount_amount::text AS "discountAmount"`,
-    `app_fee_amount::text AS "appFeeAmount"`,
-    `distance_estimated_km AS "distanceEstimatedKm"`,
-    `duration_estimated_seconds AS "durationEstimatedSeconds"`,
-    `distance_actual_km AS "distanceActualKm"`,
-    `payment_url AS "paymentUrl"`,
-    `payment_status AS "paymentStatus"`,
-    `note`,
-    `cancel_reason AS "cancelReason"`,
-    `created_at AS "createdAt"`,
-    `updated_at AS "updatedAt"`,
-    `deleted_at AS "deletedAt"`,
-  ].join(',\n          ');
-
-  constructor(
-    @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly candidateRepository: RideDriverCandidateRepository,
-  ) {}
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   create(data: Partial<Ride>): Ride {
     return Object.assign(new Ride(), data);
-  }
-
-  async save(ride: Ride): Promise<Ride> {
-    const originalCandidates = ride.candidates;
-    const persisted = ride.id
-      ? await this.updateRide(ride)
-      : await this.insertRide(ride);
-    persisted.candidates = originalCandidates;
-    return persisted;
   }
 
   async claimDriver(rideId: string, driverId: string): Promise<boolean> {
@@ -81,8 +88,7 @@ export class RideRepository {
   async findById(id: string): Promise<Ride | null> {
     const rows = await this.dataSource.query(
       `
-        SELECT
-          ${this.rideSelectFields}
+        SELECT *
         FROM rides
         WHERE id = $1::bigint
         LIMIT 1;
@@ -94,12 +100,13 @@ export class RideRepository {
       return null;
     }
 
-    const ride = this.mapRideRow(rows[0]);
-    ride.candidates = await this.candidateRepository.findByRideId(ride.id);
-    return ride;
+    return this.mapRideRow(rows[0]);
   }
 
-  private async insertRide(ride: Ride): Promise<Ride> {
+  async insertRide(ride: Ride): Promise<Ride> {
+    if (!ride.riderId) {
+      throw new Error('Ride riderId is required for inserts');
+    }
     const rows = await this.dataSource.query(
       `
         INSERT INTO rides (
@@ -143,7 +150,7 @@ export class RideRepository {
           $18,
           $19
         )
-        RETURNING ${this.rideSelectFields};
+            RETURNING id;
       `,
       this.extractRideParams(ride),
     );
@@ -152,13 +159,26 @@ export class RideRepository {
       throw new Error('Failed to insert ride');
     }
 
-    return this.mapRideRow(rows[0]);
+    const insertedId = rows[0].id?.toString?.() ?? String(rows[0].id);
+    const persisted = await this.findById(insertedId);
+    if (!persisted) {
+      throw new Error('Failed to load ride after insert');
+    }
+    return persisted;
   }
 
-  private async updateRide(ride: Ride): Promise<Ride> {
+  async updateRide(ride: Ride): Promise<Ride> {
     if (!ride.id) {
       throw new Error('Ride id is required for updates');
     }
+
+    const current = await this.findById(ride.id);
+    if (!current) {
+      throw new Error('Ride not found while updating');
+    }
+
+    const merged = this.mergeRideData(current, ride);
+    const params = this.extractRideParams(merged);
 
     const rows = await this.dataSource.query(
       `
@@ -185,16 +205,152 @@ export class RideRepository {
           cancel_reason = $20,
           updated_at = NOW()
         WHERE id = $1::bigint
-        RETURNING ${this.rideSelectFields};
+        RETURNING id;
       `,
-      [ride.id, ...this.extractRideParams(ride)],
+      [merged.id, ...params],
     );
 
     if (!rows?.length) {
       throw new Error('Ride not found while updating');
     }
 
-    return this.mapRideRow(rows[0]);
+    const persisted = await this.findById(merged.id);
+    if (!persisted) {
+      throw new Error('Ride not found after update');
+    }
+    return persisted;
+  }
+
+  async createRideWithDetails(options: RideCreationOptions): Promise<{
+    ride: Ride;
+    candidates: RideDriverCandidate[];
+  }> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    try {
+      await queryRunner.startTransaction();
+
+      const rideRows = await queryRunner.query(
+        `
+          INSERT INTO rides (
+            rider_id,
+            pickup_lon,
+            pickup_lat,
+            dropoff_lon,
+            dropoff_lat,
+            status,
+            fare_estimated,
+            distance_estimated_km,
+            duration_estimated_seconds,
+            note
+          ) VALUES (
+            $1,
+            $2::double precision,
+            $3::double precision,
+            $4::double precision,
+            $5::double precision,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10
+          )
+          RETURNING id;
+        `,
+        [
+          options.ride.riderId,
+          options.ride.pickupLongitude,
+          options.ride.pickupLatitude,
+          options.ride.dropoffLongitude,
+          options.ride.dropoffLatitude,
+          options.ride.status,
+          options.ride.fareEstimated,
+          options.ride.distanceEstimatedKm,
+          options.ride.durationEstimatedSeconds,
+          options.ride?.note,
+        ],
+      );
+
+      if (!rideRows?.length) {
+        throw new Error('Failed to create ride');
+      }
+
+      const rideIdValue = rideRows[0].id;
+      const rideId = rideIdValue?.toString?.() ?? String(rideIdValue);
+
+      let candidateEntities: RideDriverCandidate[] = [];
+
+      options.nearbyDrivers.forEach(async (driver) => {
+        const candidateRows = await queryRunner.query(
+          `
+            INSERT INTO ride_driver_candidates (
+              ride_id,
+              driver_id,
+              status,
+              distance_meters
+            ) VALUES (
+            $1,
+            $2,
+            $3,
+            $4
+            )
+            RETURNING *;
+          `,
+          [
+            rideId,
+            driver.driverId,
+            ERideDriverCandidateStatus.INVITED,
+            Math.round(driver.distanceMeters),
+          ],
+        );
+
+        candidateEntities.push(candidateRows);
+      });
+
+      if (options.historyEntries.length > 0) {
+        for (const entry of options.historyEntries) {
+          await queryRunner.query(
+            `
+              INSERT INTO ride_status_history (
+                ride_id,
+                from_status,
+                to_status,
+                context
+              ) VALUES (
+                $1::bigint,
+                $2,
+                $3,
+                $4
+              );
+            `,
+            [
+              rideId,
+              entry.fromStatus ?? null,
+              entry.toStatus,
+              entry.context ?? null,
+            ],
+          );
+        }
+      }
+
+      await queryRunner.commitTransaction();
+
+      const ride = await this.findById(rideId);
+      if (!ride) {
+        throw new Error('Failed to load ride after creation');
+      }
+
+      return { ride, candidates: candidateEntities };
+    } catch (error) {
+      console.log(error);
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   private extractRideParams(ride: Ride): unknown[] {
@@ -224,51 +380,112 @@ export class RideRepository {
   private mapRideRow(row: Record<string, any>): Ride {
     const ride = new Ride();
     ride.id = row.id?.toString?.() ?? row.id ?? ride.id;
-    ride.riderId = row.riderId ?? ride.riderId;
-    ride.driverId = row.driverId ?? null;
+    ride.riderId = row.rider_id ?? row.riderId ?? ride.riderId;
+    ride.driverId = row.driver_id ?? row.driverId ?? null;
 
-    if (row.pickupLongitude !== undefined && row.pickupLongitude !== null) {
+    if (row.pickup_lon !== undefined && row.pickup_lon !== null) {
+      ride.pickupLongitude = Number(row.pickup_lon);
+    } else if (
+      row.pickupLongitude !== undefined &&
+      row.pickupLongitude !== null
+    ) {
       ride.pickupLongitude = Number(row.pickupLongitude);
     }
-    if (row.pickupLatitude !== undefined && row.pickupLatitude !== null) {
+    if (row.pickup_lat !== undefined && row.pickup_lat !== null) {
+      ride.pickupLatitude = Number(row.pickup_lat);
+    } else if (
+      row.pickupLatitude !== undefined &&
+      row.pickupLatitude !== null
+    ) {
       ride.pickupLatitude = Number(row.pickupLatitude);
     }
-    if (row.dropoffLongitude !== undefined && row.dropoffLongitude !== null) {
+    if (row.dropoff_lon !== undefined && row.dropoff_lon !== null) {
+      ride.dropoffLongitude = Number(row.dropoff_lon);
+    } else if (
+      row.dropoffLongitude !== undefined &&
+      row.dropoffLongitude !== null
+    ) {
       ride.dropoffLongitude = Number(row.dropoffLongitude);
     }
-    if (row.dropoffLatitude !== undefined && row.dropoffLatitude !== null) {
+    if (row.dropoff_lat !== undefined && row.dropoff_lat !== null) {
+      ride.dropoffLatitude = Number(row.dropoff_lat);
+    } else if (
+      row.dropoffLatitude !== undefined &&
+      row.dropoffLatitude !== null
+    ) {
       ride.dropoffLatitude = Number(row.dropoffLatitude);
     }
 
     ride.status = row.status ?? ride.status;
-    ride.fareEstimated = row.fareEstimated ?? ride.fareEstimated;
-    ride.fareFinal = row.fareFinal ?? ride.fareFinal;
+    ride.fareEstimated =
+      row.fare_estimated ?? row.fareEstimated ?? ride.fareEstimated;
+    ride.fareFinal = row.fare_final ?? row.fareFinal ?? ride.fareFinal;
     ride.discountPercent =
-      row.discountPercent !== undefined && row.discountPercent !== null
-        ? Number(row.discountPercent)
-        : null;
-    ride.discountAmount = row.discountAmount ?? ride.discountAmount;
-    ride.appFeeAmount = row.appFeeAmount ?? ride.appFeeAmount;
+      row.discount_percent !== undefined && row.discount_percent !== null
+        ? Number(row.discount_percent)
+        : row.discountPercent !== undefined && row.discountPercent !== null
+          ? Number(row.discountPercent)
+          : null;
+    ride.discountAmount =
+      row.discount_amount ?? row.discountAmount ?? ride.discountAmount;
+    ride.appFeeAmount =
+      row.app_fee_amount ?? row.appFeeAmount ?? ride.appFeeAmount;
     ride.distanceEstimatedKm =
-      row.distanceEstimatedKm !== undefined && row.distanceEstimatedKm !== null
-        ? Number(row.distanceEstimatedKm)
-        : null;
+      row.distance_estimated_km !== undefined &&
+      row.distance_estimated_km !== null
+        ? Number(row.distance_estimated_km)
+        : row.distanceEstimatedKm !== undefined &&
+            row.distanceEstimatedKm !== null
+          ? Number(row.distanceEstimatedKm)
+          : null;
     ride.durationEstimatedSeconds =
-      row.durationEstimatedSeconds !== undefined &&
-      row.durationEstimatedSeconds !== null
-        ? Number(row.durationEstimatedSeconds)
-        : null;
+      row.duration_estimated_seconds !== undefined &&
+      row.duration_estimated_seconds !== null
+        ? Number(row.duration_estimated_seconds)
+        : row.durationEstimatedSeconds !== undefined &&
+            row.durationEstimatedSeconds !== null
+          ? Number(row.durationEstimatedSeconds)
+          : null;
     ride.distanceActualKm =
-      row.distanceActualKm !== undefined && row.distanceActualKm !== null
-        ? Number(row.distanceActualKm)
+      row.distance_actual_km !== undefined && row.distance_actual_km !== null
+        ? Number(row.distance_actual_km)
+        : row.distanceActualKm !== undefined && row.distanceActualKm !== null
+          ? Number(row.distanceActualKm)
+          : null;
+    ride.paymentUrl = row.payment_url ?? row.paymentUrl ?? null;
+    ride.paymentStatus = row.payment_status ?? row.paymentStatus ?? null;
+    ride.note = row.note ?? ride.note ?? null;
+    ride.cancelReason = row.cancel_reason ?? row.cancelReason ?? null;
+    ride.createdAt = row.created_at
+      ? new Date(row.created_at)
+      : row.createdAt
+        ? new Date(row.createdAt)
+        : ride.createdAt;
+    ride.updatedAt = row.updated_at
+      ? new Date(row.updated_at)
+      : row.updatedAt
+        ? new Date(row.updatedAt)
+        : ride.updatedAt;
+    ride.deletedAt = row.deleted_at
+      ? new Date(row.deleted_at)
+      : row.deletedAt
+        ? new Date(row.deletedAt)
         : null;
-    ride.paymentUrl = row.paymentUrl ?? null;
-    ride.paymentStatus = row.paymentStatus ?? null;
-    ride.note = row.note ?? null;
-    ride.cancelReason = row.cancelReason ?? null;
-    ride.createdAt = row.createdAt ? new Date(row.createdAt) : ride.createdAt;
-    ride.updatedAt = row.updatedAt ? new Date(row.updatedAt) : ride.updatedAt;
-    ride.deletedAt = row.deletedAt ? new Date(row.deletedAt) : null;
     return ride;
+  }
+
+  private mergeRideData(current: Ride, changes: Ride): Ride {
+    const merged = new Ride();
+    Object.assign(merged, current);
+
+    (Object.keys(changes) as Array<keyof Ride>).forEach((key) => {
+      const value = changes[key];
+      if (value !== undefined) {
+        (merged as unknown as Record<string, unknown>)[key as string] =
+          value as unknown;
+      }
+    });
+
+    return merged;
   }
 }

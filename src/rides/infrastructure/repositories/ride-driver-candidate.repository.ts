@@ -13,14 +13,16 @@ export class RideDriverCandidateRepository {
 
   async save(
     candidate: RideDriverCandidate,
+    rideId?: string,
   ): Promise<RideDriverCandidate> {
     return candidate.id
-      ? this.updateCandidate(candidate)
-      : this.insertCandidate(candidate);
+      ? this.updateCandidate(candidate, rideId)
+      : this.insertCandidate(candidate, rideId);
   }
 
   async saveMany(
     candidates: RideDriverCandidate[],
+    rideId?: string,
   ): Promise<RideDriverCandidate[]> {
     if (!candidates.length) {
       return [];
@@ -28,7 +30,7 @@ export class RideDriverCandidateRepository {
 
     const results: RideDriverCandidate[] = [];
     for (const candidate of candidates) {
-      results.push(await this.save(candidate));
+      results.push(await this.save(candidate, rideId));
     }
     return results;
   }
@@ -91,7 +93,9 @@ export class RideDriverCandidateRepository {
 
   private async insertCandidate(
     candidate: RideDriverCandidate,
+    rideId?: string,
   ): Promise<RideDriverCandidate> {
+    const resolvedRideId = this.getRideId(candidate, rideId);
     const rows = await this.dataSource.query(
       `
         INSERT INTO ride_driver_candidates (
@@ -121,7 +125,7 @@ export class RideDriverCandidateRepository {
           updated_at;
       `,
       [
-        candidate.rideId,
+        resolvedRideId,
         candidate.driverId,
         candidate.status,
         candidate.distanceMeters ?? null,
@@ -139,19 +143,22 @@ export class RideDriverCandidateRepository {
 
   private async updateCandidate(
     candidate: RideDriverCandidate,
+    rideId?: string,
   ): Promise<RideDriverCandidate> {
     if (!candidate.id) {
       throw new Error('Candidate id is required for updates');
     }
 
+    const resolvedRideId = this.getRideId(candidate, rideId);
     const rows = await this.dataSource.query(
       `
         UPDATE ride_driver_candidates
         SET
-          status = $2,
-          reason = $3,
-          distance_meters = $4,
-          responded_at = $5,
+          ride_id = $2::bigint,
+          status = $3,
+          reason = $4,
+          distance_meters = $5,
+          responded_at = $6,
           updated_at = NOW()
         WHERE id = $1::bigint
         RETURNING
@@ -167,6 +174,7 @@ export class RideDriverCandidateRepository {
       `,
       [
         candidate.id,
+        resolvedRideId,
         candidate.status,
         candidate.reason ?? null,
         candidate.distanceMeters ?? null,
@@ -202,5 +210,20 @@ export class RideDriverCandidateRepository {
       ? new Date(row.updated_at)
       : candidate.updatedAt;
     return candidate;
+  }
+
+  private getRideId(
+    candidate: RideDriverCandidate,
+    providedRideId?: string,
+  ): string {
+    if (providedRideId) {
+      return providedRideId;
+    }
+
+    if (candidate.rideId) {
+      return candidate.rideId;
+    }
+
+    throw new Error('Ride id is required for ride driver candidates');
   }
 }

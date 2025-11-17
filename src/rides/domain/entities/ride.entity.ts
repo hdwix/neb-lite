@@ -9,7 +9,6 @@ import {
 } from 'typeorm';
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
 import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
-import type { RideDriverCandidate } from './ride-driver-candidate.entity';
 
 @Entity('rides')
 @Index('ix_rides_rider_id', ['riderId'])
@@ -144,6 +143,4 @@ export class Ride {
 
   @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt?: Date | null;
-
-  candidates?: RideDriverCandidate[];
 }

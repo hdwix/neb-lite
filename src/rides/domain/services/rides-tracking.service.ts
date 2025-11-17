@@ -281,7 +281,7 @@ export class RidesTrackingService {
 
     await this.tripTrackingService.markRideCompleted(ride.id);
 
-    const saved = await this.rideRepository.save(updated);
+    const saved = await this.rideRepository.updateRide(updated);
     const refreshed = (await this.rideRepository.findById(saved.id)) ?? saved;
 
     await this.notificationService.notifyRideCompleted(refreshed, {

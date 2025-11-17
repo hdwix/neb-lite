@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -17,7 +18,11 @@ import {
   RideQueueJob,
   RideQueueJobData,
 } from '../types/ride-queue.types';
-import { RideRepository } from '../../infrastructure/repositories/ride.repository';
+import {
+  RideRepository,
+  RideCreationCandidateInput,
+  RideHistoryCreationInput,
+} from '../../infrastructure/repositories/ride.repository';
 import { Ride } from '../entities/ride.entity';
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
 import { RideStatusHistoryRepository } from '../../infrastructure/repositories/ride-status-history.repository';
@@ -75,104 +80,103 @@ export class RidesManagementService {
     private readonly configService: ConfigService,
   ) {}
 
-  async createRide(riderId: string, payload: CreateRideInput): Promise<Ride> {
-    const ride = this.rideRepository.create({
-      riderId,
-      pickupLongitude: payload.pickup.longitude,
-      pickupLatitude: payload.pickup.latitude,
-      dropoffLongitude: payload.dropoff.longitude,
-      dropoffLatitude: payload.dropoff.latitude,
-      note: payload.note,
-      status: ERideStatus.REQUESTED,
-    });
+  async createRide(
+    riderId: string,
+    payload: CreateRideInput,
+  ): Promise<{ ride: Ride; candidates: RideDriverCandidate[] }> {
+    const candidateLimit =
+      payload.maxDrivers ?? this.defaultDriverCandidateLimit;
+    const routeJobId = this.buildRouteEstimationJobId(
+      `request-${riderId}-${Date.now()}`,
+    );
 
-    const savedRide = await this.rideRepository.save(ride);
-
-    let routeEstimates: RouteEstimates | null = null;
     try {
-      routeEstimates = await this.requestRouteEstimatesThroughQueue(
-        savedRide.id,
-        payload.pickup,
-        payload.dropoff,
-      );
-    } catch (error) {
-      await this.rollbackRideCreation(savedRide);
-      throw error;
-    }
-
-    if (!routeEstimates) {
-      throw new BadRequestException(
-        'Unable to calculate route distance at this time. Please try again later.',
-      );
-    }
-
-    savedRide.distanceEstimatedKm = routeEstimates.distanceKm;
-    savedRide.durationEstimatedSeconds = routeEstimates.durationSeconds;
-    savedRide.fareEstimated = this.calculateEstimatedFare(
-      savedRide.distanceEstimatedKm,
-    );
-
-    const rideWithEstimates = await this.rideRepository.save(savedRide);
-    const candidateLimit = this.resolveCandidateLimit(payload.maxDrivers);
-
-    const nearbyDrivers = await this.locationService.getNearbyDrivers(
-      payload.pickup.longitude,
-      payload.pickup.latitude,
-      candidateLimit,
-    );
-
-    if (nearbyDrivers.length === 0) {
-      await this.rollbackRideCreation(rideWithEstimates);
-      throw new BadRequestException('unable to find driver');
-    }
-
-    const candidates = await this.createDriverCandidates(
-      rideWithEstimates,
-      nearbyDrivers,
-    );
-
-    if (candidates.length === 0) {
-      await this.rollbackRideCreation(rideWithEstimates);
-      throw new BadRequestException('unable to find driver');
-    }
-
-    await this.recordStatusChange(
-      rideWithEstimates,
-      null,
-      ERideStatus.REQUESTED,
-      {
-        context: 'Ride requested by rider',
-      },
-    );
-
-    rideWithEstimates.candidates = candidates;
-
-    rideWithEstimates.status = ERideStatus.CANDIDATES_COMPUTED;
-    const updatedRide = await this.rideRepository.save(rideWithEstimates);
-    await this.recordStatusChange(
-      updatedRide,
-      ERideStatus.REQUESTED,
-      ERideStatus.CANDIDATES_COMPUTED,
-      {
-        context: `Invited ${candidates.length} drivers`,
-      },
-    );
-
-    updatedRide.candidates = candidates;
-
-    await Promise.all(
-      candidates.map((candidate) =>
-        this.notificationService.notifyRideOffered(
-          updatedRide,
-          candidate,
-          routeEstimates!,
+      const [routeEstimates, nearbyDrivers] = await Promise.all([
+        this.requestRouteEstimatesThroughQueue(
+          routeJobId,
+          payload.pickup,
+          payload.dropoff,
         ),
-      ),
-    );
+        this.locationService.getNearbyDrivers(
+          payload.pickup.longitude,
+          payload.pickup.latitude,
+          this.resolveCandidateLimit(payload?.maxDrivers),
+        ),
+      ]);
 
-    await this.notificationService.notifyRideMatched(updatedRide);
+      if (nearbyDrivers.length === 0) {
+        throw new Error('unable to find driver, try again later');
+      }
 
-    return updatedRide;
+      const candidateInputs = this.buildDriverCandidateInputs(nearbyDrivers);
+      // if (candidateInputs.length === 0) {
+      //   throw new BadRequestException('unable to find driver');
+      // }
+
+      const { ride: createdRide, candidates } =
+        await this.rideRepository.createRideWithDetails({
+          ride: {
+            riderId,
+            pickupLongitude: payload.pickup.longitude,
+            pickupLatitude: payload.pickup.latitude,
+            dropoffLongitude: payload.dropoff.longitude,
+            dropoffLatitude: payload.dropoff.latitude,
+            note: payload?.note,
+            status: ERideStatus.CANDIDATES_COMPUTED,
+            fareEstimated: this.calculateEstimatedFare(
+              routeEstimates.distanceKm,
+            ),
+            distanceEstimatedKm: routeEstimates.distanceKm,
+            durationEstimatedSeconds: routeEstimates.durationSeconds,
+          },
+          nearbyDrivers,
+          historyEntries: this.buildInitialHistoryEntries(nearbyDrivers.length),
+        });
+
+      // const rideDriverCandidate: RideDriverCandidate = nearbyDrivers.map(
+      //   (driver) => {
+      //     const driverCandidate = new RideDriverCandidate();
+      //     ((driverCandidate.driverId = driver.driverId),
+      //       (driverCandidate.distanceMeters = driver.distanceMeters));
+
+      //     return driverCandidate;
+      //   },
+      // );
+
+      await Promise.all(
+        candidates.map((candidate) =>
+          this.notificationService.notifyRideOffered(
+            createdRide,
+            candidate,
+            routeEstimates,
+          ),
+        ),
+      );
+
+      await this.notificationService.notifyRideMatched(createdRide);
+
+      return { ride: createdRide, candidates };
+    } catch (error) {
+      await this.rideQueue.remove(routeJobId).catch(() => undefined);
+
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      if (this.isAxiosError(error)) {
+        this.logger.error(
+          `Failed to fetch route summary from OpenRouteService: ${error.response?.status ?? 'unknown status'} ${error.response?.statusText ?? ''} ${error.message}`,
+        );
+      } else if (error instanceof Error) {
+        this.logger.error(
+          `Failed to create ride due to unexpected error: ${error.message}`,
+        );
+      } else {
+        this.logger.error('Unknown error occurred while creating ride');
+      }
+
+      throw new InternalServerErrorException('error when creating ride');
+    }
   }
 
   async getRideById(id: string, requester: RequestingClient): Promise<Ride> {
@@ -224,7 +228,7 @@ export class RidesManagementService {
     }
     updated.fareFinal = '0.00';
 
-    await this.rideRepository.save(updated);
+    await this.rideRepository.updateRide(updated);
 
     const candidates = await this.candidateRepository.findByRideId(updated.id);
     const now = new Date();
@@ -408,7 +412,7 @@ export class RidesManagementService {
 
     if (ride.driverId === driverId) {
       ride.driverId = null;
-      ride = await this.rideRepository.save(ride);
+      ride = await this.rideRepository.updateRide(ride);
       const reverted = await this.transitionRideStatus(
         ride.id,
         [ERideStatus.ACCEPTED, ERideStatus.ASSIGNED],
@@ -565,7 +569,7 @@ export class RidesManagementService {
     await this.candidateRepository.save(candidate);
 
     ride.driverId = null;
-    await this.rideRepository.save(ride);
+    await this.rideRepository.updateRide(ride);
 
     const reverted = await this.transitionRideStatus(
       ride.id,
@@ -618,31 +622,33 @@ export class RidesManagementService {
     if (context && nextStatus === ERideStatus.CANCELED) {
       ride.cancelReason = context;
     }
-    const savedRide = await this.rideRepository.save(ride);
+    const savedRide = await this.rideRepository.updateRide(ride);
     await this.recordStatusChange(savedRide, previousStatus, nextStatus, {
       context,
     });
     return { ride: savedRide, changed: true };
   }
 
-  private async createDriverCandidates(
-    ride: Ride,
+  async listRideCandidates(rideId: string): Promise<RideDriverCandidate[]> {
+    return this.candidateRepository.findByRideId(rideId);
+  }
+
+  private buildDriverCandidateInputs(
     nearbyDrivers: NearbyDriver[],
-  ): Promise<RideDriverCandidate[]> {
+  ): RideCreationCandidateInput[] {
     if (nearbyDrivers.length === 0) {
       return [];
     }
 
     const seen = new Set<string>();
-    const candidates: RideDriverCandidate[] = [];
+    const candidates: RideCreationCandidateInput[] = [];
 
     for (const driver of nearbyDrivers) {
       if (!driver.driverId || seen.has(driver.driverId)) {
         continue;
       }
       seen.add(driver.driverId);
-      const candidate = this.candidateRepository.create({
-        rideId: ride.id,
+      candidates.push({
         driverId: driver.driverId,
         status: ERideDriverCandidateStatus.INVITED,
         distanceMeters:
@@ -650,28 +656,33 @@ export class RidesManagementService {
             ? Math.round(driver.distanceMeters)
             : null,
       });
-      candidates.push(candidate);
     }
 
-    if (candidates.length === 0) {
-      return [];
-    }
+    return candidates;
+  }
 
-    return this.candidateRepository.saveMany(candidates);
+  private buildInitialHistoryEntries(
+    invitedCount: number,
+  ): RideHistoryCreationInput[] {
+    return [
+      {
+        fromStatus: null,
+        toStatus: ERideStatus.REQUESTED,
+        context: 'Ride requested by rider',
+      },
+      {
+        fromStatus: ERideStatus.REQUESTED,
+        toStatus: ERideStatus.CANDIDATES_COMPUTED,
+        context: `Invited ${invitedCount} drivers`,
+      },
+    ];
   }
 
   private resolveCandidateLimit(requested?: number): number {
-    if (requested === undefined || requested === null) {
-      return this.defaultDriverCandidateLimit;
+    if (!requested || requested > 50) {
+      return this.maxDriverCandidateLimit;
     }
-
-    const parsed = Math.floor(requested);
-
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      return this.defaultDriverCandidateLimit;
-    }
-
-    return Math.min(parsed, this.maxDriverCandidateLimit);
+    return requested;
   }
 
   ensureRequesterCanAccessRide(ride: Ride, requester: RequestingClient): void {
@@ -692,13 +703,19 @@ export class RidesManagementService {
   }
 
   private async recordStatusChange(
-    ride: Ride,
+    ride: Ride | string,
     fromStatus: ERideStatus | null,
     toStatus: ERideStatus,
     options?: { context?: string },
   ): Promise<void> {
+    const rideId = typeof ride === 'string' ? ride : ride.id;
+    if (!rideId) {
+      throw new BadRequestException(
+        'Ride identifier missing when recording status change',
+      );
+    }
     const history = this.rideStatusHistoryRepository.create({
-      rideId: ride.id,
+      rideId,
       fromStatus: fromStatus ?? null,
       toStatus,
       context: options?.context,
@@ -707,12 +724,10 @@ export class RidesManagementService {
   }
 
   private async requestRouteEstimatesThroughQueue(
-    rideId: string,
+    jobId: string,
     pickup: RideCoordinate,
     dropoff: RideCoordinate,
   ): Promise<RouteEstimates> {
-    const jobId = this.buildRouteEstimationJobId(rideId);
-
     await this.rideQueue.remove(jobId).catch(() => undefined);
 
     const queueEvents = await this.createQueueEvents();
@@ -728,7 +743,7 @@ export class RidesManagementService {
       const job = await this.rideQueue.add(
         RideQueueJob.EstimateRoute,
         {
-          rideId,
+          rideId: jobId,
           pickup,
           dropoff,
         },
@@ -742,7 +757,7 @@ export class RidesManagementService {
         )) as RouteEstimates;
         return result;
       } catch (error) {
-        this.logRouteEstimationJobError(error, rideId);
+        this.logRouteEstimationJobError(error, jobId);
         throw new BadRequestException(
           'Unable to calculate route distance at this time. Please try again later.',
         );
@@ -752,7 +767,7 @@ export class RidesManagementService {
         .close()
         .catch((error) =>
           this.logger.error(
-            `Failed to close queue events for ride ${rideId}: ${error}`,
+            `Failed to close queue events for route job ${jobId}: ${error}`,
           ),
         );
     }
@@ -900,24 +915,10 @@ export class RidesManagementService {
     }
   }
 
-  private async rollbackRideCreation(ride: Ride): Promise<void> {
-    try {
-      await this.rideRepository.remove(ride);
-    } catch (error) {
-      this.logger.error(
-        `Failed to rollback ride ${ride.id} after route estimation failure: ${error}`,
-      );
-    }
-
-    await this.rideQueue
-      .remove(this.buildRouteEstimationJobId(ride.id))
-      .catch(() => undefined);
-  }
-
-  private logRouteEstimationJobError(error: unknown, rideId: string): void {
+  private logRouteEstimationJobError(error: unknown, identifier: string): void {
     if (!error) {
       this.logger.error(
-        `Route estimation job for ride ${rideId} failed with an unknown error`,
+        `Route estimation job for ${identifier} failed with an unknown error`,
       );
       return;
     }
@@ -926,13 +927,13 @@ export class RidesManagementService {
       const failedReason = (error as { failedReason?: unknown }).failedReason;
       if (failedReason instanceof Error) {
         this.logger.error(
-          `Route estimation job for ride ${rideId} failed: ${failedReason.message}`,
+          `Route estimation job for ${identifier} failed: ${failedReason.message}`,
         );
         return;
       }
       if (typeof failedReason === 'string') {
         this.logger.error(
-          `Route estimation job for ride ${rideId} failed: ${failedReason}`,
+          `Route estimation job for ${identifier} failed: ${failedReason}`,
         );
         return;
       }
@@ -940,13 +941,13 @@ export class RidesManagementService {
 
     if (error instanceof Error) {
       this.logger.error(
-        `Route estimation job for ride ${rideId} failed: ${error.message}`,
+        `Route estimation job for ${identifier} failed: ${error.message}`,
       );
       return;
     }
 
     this.logger.error(
-      `Route estimation job for ride ${rideId} failed with unexpected error: ${String(
+      `Route estimation job for ${identifier} failed with unexpected error: ${String(
         error,
       )}`,
     );

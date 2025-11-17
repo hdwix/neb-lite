@@ -52,6 +52,7 @@ import { ClientService } from '../../../client/domain/services/client.service';
 import { SignupRiderDto } from '../../../client/app/dto/signup-rider.dto';
 import { SignupDriverDto } from '../../../client/app/dto/signup-driver.dto';
 import { Logger } from 'nestjs-pino';
+import { RideDriverCandidate } from '../../../rides/domain/entities/ride-driver-candidate.entity';
 
 interface AuthenticatedClientPayload {
   sub?: string | number;
@@ -269,7 +270,7 @@ export class GatewayController {
     const client = this.getAuthenticatedClient(request);
     const riderId = this.getClientId(client);
 
-    const ride = await this.ridesManagementService.createRide(
+    const { ride, candidates } = await this.ridesManagementService.createRide(
       riderId,
       createRideDto,
     );
@@ -278,7 +279,7 @@ export class GatewayController {
       statusCode: HttpStatus.CREATED,
       message: 'Ride requested',
       error: null,
-      data: this.toRideResponse(ride),
+      data: this.toRideResponse(ride, candidates),
     };
   }
 
@@ -291,12 +292,16 @@ export class GatewayController {
       id: this.getClientId(client),
       role: client.role,
     });
+    let candidates: RideDriverCandidate[] | undefined;
+    if (ride.status !== ERideStatus.COMPLETED) {
+      candidates = await this.ridesManagementService.listRideCandidates(ride.id);
+    }
 
     return {
       statusCode: HttpStatus.OK,
       message: 'Ride retrieved',
       error: null,
-      data: this.toRideResponse(ride),
+      data: this.toRideResponse(ride, candidates),
     };
   }
 
@@ -583,7 +588,10 @@ export class GatewayController {
     return '';
   }
 
-  private toRideResponse(ride: Ride) {
+  private toRideResponse(
+    ride: Ride,
+    candidates?: RideDriverCandidate[],
+  ) {
     const parseCurrency = (value?: string | number | null): number | null => {
       if (value === undefined || value === null) {
         return null;
@@ -649,8 +657,8 @@ export class GatewayController {
       response.finalFare = finalFare?.toFixed(2) ?? null;
     }
 
-    if (ride.status !== ERideStatus.COMPLETED) {
-      response.candidates = (ride.candidates ?? []).map((candidate) => ({
+    if (candidates && ride.status !== ERideStatus.COMPLETED) {
+      response.candidates = candidates.map((candidate) => ({
         driverId: candidate.driverId,
         status: candidate.status,
         reason: candidate.reason ?? null,

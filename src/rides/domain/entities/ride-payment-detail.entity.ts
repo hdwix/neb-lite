@@ -9,7 +9,7 @@ import {
 
 @Entity('ride_payment_details')
 @Index('ux_ride_payment_details_ride_id', ['rideId'], { unique: true })
-@Index('ix_ride_payment_details_order_id', ['orderId'], { synchronize: false })
+@Index('ix_ride_payment_details_order_id', ['orderId'])
 export class RidePaymentDetail {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;
@@ -26,7 +26,12 @@ export class RidePaymentDetail {
   @Column({ name: 'token', type: 'varchar', length: 255, nullable: true })
   token?: string | null;
 
-  @Column({ name: 'redirect_url', type: 'varchar', length: 255, nullable: true })
+  @Column({
+    name: 'redirect_url',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   redirectUrl?: string | null;
 
   @Column({ name: 'order_id', type: 'varchar', length: 128, nullable: true })
