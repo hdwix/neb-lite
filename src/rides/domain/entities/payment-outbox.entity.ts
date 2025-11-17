@@ -9,7 +9,7 @@ import { PaymentOutboxStatus } from '../constants/payment.constants';
 
 @Entity('ride_payment_outbox')
 export class PaymentOutbox {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;
 
   @Column({ name: 'ride_id', type: 'bigint' })
