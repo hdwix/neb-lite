@@ -42,10 +42,12 @@ import { PaymentNotificationDto } from '../../../rides/app/dto/payment-notificat
 import { toParticipantLocation } from '../../../rides/app/dto/trip-location.dto';
 import { Ride } from '../../../rides/domain/entities/ride.entity';
 import {
-  NotificationStreamService,
+  NotificationStreamAdapter,
+} from '../services/notification-stream.adapter';
+import {
   NotificationTarget,
   OTP_SIMULATION_TARGET,
-} from '../../../notifications/domain/services/notification-stream.service';
+} from '../../../notifications/domain/ports/notification-publisher.port';
 import { Observable } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
 import { ClientService } from '../../../client/domain/services/client.service';
@@ -70,7 +72,7 @@ export class GatewayController {
     private readonly ridesManagementService: RidesManagementService,
     private readonly ridesTrackingService: RidesTrackingService,
     private readonly ridesPaymentService: RidesPaymentService,
-    private readonly notificationStreamService: NotificationStreamService,
+    private readonly notificationStreamService: NotificationStreamAdapter,
     private readonly configService: ConfigService,
     private readonly clientService: ClientService,
   ) {
