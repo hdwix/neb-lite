@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -16,9 +17,12 @@ import {
   RideCoordinate,
   RideQueueJob,
   RideQueueJobData,
-  RideRouteEstimationJobData,
 } from '../types/ride-queue.types';
-import { RideRepository } from '../../infrastructure/repositories/ride.repository';
+import {
+  RideRepository,
+  RideCreationCandidateInput,
+  RideHistoryCreationInput,
+} from '../../infrastructure/repositories/ride.repository';
 import { Ride } from '../entities/ride.entity';
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
 import { RideStatusHistoryRepository } from '../../infrastructure/repositories/ride-status-history.repository';
@@ -29,11 +33,7 @@ import { RideDriverCandidateRepository } from '../../infrastructure/repositories
 import { RideDriverCandidate } from '../entities/ride-driver-candidate.entity';
 import { ERideDriverCandidateStatus } from '../constants/ride-driver-candidate-status.enum';
 import { NearbyDriver } from '../../../location/domain/services/location.types';
-import {
-  TripTrackingService,
-  ParticipantLocation,
-} from './trip-tracking.service';
-import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
+import { FareEngineService } from './fare-engine.service';
 interface RouteSummary {
   distanceMeters: number;
   durationSeconds: number;
@@ -44,7 +44,7 @@ export interface RouteEstimates {
   durationSeconds: number;
 }
 
-interface RequestingClient {
+export interface RequestingClient {
   id: string;
   role?: EClientType;
 }
@@ -61,20 +61,11 @@ interface CancelRideInput {
 }
 
 @Injectable()
-export class RidesService {
-  private readonly logger = new Logger(RidesService.name);
-  private readonly fareRatePerKm = 3000;
+export class RidesManagementService {
+  private readonly logger = new Logger(RidesManagementService.name);
   private readonly routeEstimationJobTimeoutMs = 30_000;
   private readonly defaultDriverCandidateLimit = 10;
   private readonly maxDriverCandidateLimit = 20;
-  private readonly tripStartProximityMeters: number;
-  private readonly tripCompletionProximityMeters: number;
-  private readonly minDiscountPercent: number;
-  private readonly maxDiscountPercent: number;
-  private readonly appFeePercent: number;
-  private readonly appFeeMinimumAmount: number;
-  private readonly appFeeMinimumThreshold: number;
-  private readonly paymentBaseUrl: string | null;
 
   constructor(
     @InjectQueue(RIDE_QUEUE_NAME)
@@ -85,133 +76,108 @@ export class RidesService {
     private readonly candidateRepository: RideDriverCandidateRepository,
     private readonly locationService: LocationService,
     private readonly httpService: HttpService,
+    private readonly fareEngine: FareEngineService,
     private readonly configService: ConfigService,
-    private readonly tripTrackingService: TripTrackingService,
-  ) {
-    this.tripStartProximityMeters = this.getNumberConfig(
-      'TRIP_START_PROXIMITY_METERS',
-      20,
-    );
-    this.tripCompletionProximityMeters = this.getNumberConfig(
-      'TRIP_COMPLETION_PROXIMITY_METERS',
-      20,
-    );
-    this.minDiscountPercent = this.getNumberConfig(
-      'TRIP_DISCOUNT_MIN_PERCENT',
-      0,
-    );
-    this.maxDiscountPercent = this.getNumberConfig(
-      'TRIP_DISCOUNT_MAX_PERCENT',
-      50,
-    );
-    this.appFeePercent = this.getNumberConfig('APP_FEE_PERCENT', 5);
-    this.appFeeMinimumAmount = this.getNumberConfig('APP_FEE_MIN_AMOUNT', 3000);
-    this.appFeeMinimumThreshold = this.getNumberConfig(
-      'APP_FEE_MIN_THRESHOLD',
-      10_000,
-    );
-    const paymentUrl = this.configService.get<string>('PAYMENT_BASE_URL');
-    this.paymentBaseUrl = paymentUrl ?? null;
-  }
+  ) {}
 
-  async createRide(riderId: string, payload: CreateRideInput): Promise<Ride> {
-    const ride = this.rideRepository.create({
-      riderId,
-      pickupLongitude: payload.pickup.longitude,
-      pickupLatitude: payload.pickup.latitude,
-      dropoffLongitude: payload.dropoff.longitude,
-      dropoffLatitude: payload.dropoff.latitude,
-      note: payload.note,
-      status: ERideStatus.REQUESTED,
-    });
+  async createRide(
+    riderId: string,
+    payload: CreateRideInput,
+  ): Promise<{ ride: Ride; candidates: RideDriverCandidate[] }> {
+    const candidateLimit =
+      payload.maxDrivers ?? this.defaultDriverCandidateLimit;
+    const routeJobId = this.buildRouteEstimationJobId(
+      `request-${riderId}-${Date.now()}`,
+    );
 
-    const savedRide = await this.rideRepository.save(ride);
-
-    let routeEstimates: RouteEstimates | null = null;
     try {
-      routeEstimates = await this.requestRouteEstimatesThroughQueue(
-        savedRide.id,
-        payload.pickup,
-        payload.dropoff,
-      );
-    } catch (error) {
-      await this.rollbackRideCreation(savedRide);
-      throw error;
-    }
-
-    if (!routeEstimates) {
-      throw new BadRequestException(
-        'Unable to calculate route distance at this time. Please try again later.',
-      );
-    }
-
-    savedRide.distanceEstimatedKm = routeEstimates.distanceKm;
-    savedRide.durationEstimatedSeconds = routeEstimates.durationSeconds;
-    savedRide.fareEstimated = this.calculateEstimatedFare(
-      savedRide.distanceEstimatedKm,
-    );
-
-    const rideWithEstimates = await this.rideRepository.save(savedRide);
-    const candidateLimit = this.resolveCandidateLimit(payload.maxDrivers);
-
-    const nearbyDrivers = await this.locationService.getNearbyDrivers(
-      payload.pickup.longitude,
-      payload.pickup.latitude,
-      candidateLimit,
-    );
-
-    if (nearbyDrivers.length === 0) {
-      await this.rollbackRideCreation(rideWithEstimates);
-      throw new BadRequestException('unable to find driver');
-    }
-
-    const candidates = await this.createDriverCandidates(
-      rideWithEstimates,
-      nearbyDrivers,
-    );
-
-    if (candidates.length === 0) {
-      await this.rollbackRideCreation(rideWithEstimates);
-      throw new BadRequestException('unable to find driver');
-    }
-
-    await this.recordStatusChange(
-      rideWithEstimates,
-      null,
-      ERideStatus.REQUESTED,
-      {
-        context: 'Ride requested by rider',
-      },
-    );
-
-    rideWithEstimates.candidates = candidates;
-
-    rideWithEstimates.status = ERideStatus.CANDIDATES_COMPUTED;
-    const updatedRide = await this.rideRepository.save(rideWithEstimates);
-    await this.recordStatusChange(
-      updatedRide,
-      ERideStatus.REQUESTED,
-      ERideStatus.CANDIDATES_COMPUTED,
-      {
-        context: `Invited ${candidates.length} drivers`,
-      },
-    );
-
-    updatedRide.candidates = candidates;
-
-    await Promise.all(
-      candidates.map((candidate) =>
-        this.notificationService.notifyRideOffered(
-          updatedRide,
-          candidate,
-          routeEstimates!,
+      const [routeEstimates, nearbyDrivers] = await Promise.all([
+        this.requestRouteEstimatesThroughQueue(
+          routeJobId,
+          payload.pickup,
+          payload.dropoff,
         ),
-      ),
-    );
+        this.locationService.getNearbyDrivers(
+          payload.pickup.longitude,
+          payload.pickup.latitude,
+          this.resolveCandidateLimit(payload?.maxDrivers),
+        ),
+      ]);
 
-    await this.notificationService.notifyRideMatched(updatedRide);
+      if (nearbyDrivers.length === 0) {
+        throw new Error('unable to find driver, try again later');
+      }
 
-    return updatedRide;
+      const candidateInputs = this.buildDriverCandidateInputs(nearbyDrivers);
+      // if (candidateInputs.length === 0) {
+      //   throw new BadRequestException('unable to find driver');
+      // }
+
+      const { ride: createdRide, candidates } =
+        await this.rideRepository.createRideWithDetails({
+          ride: {
+            riderId,
+            pickupLongitude: payload.pickup.longitude,
+            pickupLatitude: payload.pickup.latitude,
+            dropoffLongitude: payload.dropoff.longitude,
+            dropoffLatitude: payload.dropoff.latitude,
+            note: payload?.note,
+            status: ERideStatus.CANDIDATES_COMPUTED,
+            fareEstimated: this.calculateEstimatedFare(
+              routeEstimates.distanceKm,
+            ),
+            distanceEstimatedKm: routeEstimates.distanceKm,
+            durationEstimatedSeconds: routeEstimates.durationSeconds,
+          },
+          nearbyDrivers,
+          historyEntries: this.buildInitialHistoryEntries(nearbyDrivers.length),
+        });
+
+      // const rideDriverCandidate: RideDriverCandidate = nearbyDrivers.map(
+      //   (driver) => {
+      //     const driverCandidate = new RideDriverCandidate();
+      //     ((driverCandidate.driverId = driver.driverId),
+      //       (driverCandidate.distanceMeters = driver.distanceMeters));
+
+      //     return driverCandidate;
+      //   },
+      // );
+      console.log(' candidates from service : ');
+      console.log(candidates);
+      await Promise.all(
+        candidates.map((candidate) =>
+          this.notificationService.notifyRideOffered(
+            createdRide,
+            candidate,
+            routeEstimates,
+          ),
+        ),
+      );
+
+      await this.notificationService.notifyRideMatched(createdRide);
+
+      return { ride: createdRide, candidates };
+    } catch (error) {
+      await this.rideQueue.remove(routeJobId).catch(() => undefined);
+
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      if (this.isAxiosError(error)) {
+        this.logger.error(
+          `Failed to fetch route summary from OpenRouteService: ${error.response?.status ?? 'unknown status'} ${error.response?.statusText ?? ''} ${error.message}`,
+        );
+      } else if (error instanceof Error) {
+        this.logger.error(
+          `Failed to create ride due to unexpected error: ${error.message}`,
+        );
+      } else {
+        this.logger.error('Unknown error occurred while creating ride');
+      }
+
+      throw new InternalServerErrorException('error when creating ride');
+    }
   }
 
   async getRideById(id: string, requester: RequestingClient): Promise<Ride> {
@@ -263,7 +229,7 @@ export class RidesService {
     }
     updated.fareFinal = '0.00';
 
-    await this.rideRepository.save(updated);
+    await this.rideRepository.updateRide(updated);
 
     const candidates = await this.candidateRepository.findByRideId(updated.id);
     const now = new Date();
@@ -294,345 +260,6 @@ export class RidesService {
 
     const refreshed = await this.rideRepository.findById(updated.id);
     return refreshed ?? updated;
-  }
-
-  async startRide(
-    rideId: string,
-    driverId: string,
-    driverLocation: ParticipantLocation,
-  ): Promise<Ride> {
-    const ride = await this.rideRepository.findById(rideId);
-    console.log('ride from service startRide');
-    console.log(ride);
-    if (!ride) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    if (ride.driverId !== driverId) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    if (ride.status === ERideStatus.CANCELED) {
-      throw new BadRequestException('Cancelled ride cannot be started');
-    }
-
-    if (ride.status === ERideStatus.COMPLETED) {
-      throw new BadRequestException('Completed ride cannot be started');
-    }
-
-    const allowedStatuses = [
-      ERideStatus.ACCEPTED,
-      ERideStatus.ASSIGNED,
-      ERideStatus.ENROUTE,
-    ];
-
-    if (!allowedStatuses.includes(ride.status)) {
-      throw new BadRequestException('Ride is not ready to start');
-    }
-
-    const riderLocation = await this.tripTrackingService.getLatestLocation(
-      ride.id,
-      EClientType.RIDER,
-    );
-
-    console.log(' driverLocation in start ride');
-    console.log(driverLocation);
-
-    console.log(' riderLocation in start ride');
-    console.log(riderLocation);
-    if (!riderLocation) {
-      throw new BadRequestException(
-        'Rider location not available. Please wait for rider to share location.',
-      );
-    }
-
-    const pickupPoint = {
-      longitude: ride.pickupLongitude,
-      latitude: ride.pickupLatitude,
-    };
-
-    await this.ensureLocationWithinRadius(
-      driverLocation,
-      pickupPoint,
-      this.tripStartProximityMeters,
-      'Driver must be at pickup location to start the trip.',
-    );
-    await this.ensureLocationWithinRadius(
-      riderLocation,
-      pickupPoint,
-      this.tripStartProximityMeters,
-      'Rider is not at pickup location. Please confirm rider arrival.',
-    );
-    await this.ensureParticipantsAreNearby(
-      driverLocation,
-      riderLocation,
-      this.tripStartProximityMeters,
-      'Driver and rider must be at the same pickup point to start the trip.',
-    );
-
-    await this.tripTrackingService.recordLocation(
-      ride.id,
-      driverId,
-      EClientType.DRIVER,
-      driverLocation,
-    );
-
-    const transition = await this.transitionRideStatus(
-      ride.id,
-      [ERideStatus.ACCEPTED, ERideStatus.ASSIGNED, ERideStatus.ENROUTE],
-      ERideStatus.TRIP_STARTED,
-      'Driver started the trip',
-    );
-
-    console.log(' transition in start-ride');
-    console.log(transition);
-
-    const updated = transition.ride;
-    const refreshed = await this.rideRepository.findById(updated.id);
-    const current = refreshed ?? updated;
-
-    if (transition.changed) {
-      await this.notificationService.notifyRideStarted(current);
-    }
-    return current;
-  }
-
-  async recordTripLocation(
-    rideId: string,
-    requester: RequestingClient,
-    location: ParticipantLocation,
-  ): Promise<void> {
-    const ride = await this.rideRepository.findById(rideId);
-    if (!ride) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    this.ensureRequesterCanAccessRide(ride, requester);
-
-    if (ride.status === ERideStatus.CANCELED) {
-      throw new BadRequestException('Cancelled ride cannot be tracked');
-    }
-
-    if (ride.status === ERideStatus.COMPLETED) {
-      throw new BadRequestException('Completed ride cannot be tracked');
-    }
-
-    if (!requester.role) {
-      throw new BadRequestException('Client role required');
-    }
-
-    if (requester.role === EClientType.DRIVER) {
-      const driverId = requester.id;
-      if (!driverId || ride.driverId !== driverId) {
-        throw new NotFoundException('Ride not found');
-      }
-
-      await this.tripTrackingService.recordLocation(
-        ride.id,
-        driverId,
-        EClientType.DRIVER,
-        location,
-      );
-      return;
-    }
-
-    if (requester.role === EClientType.RIDER) {
-      await this.tripTrackingService.recordLocation(
-        ride.id,
-        ride.riderId,
-        EClientType.RIDER,
-        location,
-      );
-      return;
-    }
-
-    throw new BadRequestException('Unsupported client role for trip tracking');
-  }
-
-  async completeRide(
-    id: string,
-    requester: RequestingClient,
-    driverLocation: ParticipantLocation,
-  ): Promise<Ride> {
-    const ride = await this.rideRepository.findById(id);
-    if (!ride) {
-      throw new NotFoundException('Ride not found');
-    }
-    if (ride.driverId !== requester.id) {
-      throw new NotFoundException('Ride not found');
-    }
-    if (ride.status === ERideStatus.CANCELED) {
-      throw new BadRequestException('Cancelled ride cannot be completed');
-    }
-    if (ride.status === ERideStatus.COMPLETED) {
-      throw new BadRequestException('Ride already completed');
-    }
-
-    const riderLocation = await this.tripTrackingService.getLatestLocation(
-      ride.id,
-      EClientType.RIDER,
-    );
-
-    if (!riderLocation) {
-      throw new BadRequestException(
-        'Unable to complete ride without rider location confirmation.',
-      );
-    }
-
-    const dropoffPoint = {
-      longitude: ride.dropoffLongitude,
-      latitude: ride.dropoffLatitude,
-    };
-
-    await this.ensureLocationWithinRadius(
-      driverLocation,
-      dropoffPoint,
-      this.tripCompletionProximityMeters,
-      'Driver must arrive at the destination to complete the ride.',
-    );
-    await this.ensureLocationWithinRadius(
-      riderLocation,
-      dropoffPoint,
-      this.tripCompletionProximityMeters,
-      'Rider location does not match destination.',
-    );
-    await this.ensureParticipantsAreNearby(
-      driverLocation,
-      riderLocation,
-      this.tripCompletionProximityMeters,
-      'Driver and rider must be at the destination together to complete the ride.',
-    );
-
-    if (ride.driverId) {
-      await this.tripTrackingService.recordLocation(
-        ride.id,
-        ride.driverId,
-        EClientType.DRIVER,
-        driverLocation,
-      );
-    }
-
-    const totalDistanceMeters =
-      await this.tripTrackingService.getTotalDistanceMeters(ride.id);
-
-    let distanceKm = totalDistanceMeters / 1000;
-    if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
-      distanceKm = ride.distanceActualKm ?? ride.distanceEstimatedKm ?? 0;
-    }
-
-    const roundedDistanceKm = this.roundDistanceKm(distanceKm);
-
-    const baseFare = Math.max(0, roundedDistanceKm * this.fareRatePerKm);
-    const discountPercent = this.resolveDiscountPercent(ride.discountPercent);
-    const discountAmount = this.calculateMonetaryAmount(
-      baseFare * (discountPercent / 100),
-    );
-    const fareAfterDiscount = this.calculateMonetaryAmount(
-      baseFare - discountAmount,
-    );
-    const appFeeAmount = this.calculateAppFee(fareAfterDiscount);
-
-    const { ride: updated } = await this.transitionRideStatus(
-      ride.id,
-      [
-        ERideStatus.ENROUTE,
-        ERideStatus.ACCEPTED,
-        ERideStatus.ASSIGNED,
-        ERideStatus.TRIP_STARTED,
-      ],
-      ERideStatus.COMPLETED,
-      'Driver marked the ride as completed',
-    );
-
-    updated.distanceActualKm = roundedDistanceKm;
-    updated.discountPercent = discountPercent;
-    updated.discountAmount = discountAmount.toFixed(2);
-    updated.fareFinal = fareAfterDiscount.toFixed(2);
-    updated.appFeeAmount = appFeeAmount.toFixed(2);
-    updated.paymentStatus = ERidePaymentStatus.PENDING;
-    updated.paymentUrl = this.buildPaymentUrl(updated, fareAfterDiscount);
-
-    await this.tripTrackingService.markRideCompleted(ride.id);
-
-    const saved = await this.rideRepository.save(updated);
-    const refreshed = (await this.rideRepository.findById(saved.id)) ?? saved;
-
-    await this.notificationService.notifyRideCompleted(refreshed, {
-      baseFare: baseFare.toFixed(2),
-      discountPercent,
-      discountAmount: discountAmount.toFixed(2),
-      finalFare: fareAfterDiscount.toFixed(2),
-      appFee: appFeeAmount.toFixed(2),
-    });
-
-    return refreshed;
-  }
-
-  async applyRideDiscount(
-    rideId: string,
-    driverId: string,
-    payload: { discountPercent: number },
-  ): Promise<Ride> {
-    const ride = await this.rideRepository.findById(rideId);
-    if (!ride) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    if (ride.driverId !== driverId) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    if (ride.status === ERideStatus.CANCELED) {
-      throw new BadRequestException('Cancelled ride cannot be discounted');
-    }
-
-    if (ride.status === ERideStatus.COMPLETED) {
-      throw new BadRequestException('Completed ride cannot be discounted');
-    }
-
-    const normalized = this.resolveDiscountPercent(payload.discountPercent);
-
-    ride.discountPercent = normalized;
-    ride.discountAmount = null;
-
-    const saved = await this.rideRepository.save(ride);
-    const refreshed = await this.rideRepository.findById(saved.id);
-    return refreshed ?? saved;
-  }
-
-  async confirmRidePayment(
-    rideId: string,
-    riderId: string,
-    payload: { paymentReference?: string },
-  ): Promise<Ride> {
-    const ride = await this.rideRepository.findById(rideId);
-    if (!ride) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    if (ride.riderId !== riderId) {
-      throw new NotFoundException('Ride not found');
-    }
-
-    if (ride.status !== ERideStatus.COMPLETED) {
-      throw new BadRequestException('Ride must be completed before payment');
-    }
-
-    if (ride.paymentStatus === ERidePaymentStatus.PAID) {
-      return ride;
-    }
-
-    ride.paymentStatus = ERidePaymentStatus.PAID;
-
-    const saved = await this.rideRepository.save(ride);
-    const refreshed = (await this.rideRepository.findById(saved.id)) ?? saved;
-
-    await this.notificationService.notifyRidePaid(
-      refreshed,
-      payload.paymentReference,
-    );
-
-    return refreshed;
   }
 
   async acceptRideByDriver(rideId: string, driverId: string): Promise<Ride> {
@@ -786,7 +413,7 @@ export class RidesService {
 
     if (ride.driverId === driverId) {
       ride.driverId = null;
-      ride = await this.rideRepository.save(ride);
+      ride = await this.rideRepository.updateRide(ride);
       const reverted = await this.transitionRideStatus(
         ride.id,
         [ERideStatus.ACCEPTED, ERideStatus.ASSIGNED],
@@ -943,7 +570,7 @@ export class RidesService {
     await this.candidateRepository.save(candidate);
 
     ride.driverId = null;
-    await this.rideRepository.save(ride);
+    await this.rideRepository.updateRide(ride);
 
     const reverted = await this.transitionRideStatus(
       ride.id,
@@ -996,31 +623,33 @@ export class RidesService {
     if (context && nextStatus === ERideStatus.CANCELED) {
       ride.cancelReason = context;
     }
-    const savedRide = await this.rideRepository.save(ride);
+    const savedRide = await this.rideRepository.updateRide(ride);
     await this.recordStatusChange(savedRide, previousStatus, nextStatus, {
       context,
     });
     return { ride: savedRide, changed: true };
   }
 
-  private async createDriverCandidates(
-    ride: Ride,
+  async listRideCandidates(rideId: string): Promise<RideDriverCandidate[]> {
+    return this.candidateRepository.findByRideId(rideId);
+  }
+
+  private buildDriverCandidateInputs(
     nearbyDrivers: NearbyDriver[],
-  ): Promise<RideDriverCandidate[]> {
+  ): RideCreationCandidateInput[] {
     if (nearbyDrivers.length === 0) {
       return [];
     }
 
     const seen = new Set<string>();
-    const candidates: RideDriverCandidate[] = [];
+    const candidates: RideCreationCandidateInput[] = [];
 
     for (const driver of nearbyDrivers) {
       if (!driver.driverId || seen.has(driver.driverId)) {
         continue;
       }
       seen.add(driver.driverId);
-      const candidate = this.candidateRepository.create({
-        rideId: ride.id,
+      candidates.push({
         driverId: driver.driverId,
         status: ERideDriverCandidateStatus.INVITED,
         distanceMeters:
@@ -1028,34 +657,36 @@ export class RidesService {
             ? Math.round(driver.distanceMeters)
             : null,
       });
-      candidates.push(candidate);
     }
 
-    if (candidates.length === 0) {
-      return [];
-    }
+    return candidates;
+  }
 
-    return this.candidateRepository.saveMany(candidates);
+  private buildInitialHistoryEntries(
+    invitedCount: number,
+  ): RideHistoryCreationInput[] {
+    return [
+      {
+        fromStatus: null,
+        toStatus: ERideStatus.REQUESTED,
+        context: 'Ride requested by rider',
+      },
+      {
+        fromStatus: ERideStatus.REQUESTED,
+        toStatus: ERideStatus.CANDIDATES_COMPUTED,
+        context: `Invited ${invitedCount} drivers`,
+      },
+    ];
   }
 
   private resolveCandidateLimit(requested?: number): number {
-    if (requested === undefined || requested === null) {
-      return this.defaultDriverCandidateLimit;
+    if (!requested || requested > 50) {
+      return this.maxDriverCandidateLimit;
     }
-
-    const parsed = Math.floor(requested);
-
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      return this.defaultDriverCandidateLimit;
-    }
-
-    return Math.min(parsed, this.maxDriverCandidateLimit);
+    return requested;
   }
 
-  private ensureRequesterCanAccessRide(
-    ride: Ride,
-    requester: RequestingClient,
-  ): void {
+  ensureRequesterCanAccessRide(ride: Ride, requester: RequestingClient): void {
     if (!requester.role) {
       return;
     }
@@ -1073,13 +704,19 @@ export class RidesService {
   }
 
   private async recordStatusChange(
-    ride: Ride,
+    ride: Ride | string,
     fromStatus: ERideStatus | null,
     toStatus: ERideStatus,
     options?: { context?: string },
   ): Promise<void> {
+    const rideId = typeof ride === 'string' ? ride : ride.id;
+    if (!rideId) {
+      throw new BadRequestException(
+        'Ride identifier missing when recording status change',
+      );
+    }
     const history = this.rideStatusHistoryRepository.create({
-      rideId: ride.id,
+      rideId,
       fromStatus: fromStatus ?? null,
       toStatus,
       context: options?.context,
@@ -1088,12 +725,10 @@ export class RidesService {
   }
 
   private async requestRouteEstimatesThroughQueue(
-    rideId: string,
+    jobId: string,
     pickup: RideCoordinate,
     dropoff: RideCoordinate,
   ): Promise<RouteEstimates> {
-    const jobId = this.buildRouteEstimationJobId(rideId);
-
     await this.rideQueue.remove(jobId).catch(() => undefined);
 
     const queueEvents = await this.createQueueEvents();
@@ -1109,7 +744,7 @@ export class RidesService {
       const job = await this.rideQueue.add(
         RideQueueJob.EstimateRoute,
         {
-          rideId,
+          rideId: jobId,
           pickup,
           dropoff,
         },
@@ -1123,7 +758,7 @@ export class RidesService {
         )) as RouteEstimates;
         return result;
       } catch (error) {
-        this.logRouteEstimationJobError(error, rideId);
+        this.logRouteEstimationJobError(error, jobId);
         throw new BadRequestException(
           'Unable to calculate route distance at this time. Please try again later.',
         );
@@ -1133,7 +768,7 @@ export class RidesService {
         .close()
         .catch((error) =>
           this.logger.error(
-            `Failed to close queue events for ride ${rideId}: ${error}`,
+            `Failed to close queue events for route job ${jobId}: ${error}`,
           ),
         );
     }
@@ -1281,24 +916,10 @@ export class RidesService {
     }
   }
 
-  private async rollbackRideCreation(ride: Ride): Promise<void> {
-    try {
-      await this.rideRepository.remove(ride);
-    } catch (error) {
-      this.logger.error(
-        `Failed to rollback ride ${ride.id} after route estimation failure: ${error}`,
-      );
-    }
-
-    await this.rideQueue
-      .remove(this.buildRouteEstimationJobId(ride.id))
-      .catch(() => undefined);
-  }
-
-  private logRouteEstimationJobError(error: unknown, rideId: string): void {
+  private logRouteEstimationJobError(error: unknown, identifier: string): void {
     if (!error) {
       this.logger.error(
-        `Route estimation job for ride ${rideId} failed with an unknown error`,
+        `Route estimation job for ${identifier} failed with an unknown error`,
       );
       return;
     }
@@ -1307,13 +928,13 @@ export class RidesService {
       const failedReason = (error as { failedReason?: unknown }).failedReason;
       if (failedReason instanceof Error) {
         this.logger.error(
-          `Route estimation job for ride ${rideId} failed: ${failedReason.message}`,
+          `Route estimation job for ${identifier} failed: ${failedReason.message}`,
         );
         return;
       }
       if (typeof failedReason === 'string') {
         this.logger.error(
-          `Route estimation job for ride ${rideId} failed: ${failedReason}`,
+          `Route estimation job for ${identifier} failed: ${failedReason}`,
         );
         return;
       }
@@ -1321,13 +942,13 @@ export class RidesService {
 
     if (error instanceof Error) {
       this.logger.error(
-        `Route estimation job for ride ${rideId} failed: ${error.message}`,
+        `Route estimation job for ${identifier} failed: ${error.message}`,
       );
       return;
     }
 
     this.logger.error(
-      `Route estimation job for ride ${rideId} failed with unexpected error: ${String(
+      `Route estimation job for ${identifier} failed with unexpected error: ${String(
         error,
       )}`,
     );
@@ -1368,126 +989,8 @@ export class RidesService {
     return defaultValue;
   }
 
-  private async ensureLocationWithinRadius(
-    location: ParticipantLocation,
-    target: { longitude: number; latitude: number },
-    radiusMeters: number,
-    errorMessage: string,
-  ): Promise<void> {
-    const distance = await this.calculateDistanceMeters(
-      location.longitude,
-      location.latitude,
-      target.longitude,
-      target.latitude,
-    );
-
-    console.log(`calculating distance in ensureLocationWithinRadius `);
-
-    if (distance > radiusMeters) {
-      throw new BadRequestException(errorMessage);
-    }
-  }
-
-  private async ensureParticipantsAreNearby(
-    first: ParticipantLocation,
-    second: ParticipantLocation,
-    radiusMeters: number,
-    errorMessage: string,
-  ): Promise<void> {
-    const distance = await this.calculateDistanceMeters(
-      first.longitude,
-      first.latitude,
-      second.longitude,
-      second.latitude,
-    );
-    console.log(`calculate distance in ensureParticipantsAreNearby`);
-    if (distance > radiusMeters) {
-      throw new BadRequestException(errorMessage);
-    }
-  }
-
-  private async calculateDistanceMeters(
-    lon1: number,
-    lat1: number,
-    lon2: number,
-    lat2: number,
-  ): Promise<number> {
-    return this.tripTrackingService.calculateDistanceBetweenCoordinates(
-      { longitude: lon1, latitude: lat1 },
-      { longitude: lon2, latitude: lat2 },
-    );
-  }
-
-  private resolveDiscountPercent(value?: number | null): number {
-    if (value === undefined || value === null || Number.isNaN(value)) {
-      return this.minDiscountPercent;
-    }
-
-    const bounded = Math.min(
-      Math.max(value, this.minDiscountPercent),
-      this.maxDiscountPercent,
-    );
-
-    return Number.isFinite(bounded) ? bounded : this.minDiscountPercent;
-  }
-
-  private calculateMonetaryAmount(value: number): number {
-    if (!Number.isFinite(value) || value <= 0) {
-      return 0;
-    }
-    return Math.round(value * 100) / 100;
-  }
-
-  private calculateAppFee(fareAfterDiscount: number): number {
-    if (!Number.isFinite(fareAfterDiscount) || fareAfterDiscount <= 0) {
-      return this.appFeeMinimumAmount;
-    }
-
-    if (fareAfterDiscount < this.appFeeMinimumThreshold) {
-      return this.appFeeMinimumAmount;
-    }
-
-    return this.calculateMonetaryAmount(
-      (fareAfterDiscount * this.appFeePercent) / 100,
-    );
-  }
-
-  private buildPaymentUrl(ride: Ride, fare: number): string | null {
-    if (!this.paymentBaseUrl) {
-      return null;
-    }
-
-    try {
-      const url = new URL(this.paymentBaseUrl);
-      url.searchParams.set('rideId', ride.id);
-      if (ride.driverId) {
-        url.searchParams.set('driverId', ride.driverId);
-      }
-      url.searchParams.set('riderId', ride.riderId);
-      url.searchParams.set('amount', (Math.round(fare * 100) / 100).toFixed(2));
-      return url.toString();
-    } catch (error) {
-      this.logger.warn(
-        `Failed to build payment URL for ride ${ride.id}: ${error}`,
-      );
-      return null;
-    }
-  }
-
   private calculateEstimatedFare(distanceKm?: number | null): string | null {
-    if (
-      distanceKm === undefined ||
-      distanceKm === null ||
-      Number.isNaN(distanceKm)
-    ) {
-      return null;
-    }
-    const fare = distanceKm * this.fareRatePerKm;
-    return fare.toFixed(2);
-  }
-
-  private roundDistanceKm(distanceKm: number): number {
-    return Number(distanceKm.toFixed(3));
+    return this.fareEngine.calculateEstimatedFare(distanceKm);
   }
 
   private buildRouteEstimationJobId(rideId: string): string {
@@ -1502,5 +1005,9 @@ export class RidesService {
         `Failed to remove queue job for ride ${rideId}: ${error}`,
       );
     }
+  }
+
+  private roundDistanceKm(distanceKm: number): number {
+    return Number(distanceKm.toFixed(3));
   }
 }

@@ -51,7 +51,7 @@ class RedisClientLifecycle implements OnModuleDestroy {
             {
               dnsLookup: (address, callback) => callback(null, address),
               redisOptions: {
-                tls: {},
+                // tls: {},
               },
             },
           );

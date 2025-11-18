@@ -11,7 +11,7 @@ import { EClientStatus } from '../../../app/enums/client-status.enum';
 import { EClientType } from '../../../app/enums/client-type.enum';
 
 @Entity('driver_profile')
-@Index('ix_driver_client_id', ['msisdn'], { unique: true })
+@Index('ix_driver_profile_msisdn_status', ['msisdn', 'status'])
 export class DriverProfile {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;

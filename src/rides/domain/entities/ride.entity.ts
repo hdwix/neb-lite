@@ -4,13 +4,10 @@ import {
   DeleteDateColumn,
   Entity,
   Index,
-  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
-import { RideStatusHistory } from './ride-status-history.entity';
-import { RideDriverCandidate } from './ride-driver-candidate.entity';
 import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
 
 @Entity('rides')
@@ -146,10 +143,4 @@ export class Ride {
 
   @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt?: Date | null;
-
-  @OneToMany(() => RideStatusHistory, (history) => history.ride)
-  statusHistory?: RideStatusHistory[];
-
-  @OneToMany(() => RideDriverCandidate, (candidate) => candidate.ride)
-  candidates?: RideDriverCandidate[];
 }

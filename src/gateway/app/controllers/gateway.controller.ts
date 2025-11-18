@@ -24,19 +24,21 @@ import { AuthenticationService } from '../../../iam/domain/services/authenticati
 import { Request, Response } from 'express';
 import { Roles } from '../../../iam/app/decorators/role.decorator';
 import { EClientType } from '../../../app/enums/client-type.enum';
+import { ERideStatus } from '../../../app/enums/ride-status.enum';
 import { REQUEST_CLIENT_KEY } from '../../../app/constants/request-client-key';
 import { UpsertDriverLocationDto } from '../../../location/app/dto/upsert-driver-location.dto';
 import { LocationService } from '../../../location/domain/services/location.service';
 import { GetNearbyDriversDto } from '../../../location/app/dto/get-nearby-drivers.dto';
-import { RidesService } from '../../../rides/domain/services/rides.service';
+import { RidesManagementService } from '../../../rides/domain/services/rides-management.service';
+import { RidesTrackingService } from '../../../rides/domain/services/rides-tracking.service';
+import { RidesPaymentService } from '../../../rides/domain/services/rides-payment.service';
 import { CreateRideDto } from '../../../rides/app/dto/create-ride.dto';
 import { CancelRideDto } from '../../../rides/app/dto/cancel-ride.dto';
 import { DriverRespondRideDto } from '../../../rides/app/dto/driver-respond-ride.dto';
 import { StartRideDto } from '../../../rides/app/dto/start-ride.dto';
 import { TripLocationUpdateDto } from '../../../rides/app/dto/trip-location-update.dto';
 import { CompleteRideDto } from '../../../rides/app/dto/complete-ride.dto';
-import { ApplyDiscountDto } from '../../../rides/app/dto/apply-discount.dto';
-import { CompletePaymentDto } from '../../../rides/app/dto/complete-payment.dto';
+import { PaymentNotificationDto } from '../../../rides/app/dto/payment-notification.dto';
 import { toParticipantLocation } from '../../../rides/app/dto/trip-location.dto';
 import { Ride } from '../../../rides/domain/entities/ride.entity';
 import {
@@ -49,6 +51,8 @@ import { ConfigService } from '@nestjs/config';
 import { ClientService } from '../../../client/domain/services/client.service';
 import { SignupRiderDto } from '../../../client/app/dto/signup-rider.dto';
 import { SignupDriverDto } from '../../../client/app/dto/signup-driver.dto';
+import { Logger } from 'nestjs-pino';
+import { RideDriverCandidate } from '../../../rides/domain/entities/ride-driver-candidate.entity';
 
 interface AuthenticatedClientPayload {
   sub?: string | number;
@@ -58,14 +62,23 @@ interface AuthenticatedClientPayload {
 
 @Controller({ path: 'gateway', version: '1' })
 export class GatewayController {
+  private readonly defaultFareRatePerKm: number;
+
   constructor(
     private readonly authService: AuthenticationService,
     private readonly locationService: LocationService,
-    private readonly ridesService: RidesService,
+    private readonly ridesManagementService: RidesManagementService,
+    private readonly ridesTrackingService: RidesTrackingService,
+    private readonly ridesPaymentService: RidesPaymentService,
     private readonly notificationStreamService: NotificationStreamService,
     private readonly configService: ConfigService,
     private readonly clientService: ClientService,
-  ) {}
+  ) {
+    this.defaultFareRatePerKm = this.getNumberConfig(
+      'DEFAULT_FARE_RATE_PER_KM',
+      3000,
+    );
+  }
 
   /*
    * api for client-module
@@ -223,7 +236,7 @@ export class GatewayController {
   }
 
   /*
-   * api for rides-module
+   * api for rides management
    */
 
   @Sse('notifications/stream')
@@ -252,7 +265,7 @@ export class GatewayController {
   @Post('rides')
   @Auth(EAuthType.Bearer)
   @Roles(EClientType.RIDER)
-  @HttpCode(HttpStatus.CREATED)
+  @HttpCode(HttpStatus.OK)
   async createRide(
     @Req() request: Request,
     @Body() createRideDto: CreateRideDto,
@@ -260,13 +273,14 @@ export class GatewayController {
     const client = this.getAuthenticatedClient(request);
     const riderId = this.getClientId(client);
 
-    const ride = await this.ridesService.createRide(riderId, createRideDto);
+    const result = await this.ridesManagementService.createRide(
+      riderId,
+      createRideDto,
+    );
 
     return {
-      statusCode: HttpStatus.CREATED,
-      message: 'Ride requested',
-      error: null,
-      data: this.toRideResponse(ride),
+      messageResponse: 'Ride requested',
+      data: result,
     };
   }
 
@@ -275,16 +289,20 @@ export class GatewayController {
   @HttpCode(HttpStatus.OK)
   async getRide(@Req() request: Request, @Param('id') rideId: string) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.getRideById(rideId, {
+    const ride = await this.ridesManagementService.getRideById(rideId, {
       id: this.getClientId(client),
       role: client.role,
     });
+    let candidates: RideDriverCandidate[] | undefined;
+    if (ride.status !== ERideStatus.COMPLETED) {
+      candidates = await this.ridesManagementService.listRideCandidates(
+        ride.id,
+      );
+    }
 
     return {
-      statusCode: HttpStatus.OK,
-      message: 'Ride retrieved',
-      error: null,
-      data: this.toRideResponse(ride),
+      messageResponse: 'Ride retrieved',
+      data: this.toRideResponse(ride, candidates),
     };
   }
 
@@ -298,7 +316,7 @@ export class GatewayController {
     @Body() cancelRideDto: CancelRideDto,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.cancelRide(
+    const ride = await this.ridesManagementService.cancelRide(
       rideId,
       {
         id: this.getClientId(client),
@@ -315,133 +333,6 @@ export class GatewayController {
     };
   }
 
-  @Post('rides/:id/complete')
-  @Auth(EAuthType.Bearer)
-  @Roles(EClientType.DRIVER)
-  @HttpCode(HttpStatus.OK)
-  async completeRide(
-    @Req() request: Request,
-    @Param('id') rideId: string,
-    @Body() completeRideDto: CompleteRideDto,
-  ) {
-    const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.completeRide(
-      rideId,
-      {
-        id: this.getClientId(client),
-        role: client.role,
-      },
-      toParticipantLocation(completeRideDto.driverLocation),
-    );
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Ride completed',
-      error: null,
-      data: this.toRideResponse(ride),
-    };
-  }
-
-  @Post('rides/:id/start')
-  @Auth(EAuthType.Bearer)
-  @Roles(EClientType.DRIVER)
-  @HttpCode(HttpStatus.OK)
-  async startRide(
-    @Req() request: Request,
-    @Param('id') rideId: string,
-    @Body() startRideDto: StartRideDto,
-  ) {
-    console.log('from controller: ride start');
-    const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.startRide(
-      rideId,
-      this.getClientId(client),
-      toParticipantLocation(startRideDto.driverLocation),
-    );
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Ride started',
-      error: null,
-      data: this.toRideResponse(ride),
-    };
-  }
-
-  @Post('rides/:id/tracking')
-  @Auth(EAuthType.Bearer)
-  @Roles(EClientType.DRIVER, EClientType.RIDER)
-  @HttpCode(HttpStatus.ACCEPTED)
-  async recordTripLocation(
-    @Req() request: Request,
-    @Param('id') rideId: string,
-    @Body() updateDto: TripLocationUpdateDto,
-  ) {
-    const client = this.getAuthenticatedClient(request);
-    await this.ridesService.recordTripLocation(
-      rideId,
-      {
-        id: this.getClientId(client),
-        role: client.role,
-      },
-      toParticipantLocation(updateDto.location),
-    );
-
-    return {
-      statusCode: HttpStatus.ACCEPTED,
-      message: 'Location recorded',
-      error: null,
-      data: {},
-    };
-  }
-
-  @Post('rides/:id/discount')
-  @Auth(EAuthType.Bearer)
-  @Roles(EClientType.DRIVER)
-  @HttpCode(HttpStatus.OK)
-  async applyRideDiscount(
-    @Req() request: Request,
-    @Param('id') rideId: string,
-    @Body() applyDiscountDto: ApplyDiscountDto,
-  ) {
-    const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.applyRideDiscount(
-      rideId,
-      this.getClientId(client),
-      applyDiscountDto,
-    );
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Discount applied',
-      error: null,
-      data: this.toRideResponse(ride),
-    };
-  }
-
-  @Post('rides/:id/payment/complete')
-  @Auth(EAuthType.Bearer)
-  @Roles(EClientType.RIDER)
-  @HttpCode(HttpStatus.OK)
-  async completeRidePayment(
-    @Req() request: Request,
-    @Param('id') rideId: string,
-    @Body() completePaymentDto: CompletePaymentDto,
-  ) {
-    const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.confirmRidePayment(
-      rideId,
-      this.getClientId(client),
-      completePaymentDto,
-    );
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Payment confirmed',
-      error: null,
-      data: this.toRideResponse(ride),
-    };
-  }
-
   @Post('rides/:id/driver-accept')
   @Auth(EAuthType.Bearer)
   @Roles(EClientType.DRIVER)
@@ -451,7 +342,7 @@ export class GatewayController {
     @Param('id') rideId: string,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.acceptRideByDriver(
+    const ride = await this.ridesManagementService.acceptRideByDriver(
       rideId,
       this.getClientId(client),
     );
@@ -474,7 +365,7 @@ export class GatewayController {
     @Body() respondDto: DriverRespondRideDto,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.rejectRideByDriver(
+    const ride = await this.ridesManagementService.rejectRideByDriver(
       rideId,
       this.getClientId(client),
       respondDto?.reason,
@@ -497,7 +388,7 @@ export class GatewayController {
     @Param('id') rideId: string,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.confirmDriverAcceptance(
+    const ride = await this.ridesManagementService.confirmDriverAcceptance(
       rideId,
       this.getClientId(client),
     );
@@ -520,7 +411,7 @@ export class GatewayController {
     @Body() cancelRideDto: CancelRideDto,
   ) {
     const client = this.getAuthenticatedClient(request);
-    const ride = await this.ridesService.rejectDriverAcceptance(
+    const ride = await this.ridesManagementService.rejectDriverAcceptance(
       rideId,
       this.getClientId(client),
       cancelRideDto?.reason,
@@ -531,6 +422,132 @@ export class GatewayController {
       message: 'Ride rejected by rider',
       error: null,
       data: this.toRideResponse(ride),
+    };
+  }
+
+  /*
+   * api for rides tracking
+   */
+
+  @Post('rides/:id/start')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER)
+  @HttpCode(HttpStatus.OK)
+  async startRide(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() startRideDto: StartRideDto,
+  ) {
+    console.log('from controller: ride start');
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesTrackingService.startRide(
+      rideId,
+      this.getClientId(client),
+      toParticipantLocation(startRideDto.driverLocation),
+    );
+
+    return {
+      messageResponse: 'Ride started',
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  @Post('rides/:id/tracking')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER, EClientType.RIDER)
+  @HttpCode(HttpStatus.ACCEPTED)
+  async recordTripLocation(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() updateDto: TripLocationUpdateDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    await this.ridesTrackingService.recordTripLocation(
+      rideId,
+      {
+        id: this.getClientId(client),
+        role: client.role,
+      },
+      toParticipantLocation(updateDto.location),
+    );
+
+    return {
+      messageResponse: 'Location recorded',
+      data: {},
+    };
+  }
+  @Post('rides/:id/complete')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.DRIVER)
+  @HttpCode(HttpStatus.OK)
+  async completeRide(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+    @Body() completeRideDto: CompleteRideDto,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const ride = await this.ridesTrackingService.completeRide(
+      rideId,
+      {
+        id: this.getClientId(client),
+        role: client.role,
+      },
+      {
+        driverLocation: toParticipantLocation(completeRideDto.driverLocation),
+        discountAmount: completeRideDto.discountAmount,
+      },
+    );
+
+    return {
+      messageResponse: 'Ride completed',
+      data: this.toRideResponse(ride),
+    };
+  }
+
+  /*
+   * api for payment
+   */
+  @Post('rides/:id/proceed-payment')
+  @Auth(EAuthType.Bearer)
+  @Roles(EClientType.RIDER)
+  @HttpCode(HttpStatus.OK)
+  async proceedRidePayment(
+    @Req() request: Request,
+    @Param('id') rideId: string,
+  ) {
+    const client = this.getAuthenticatedClient(request);
+    const { ride, payment } = await this.ridesPaymentService.proceedRidePayment(
+      rideId,
+      this.getClientId(client),
+    );
+
+    return {
+      messageResponse: 'Payment initiated',
+      data: {
+        ...this.toRideResponse(ride),
+        payment,
+      },
+    };
+  }
+
+  @Post('rides/payment/notification')
+  @Auth(EAuthType.None)
+  @HttpCode(HttpStatus.OK)
+  async handlePaymentNotification(
+    @Req() request: Request,
+    @Body() payload: PaymentNotificationDto,
+  ) {
+    console.log('processing notification from 3rd party payment servie ...');
+    console.log(`request headers : `);
+    console.log(request.headers);
+
+    await this.ridesPaymentService.handlePaymentNotification(
+      payload,
+      this.extractClientIp(request),
+    );
+
+    return {
+      messageResponse: `Payment info for order ${payload.order_id} is successfully updated`,
     };
   }
 
@@ -546,8 +563,57 @@ export class GatewayController {
     return String(id);
   }
 
-  private toRideResponse(ride: Ride) {
-    return {
+  private extractClientIp(request: Request): string {
+    const remoteAddress = request.socket?.remoteAddress;
+    console.log(' remoteAddress :');
+    console.log(remoteAddress);
+    console.log('X-Forwarded-For');
+    console.log(request.headers['X-Forwarded-For']);
+
+    if (remoteAddress) {
+      return remoteAddress;
+    }
+
+    if (typeof request.ip === 'string') {
+      return request.ip;
+    }
+
+    return '';
+  }
+
+  private toRideResponse(ride: Ride, candidates?: RideDriverCandidate[]) {
+    const parseCurrency = (value?: string | number | null): number | null => {
+      if (value === undefined || value === null) {
+        return null;
+      }
+
+      const normalized = typeof value === 'string' ? Number(value) : value;
+
+      if (!Number.isFinite(normalized)) {
+        return null;
+      }
+
+      const rounded = Math.round(normalized * 100) / 100;
+      return rounded < 0 ? null : rounded;
+    };
+
+    const distanceActualKm = ride.distanceActualKm ?? null;
+    const baseFare =
+      distanceActualKm !== null
+        ? parseCurrency(distanceActualKm * this.defaultFareRatePerKm)
+        : null;
+    const discountAmountByDriver = parseCurrency(ride.discountAmount) ?? 0;
+    const fareAfterDiscount =
+      baseFare !== null
+        ? Math.max(0, parseCurrency(baseFare - discountAmountByDriver) ?? 0)
+        : null;
+    const appFeeAmount = parseCurrency(ride.appFeeAmount);
+    const finalFare =
+      fareAfterDiscount !== null
+        ? parseCurrency(fareAfterDiscount + (appFeeAmount ?? 0))
+        : parseCurrency(ride.fareFinal);
+
+    const response: any = {
       id: ride.id,
       riderId: ride.riderId,
       driverId: ride.driverId,
@@ -571,7 +637,18 @@ export class GatewayController {
       paymentUrl: ride.paymentUrl ?? null,
       paymentStatus: ride.paymentStatus ?? null,
       createdAt: ride.createdAt?.toISOString?.() ?? ride.createdAt,
-      candidates: (ride.candidates ?? []).map((candidate) => ({
+    };
+
+    if (baseFare !== null) {
+      response.baseFare = baseFare.toFixed(2);
+      response.fareRatePerKm = this.defaultFareRatePerKm;
+      response.discountAmountByDriver = discountAmountByDriver.toFixed(2);
+      response.fareAfterDiscount = fareAfterDiscount?.toFixed(2) ?? null;
+      response.finalFare = finalFare?.toFixed(2) ?? null;
+    }
+
+    if (candidates && ride.status !== ERideStatus.COMPLETED) {
+      response.candidates = candidates.map((candidate) => ({
         driverId: candidate.driverId,
         status: candidate.status,
         reason: candidate.reason ?? null,
@@ -582,7 +659,26 @@ export class GatewayController {
           null,
         createdAt:
           candidate.createdAt?.toISOString?.() ?? candidate.createdAt ?? null,
-      })),
-    };
+      }));
+    }
+
+    return response;
+  }
+
+  private getNumberConfig(key: string, defaultValue: number): number {
+    const value = this.configService.get(key);
+
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+
+    return defaultValue;
   }
 }

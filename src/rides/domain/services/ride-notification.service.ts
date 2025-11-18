@@ -5,7 +5,7 @@ import {
   NotificationStreamService,
   NotificationTarget,
 } from '../../../notifications/domain/services/notification-stream.service';
-import type { RouteEstimates } from './rides.service';
+import type { RouteEstimates } from './rides-management.service';
 
 @Injectable()
 export class RideNotificationService {

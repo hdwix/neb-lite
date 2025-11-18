@@ -2,24 +2,19 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  JoinColumn,
-  ManyToOne,
+  Index,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { ERideStatus } from '../../../app/enums/ride-status.enum';
-import { Ride } from './ride.entity';
 
 @Entity('ride_status_history')
+@Index('ix_ride_status_history_ride', ['rideId'])
 export class RideStatusHistory {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;
 
-  @Column({ name: 'ride_id', type: 'uuid' })
+  @Column({ name: 'ride_id', type: 'bigint' })
   rideId!: string;
-
-  @ManyToOne(() => Ride, (ride) => ride.statusHistory, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'ride_id' })
-  ride!: Ride;
 
   @Column({ name: 'from_status', type: 'varchar', length: 32, nullable: true })
   fromStatus?: ERideStatus | null;

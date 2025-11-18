@@ -7,13 +7,16 @@ import {
   RideQueueJobData,
   RideRouteEstimationJobData,
 } from '../types/ride-queue.types';
-import { RidesService, RouteEstimates } from '../services/rides.service';
+import {
+  RidesManagementService,
+  RouteEstimates,
+} from '../services/rides-management.service';
 
 @Processor(RIDE_QUEUE_NAME, { concurrency: 2 })
 export class RideProcessor extends WorkerHost {
   private readonly logger = new Logger(RideProcessor.name);
 
-  constructor(private readonly ridesService: RidesService) {
+  constructor(private readonly ridesManagementService: RidesManagementService) {
     super();
   }
 
@@ -31,6 +34,9 @@ export class RideProcessor extends WorkerHost {
   ): Promise<RouteEstimates> {
     this.logger.debug(`Estimating route for ride ${data.rideId}`);
 
-    return this.ridesService.fetchRouteEstimates(data.pickup, data.dropoff);
+    return this.ridesManagementService.fetchRouteEstimates(
+      data.pickup,
+      data.dropoff,
+    );
   }
 }

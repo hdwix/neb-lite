@@ -4,10 +4,18 @@ import { BullModule } from '@nestjs/bullmq';
 import { Ride } from './domain/entities/ride.entity';
 import { RideStatusHistory } from './domain/entities/ride-status-history.entity';
 import { RideDriverCandidate } from './domain/entities/ride-driver-candidate.entity';
-import { RidesService } from './domain/services/rides.service';
+import { RidePaymentDetail } from './domain/entities/ride-payment-detail.entity';
+import { PaymentIpWhitelist } from './domain/entities/payment-ip-whitelist.entity';
+import { PaymentOutbox } from './domain/entities/payment-outbox.entity';
+import { RidesManagementService } from './domain/services/rides-management.service';
+import { RidesTrackingService } from './domain/services/rides-tracking.service';
+import { RidesPaymentService } from './domain/services/rides-payment.service';
 import { RideRepository } from './infrastructure/repositories/ride.repository';
 import { RideStatusHistoryRepository } from './infrastructure/repositories/ride-status-history.repository';
 import { RideDriverCandidateRepository } from './infrastructure/repositories/ride-driver-candidate.repository';
+import { RidePaymentDetailRepository } from './infrastructure/repositories/ride-payment-detail.repository';
+import { PaymentIpWhitelistRepository } from './infrastructure/repositories/payment-ip-whitelist.repository';
+import { PaymentOutboxRepository } from './infrastructure/repositories/payment-outbox.repository';
 import { RIDE_QUEUE_NAME } from './domain/types/ride-queue.types';
 import { RideProcessor } from './domain/processors/ride.processor';
 import { BullBoardModule } from '@bull-board/nestjs';
@@ -29,6 +37,15 @@ import { TripSummaryRepository } from './infrastructure/repositories/trip-summar
 import { TripTrackingService } from './domain/services/trip-tracking.service';
 import { TripTrackingProcessor } from './domain/processors/trip-tracking.processor';
 import { TRIP_TRACKING_QUEUE_NAME } from './domain/constants/trip-tracking.constants';
+import {
+  PAYMENT_QUEUE_BACKOFF_MS,
+  PAYMENT_QUEUE_NAME,
+  PAYMENT_QUEUE_ATTEMPTS,
+} from './domain/constants/payment.constants';
+import { PaymentService } from './domain/services/payment.service';
+import { PaymentProcessor } from './domain/processors/payment.processor';
+import { RidePaymentRepository } from './infrastructure/repositories/ride-payment.repository';
+import { FareEngineService } from './domain/services/fare-engine.service';
 
 type RideQueueRegistrationOptions = RegisterQueueOptions & {
   limiter?: QueueLimiterOptions;
@@ -50,6 +67,16 @@ const tripTrackingQueueRegistration: RegisterQueueOptions = {
   },
 };
 
+const paymentQueueRegistration: RegisterQueueOptions = {
+  name: PAYMENT_QUEUE_NAME,
+  defaultJobOptions: {
+    removeOnFail: 50,
+    removeOnComplete: 50,
+    attempts: PAYMENT_QUEUE_ATTEMPTS,
+    backoff: { type: 'exponential', delay: PAYMENT_QUEUE_BACKOFF_MS },
+  },
+};
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -58,10 +85,14 @@ const tripTrackingQueueRegistration: RegisterQueueOptions = {
       RideDriverCandidate,
       TripTrack,
       TripSummary,
+      RidePaymentDetail,
+      PaymentIpWhitelist,
+      PaymentOutbox,
     ]),
     BullModule.registerQueue(
       rideQueueRegistration,
       tripTrackingQueueRegistration,
+      paymentQueueRegistration,
     ),
     BullBoardModule.forFeature(
       {
@@ -72,13 +103,19 @@ const tripTrackingQueueRegistration: RegisterQueueOptions = {
         name: TRIP_TRACKING_QUEUE_NAME,
         adapter: BullMQAdapter,
       },
+      {
+        name: PAYMENT_QUEUE_NAME,
+        adapter: BullMQAdapter,
+      },
     ),
     HttpModule,
     NotificationsModule,
     LocationModule,
   ],
   providers: [
-    RidesService,
+    RidesManagementService,
+    RidesTrackingService,
+    RidesPaymentService,
     RideRepository,
     RideStatusHistoryRepository,
     RideDriverCandidateRepository,
@@ -88,7 +125,19 @@ const tripTrackingQueueRegistration: RegisterQueueOptions = {
     TripSummaryRepository,
     TripTrackingService,
     TripTrackingProcessor,
+    RidePaymentDetailRepository,
+    RidePaymentRepository,
+    PaymentIpWhitelistRepository,
+    PaymentOutboxRepository,
+    PaymentService,
+    PaymentProcessor,
+    FareEngineService,
   ],
-  exports: [RidesService],
+  exports: [
+    RidesManagementService,
+    RidesTrackingService,
+    RidesPaymentService,
+    FareEngineService,
+  ],
 })
 export class RidesModule {}

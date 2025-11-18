@@ -178,3 +178,27 @@ flowchart LR
 
 
 ```
+
+<!-- prettier-ignore -->
+```mermaid
+sequenceDiagram
+  autonumber
+  participant API as NebengJek API
+  participant DB as Postgres
+  participant OB as Outbox Poller (BullMQ producer)
+  participant 3P as 3rd-Party PSP
+  participant WH as Webhook Handler (BullMQ consumer)
+  participant SVC as Billing/Order Svc
+
+  API->>DB: BEGIN TX: create PaymentIntent(status=PENDING)
+  API->>DB: INSERT outbox (event=PaymentRequested, payload)
+  API->>DB: COMMIT
+  OB->>DB: Poll outbox (FOR UPDATE SKIP LOCKED)
+  OB->>3P: POST /payments (with idempotency-key)
+  3P-->>OB: 200/202 (request accepted)
+  OB->>DB: Mark outbox sent, update intent(status=PROCESSING)
+  3P-->>WH: Webhook callback (event=payment.succeeded)
+  WH->>DB: Insert webhook_inbox (dedup by event_id)
+  WH->>DB: Upsert payment_intents (status=SUCCEEDED), append audit
+  WH->>SVC: Publish internal event (PaymentSucceeded) via outbox
+  ```

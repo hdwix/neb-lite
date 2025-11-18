@@ -26,9 +26,6 @@ export class AccessTokenGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const token = this.extractTokenFromHeader(request);
-    if (request.headers['x-sign'] === 'xtest') {
-      return true;
-    }
     if (!token) {
       throw new UnauthorizedException('Authorization token not found');
     }
