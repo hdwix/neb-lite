@@ -63,30 +63,36 @@ export class RideRepository {
       await queryRunner.connect();
       await queryRunner.startTransaction();
 
-      const rideRows = await queryRunner.query(
-        `
-          SELECT driver_id
-          FROM rides
-          WHERE id = $1::bigint
-          FOR UPDATE;
-        `,
-        [rideId],
-      );
+      const rideRows: Array<{ driver_id: string | null }> =
+        await queryRunner.query(
+          `
+        SELECT driver_id
+        FROM rides
+        WHERE id = $1::bigint
+        FOR UPDATE;
+      `,
+          [rideId],
+        );
 
-      if (!rideRows?.length || rideRows[0].driver_id) {
-        throw new Error('No ride found to update');
+      if (!rideRows?.length) {
+        throw new Error('Ride not found');
+      }
+
+      if (rideRows[0].driver_id) {
+        // already claimed by someone else
+        throw new Error('Ride already claimed');
       }
 
       const updateRows = await queryRunner.query(
         `
-          UPDATE rides
-          SET
-            driver_id = $2,
-            updated_at = NOW()
-          WHERE id = $1::bigint
-            AND driver_id IS NULL
-          RETURNING id;
-        `,
+        UPDATE rides
+        SET
+          driver_id = $2,
+          updated_at = NOW()
+        WHERE id = $1::bigint
+          AND driver_id IS NULL
+        RETURNING id;
+      `,
         [rideId, driverId],
       );
 
@@ -128,70 +134,6 @@ export class RideRepository {
 
     return this.mapRideRow(rows[0]);
   }
-
-  // async insertRide(ride: Ride): Promise<Ride> {
-  //   if (!ride.riderId) {
-  //     throw new Error('Ride riderId is required for inserts');
-  //   }
-  //   const rows = await this.dataSource.query(
-  //     `
-  //       INSERT INTO rides (
-  //         rider_id,
-  //         driver_id,
-  //         pickup_lon,
-  //         pickup_lat,
-  //         dropoff_lon,
-  //         dropoff_lat,
-  //         status,
-  //         fare_estimated,
-  //         fare_final,
-  //         discount_percent,
-  //         discount_amount,
-  //         app_fee_amount,
-  //         distance_estimated_km,
-  //         duration_estimated_seconds,
-  //         distance_actual_km,
-  //         payment_url,
-  //         payment_status,
-  //         note,
-  //         cancel_reason
-  //       ) VALUES (
-  //         $1,
-  //         $2,
-  //         $3::double precision,
-  //         $4::double precision,
-  //         $5::double precision,
-  //         $6::double precision,
-  //         $7,
-  //         $8,
-  //         $9,
-  //         $10,
-  //         $11,
-  //         $12,
-  //         $13,
-  //         $14,
-  //         $15,
-  //         $16,
-  //         $17,
-  //         $18,
-  //         $19
-  //       )
-  //           RETURNING id;
-  //     `,
-  //     this.extractRideParams(ride),
-  //   );
-
-  //   if (!rows?.length) {
-  //     throw new Error('Failed to insert ride');
-  //   }
-
-  //   const insertedId = rows[0].id?.toString?.() ?? String(rows[0].id);
-  //   const persisted = await this.findById(insertedId);
-  //   if (!persisted) {
-  //     throw new Error('Failed to load ride after insert');
-  //   }
-  //   return persisted;
-  // }
 
   async updateRide(ride: Ride): Promise<Ride> {
     if (!ride.id) {
@@ -252,49 +194,62 @@ export class RideRepository {
     candidates: RideDriverCandidate[];
   }> {
     const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
 
     try {
+      await queryRunner.connect();
       await queryRunner.startTransaction();
+
+      const {
+        riderId,
+        pickupLongitude,
+        pickupLatitude,
+        dropoffLongitude,
+        dropoffLatitude,
+        status,
+        fareEstimated,
+        distanceEstimatedKm,
+        durationEstimatedSeconds,
+        note,
+      } = options.ride;
 
       const rideRows = await queryRunner.query(
         `
-          INSERT INTO rides (
-            rider_id,
-            pickup_lon,
-            pickup_lat,
-            dropoff_lon,
-            dropoff_lat,
-            status,
-            fare_estimated,
-            distance_estimated_km,
-            duration_estimated_seconds,
-            note
-          ) VALUES (
-            $1,
-            $2::double precision,
-            $3::double precision,
-            $4::double precision,
-            $5::double precision,
-            $6,
-            $7,
-            $8,
-            $9,
-            $10
-          )
-          RETURNING id;
-        `,
+        INSERT INTO rides (
+          rider_id,
+          pickup_lon,
+          pickup_lat,
+          dropoff_lon,
+          dropoff_lat,
+          status,
+          fare_estimated,
+          distance_estimated_km,
+          duration_estimated_seconds,
+          note
+        ) VALUES (
+          $1,
+          $2::double precision,
+          $3::double precision,
+          $4::double precision,
+          $5::double precision,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10
+        )
+        RETURNING id;
+      `,
         [
-          options.ride.riderId,
-          options.ride.pickupLongitude,
-          options.ride.pickupLatitude,
-          options.ride.dropoffLongitude,
-          options.ride.dropoffLatitude,
-          options.ride.status,
-          options.ride.fareEstimated,
-          options.ride.distanceEstimatedKm,
-          options.ride.durationEstimatedSeconds,
-          options.ride?.note,
+          riderId,
+          pickupLongitude,
+          pickupLatitude,
+          dropoffLongitude,
+          dropoffLatitude,
+          status,
+          fareEstimated ?? null,
+          distanceEstimatedKm ?? null,
+          durationEstimatedSeconds ?? null,
+          note ?? null,
         ],
       );
 
@@ -305,52 +260,58 @@ export class RideRepository {
       const rideIdValue = rideRows[0].id;
       const rideId = rideIdValue?.toString?.() ?? String(rideIdValue);
 
-      let candidateEntities: RideDriverCandidate[] = [];
+      const candidateRowsArrays = await Promise.all(
+        (options.nearbyDrivers ?? []).map((driver) => {
+          const distanceMeters =
+            driver.distanceMeters == null
+              ? null
+              : Math.round(Number(driver.distanceMeters));
 
-      options.nearbyDrivers.forEach(async (driver) => {
-        const candidateRows = await queryRunner.query(
-          `
+          return queryRunner.query(
+            `
             INSERT INTO ride_driver_candidates (
               ride_id,
               driver_id,
               status,
               distance_meters
             ) VALUES (
-            $1,
-            $2,
-            $3,
-            $4
+              $1::bigint,
+              $2,
+              $3,
+              $4
             )
             RETURNING *;
           `,
-          [
-            rideId,
-            driver.driverId,
-            ERideDriverCandidateStatus.INVITED,
-            Math.round(driver.distanceMeters),
-          ],
-        );
-        console.log('candidateRows : ');
-        console.log(candidateRows);
-        candidateEntities.push(candidateRows[0]);
-      });
+            [
+              rideId,
+              driver.driverId,
+              ERideDriverCandidateStatus.INVITED,
+              distanceMeters,
+            ],
+          );
+        }),
+      );
 
-      if (options.historyEntries.length > 0) {
+      const candidateEntities: RideDriverCandidate[] = candidateRowsArrays.map(
+        (rows) => rows[0],
+      );
+
+      if (options.historyEntries?.length) {
         for (const entry of options.historyEntries) {
           await queryRunner.query(
             `
-              INSERT INTO ride_status_history (
-                ride_id,
-                from_status,
-                to_status,
-                context
-              ) VALUES (
-                $1::bigint,
-                $2,
-                $3,
-                $4
-              );
-            `,
+            INSERT INTO ride_status_history (
+              ride_id,
+              from_status,
+              to_status,
+              context
+            ) VALUES (
+              $1::bigint,
+              $2,
+              $3,
+              $4
+            );
+          `,
             [
               rideId,
               entry.fromStatus ?? null,
@@ -368,12 +329,8 @@ export class RideRepository {
         throw new Error('Failed to load ride after creation');
       }
 
-      console.log(' candidateEntities : ');
-      console.log(candidateEntities);
-
       return { ride, candidates: candidateEntities };
     } catch (error) {
-      console.log(error);
       if (queryRunner.isTransactionActive) {
         await queryRunner.rollbackTransaction();
       }
