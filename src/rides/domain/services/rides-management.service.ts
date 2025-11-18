@@ -84,6 +84,19 @@ export class RidesManagementService {
     riderId: string,
     payload: CreateRideInput,
   ): Promise<{ ride: Ride; candidates: RideDriverCandidate[] }> {
+    if (!riderId) {
+      throw new BadRequestException('Rider id is required to create a ride');
+    }
+
+    const existingRide =
+      await this.rideRepository.findUnfinishedRideByRiderId(riderId);
+
+    if (existingRide) {
+      throw new ConflictException(
+        'You already have an active ride. Please finish or cancel it before creating a new one.',
+      );
+    }
+
     const candidateLimit =
       payload.maxDrivers ?? this.defaultDriverCandidateLimit;
     const routeJobId = this.buildRouteEstimationJobId(
@@ -687,6 +700,9 @@ export class RidesManagementService {
   }
 
   ensureRequesterCanAccessRide(ride: Ride, requester: RequestingClient): void {
+    if (!requester.id) {
+      throw new BadRequestException('Requester identifier is required');
+    }
     if (!requester.role) {
       return;
     }
