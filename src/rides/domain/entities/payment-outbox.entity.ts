@@ -9,7 +9,9 @@ import {
 import { PaymentOutboxStatus } from '../constants/payment.constants';
 
 @Entity('ride_payment_outbox')
-@Index('ix_ride_payment_outbox_ride_status', ['rideId', 'status'])
+@Index('ix_ride_payment_outbox_ride_status', ['rideId', 'status'], {
+  synchronize: false,
+})
 export class PaymentOutbox {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;

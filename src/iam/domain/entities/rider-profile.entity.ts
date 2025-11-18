@@ -12,6 +12,9 @@ import { EClientStatus } from '../../../app/enums/client-status.enum';
 
 @Entity('rider_profile')
 @Index('ux_rider_phone_e164', ['msisdn'], { unique: true })
+@Index('ix_rider_profile_msisdn_status', ['msisdn', 'status'], {
+  synchronize: false,
+})
 export class RiderProfile {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;
