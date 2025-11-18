@@ -135,6 +135,26 @@ export class RideRepository {
     return this.mapRideRow(rows[0]);
   }
 
+  async findUnfinishedRideByRiderId(riderId: string): Promise<Ride | null> {
+    const rows = await this.dataSource.query(
+      `
+        SELECT *
+        FROM rides
+        WHERE rider_id = $1
+          AND status NOT IN ($2, $3)
+        ORDER BY created_at DESC
+        LIMIT 1;
+      `,
+      [riderId, ERideStatus.COMPLETED, ERideStatus.CANCELED],
+    );
+
+    if (!rows?.length) {
+      return null;
+    }
+
+    return this.mapRideRow(rows[0]);
+  }
+
   async updateRide(ride: Ride): Promise<Ride> {
     if (!ride.id) {
       throw new Error('Ride id is required for updates');

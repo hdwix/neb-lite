@@ -44,6 +44,9 @@ export class RidesTrackingService {
     driverId: string,
     driverLocation: ParticipantLocation,
   ): Promise<Ride> {
+    if (!driverId) {
+      throw new BadRequestException('Driver id is required to start a ride');
+    }
     const ride = await this.rideRepository.findById(rideId);
     if (!ride) {
       throw new NotFoundException('Ride not found');
@@ -62,9 +65,8 @@ export class RidesTrackingService {
     }
 
     const allowedStatuses = [
-      ERideStatus.ACCEPTED,
-      ERideStatus.ASSIGNED,
       ERideStatus.ENROUTE,
+      ERideStatus.TRIP_STARTED,
     ];
 
     if (!allowedStatuses.includes(ride.status)) {
@@ -115,7 +117,7 @@ export class RidesTrackingService {
 
     const transition = await this.ridesManagementService.transitionRideStatus(
       ride.id,
-      [ERideStatus.ACCEPTED, ERideStatus.ASSIGNED, ERideStatus.ENROUTE],
+      [ERideStatus.ENROUTE, ERideStatus.TRIP_STARTED],
       ERideStatus.TRIP_STARTED,
       'Driver started the trip',
     );
@@ -135,6 +137,9 @@ export class RidesTrackingService {
     requester: RequestingClient,
     location: ParticipantLocation,
   ): Promise<void> {
+    if (!requester.id) {
+      throw new BadRequestException('Requester identifier is required');
+    }
     const ride = await this.rideRepository.findById(rideId);
     if (!ride) {
       throw new NotFoundException('Ride not found');
@@ -187,6 +192,9 @@ export class RidesTrackingService {
     requester: RequestingClient,
     input: { driverLocation: ParticipantLocation; discountAmount?: number },
   ): Promise<Ride> {
+    if (!requester.id) {
+      throw new BadRequestException('Requester identifier is required');
+    }
     const ride = await this.rideRepository.findById(id);
     if (!ride) {
       throw new NotFoundException('Ride not found');
