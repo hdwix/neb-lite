@@ -12,10 +12,10 @@ import {
   DRIVER_LOC_GEO_KEY,
   DRIVER_LOC_HASH_PREFIX,
   DRIVER_METADATA_HASH_KEY,
-} from '../services/location.types';
+} from '../../domain/services/location.types';
 
 @Processor(MAINTENANCE_CLEANUP_IDLE_DRIVERS)
-class MaintenanceProcessor extends WorkerHost {
+export class MaintenanceProcessor extends WorkerHost {
   private readonly logger = new Logger(MaintenanceProcessor.name);
   private readonly redis: Redis;
 

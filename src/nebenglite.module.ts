@@ -6,7 +6,7 @@ import { RedisWorkerModule } from './redis-worker/redis-worker.module';
 import KeyvRedis, { Keyv } from '@keyv/redis';
 import { CacheModule } from '@nestjs/cache-manager';
 import { LoggingModule } from './infrastructure/modules/logging.module';
-import { GatewayModule } from './gateway/gateway.module';
+import { GatewayModule } from './gateway/application/gateway.module';
 import { HttpModule } from '@nestjs/axios';
 import { LocationModule } from './location/location.module';
 import { RidesModule } from './rides/rides.module';

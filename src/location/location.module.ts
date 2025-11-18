@@ -3,7 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { LocationService } from './domain/services/location.service';
 import { GeolocationRepository } from './domain/services/geolocation.repository';
-import { LocationProcessor } from './domain/processors/location.processor';
+import { LocationProcessor } from './infrastructure/processors/location.processor';
 import {
   LOCATION_QUEUE_NAME,
   MAINTENANCE_CLEANUP_IDLE_DRIVERS,

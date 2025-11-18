@@ -13,7 +13,7 @@ import {
   NotificationPublisher,
   NotificationStreamSubscriber,
   NotificationTarget,
-} from '../../../notifications/domain/ports/notification-publisher.port';
+} from '../../domain/ports/notification-publisher.port';
 
 interface NotificationEnvelope {
   target: NotificationTarget;

@@ -11,7 +11,7 @@ import { OTP_SIMULATION_TARGET } from '../../../notifications/domain/ports/notif
 import { EClientType } from '../../../app/enums/client-type.enum';
 import { of } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
-import { NotificationStreamAdapter } from '../services/notification-stream.adapter';
+import { NotificationStreamAdapter } from '../../../notifications/infrastructure/adapters/notification-stream.adapter';
 import { ClientService } from '../../../client/domain/services/client.service';
 
 describe('GatewayController', () => {

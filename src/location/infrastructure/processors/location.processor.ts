@@ -1,12 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
-import { GeolocationRepository } from '../services/geolocation.repository';
+import { GeolocationRepository } from '../../domain/services/geolocation.repository';
 import {
   LOCATION_QUEUE_NAME,
   LocationQueueJob,
   LocationUpdateJobData,
-} from '../services/location.types';
+} from '../../domain/services/location.types';
 
 @Processor(LOCATION_QUEUE_NAME, { concurrency: 5 })
 export class LocationProcessor extends WorkerHost {

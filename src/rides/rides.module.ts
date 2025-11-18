@@ -28,7 +28,7 @@ import {
   QueueLimiterOptions,
 } from './domain/constants/route-estimation-limiter.constant';
 import { RideNotificationService } from './domain/services/ride-notification.service';
-import { NotificationsModule } from '../notifications/notifications.module';
+import { NotificationsModule } from '../notifications/application/notifications.module';
 import { LocationModule } from '../location/location.module';
 import { TripTrack } from './domain/entities/trip-track.entity';
 import { TripSummary } from './domain/entities/trip-summary.entity';

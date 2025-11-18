@@ -3,7 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
-import { GatewayModule } from '../gateway/gateway.module';
+import { GatewayModule } from '../gateway/application/gateway.module';
 import { LocationModule } from '../location/location.module';
 import { RidesModule } from '../rides/rides.module';
 

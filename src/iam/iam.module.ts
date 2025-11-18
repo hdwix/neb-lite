@@ -25,7 +25,7 @@ import {
 import { BullBoardModule } from '@bull-board/nestjs';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { QueueRegistrationOptions } from '../app/global-type/queue-global-types';
-import { NotificationsModule } from '../notifications/notifications.module';
+import { NotificationsModule } from '../notifications/application/notifications.module';
 
 const sendOtpQueueRegistration: QueueRegistrationOptions = {
   name: SEND_OTP_QUEUE_NAME,

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { RedisModule } from '../infrastructure/redis/redis.module';
-import { NotificationStreamAdapter } from './app/services/notification-stream.adapter';
-import { NOTIFICATION_PUBLISHER } from '../notifications/domain/ports/notification-publisher.port';
+import { RedisModule } from '../../infrastructure/redis/redis.module';
+import { NotificationStreamAdapter } from './adapters/notification-stream.adapter';
+import { NOTIFICATION_PUBLISHER } from '../domain/ports/notification-publisher.port';
 
 @Module({
   imports: [RedisModule],
