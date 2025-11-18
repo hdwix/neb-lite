@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Ride } from '../entities/ride.entity';
 import { RideDriverCandidate } from '../entities/ride-driver-candidate.entity';
 import {
-  NotificationStreamService,
+  NOTIFICATION_PUBLISHER,
+  NotificationPublisher,
   NotificationTarget,
-} from '../../../notifications/domain/services/notification-stream.service';
+} from '../../../notifications/domain/ports/notification-publisher.port';
 import type { RouteEstimates } from './rides-management.service';
 
 @Injectable()
@@ -12,7 +13,8 @@ export class RideNotificationService {
   private readonly logger = new Logger(RideNotificationService.name);
 
   constructor(
-    private readonly notificationStreamService: NotificationStreamService,
+    @Inject(NOTIFICATION_PUBLISHER)
+    private readonly notificationPublisher: NotificationPublisher,
   ) {}
 
   async notifyRideMatched(ride: Ride): Promise<void> {
@@ -286,7 +288,7 @@ export class RideNotificationService {
     }
 
     const payload = this.buildPayload(ride, message, extraPayload);
-    const delivered = await this.notificationStreamService.emit(
+    const delivered = await this.notificationPublisher.emit(
       target,
       targetId,
       event,

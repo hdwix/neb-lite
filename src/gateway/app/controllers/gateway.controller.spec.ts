@@ -7,13 +7,12 @@ import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { RidesManagementService } from '../../../rides/domain/services/rides-management.service';
 import { RidesTrackingService } from '../../../rides/domain/services/rides-tracking.service';
 import { RidesPaymentService } from '../../../rides/domain/services/rides-payment.service';
-import {
-  NotificationStreamService,
-  OTP_SIMULATION_TARGET,
-} from '../../../notifications/domain/services/notification-stream.service';
+import { OTP_SIMULATION_TARGET } from '../../../notifications/domain/ports/notification-publisher.port';
 import { EClientType } from '../../../app/enums/client-type.enum';
 import { of } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
+import { NotificationStreamAdapter } from '../services/notification-stream.adapter';
+import { ClientService } from '../../../client/domain/services/client.service';
 
 describe('GatewayController', () => {
   let controller: GatewayController;
@@ -38,11 +37,18 @@ describe('GatewayController', () => {
     getNearbyDrivers: jest.fn(),
   } as LocationServiceMock;
   let notificationStreamServiceMock: jest.Mocked<
-    Pick<NotificationStreamService, 'subscribe'>
+    Pick<NotificationStreamAdapter, 'subscribe'>
   >;
   const configServiceMock = {
     get: jest.fn(),
   } as jest.Mocked<Pick<ConfigService, 'get'>>;
+  type ClientServiceMock = jest.Mocked<
+    Pick<ClientService, 'signupDriver' | 'signupRider'>
+  >;
+  const clientServiceMock = {
+    signupDriver: jest.fn(),
+    signupRider: jest.fn(),
+  } as ClientServiceMock;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -69,7 +75,7 @@ describe('GatewayController', () => {
 
     notificationStreamServiceMock = {
       subscribe: jest.fn(),
-    } as jest.Mocked<Pick<NotificationStreamService, 'subscribe'>>;
+    } as jest.Mocked<Pick<NotificationStreamAdapter, 'subscribe'>>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [GatewayController],
@@ -84,23 +90,28 @@ describe('GatewayController', () => {
         },
         {
           provide: RidesManagementService,
-          useValue: ridesManagementServiceMock as RidesManagementService,
+          useValue:
+            ridesManagementServiceMock as unknown as RidesManagementService,
         },
         {
           provide: RidesTrackingService,
-          useValue: ridesTrackingServiceMock as RidesTrackingService,
+          useValue: ridesTrackingServiceMock as unknown as RidesTrackingService,
         },
         {
           provide: RidesPaymentService,
-          useValue: ridesPaymentServiceMock as RidesPaymentService,
+          useValue: ridesPaymentServiceMock as unknown as RidesPaymentService,
         },
         {
-          provide: NotificationStreamService,
-          useValue: notificationStreamServiceMock as unknown as NotificationStreamService,
+          provide: NotificationStreamAdapter,
+          useValue: notificationStreamServiceMock as unknown as NotificationStreamAdapter,
         },
         {
           provide: ConfigService,
           useValue: configServiceMock,
+        },
+        {
+          provide: ClientService,
+          useValue: clientServiceMock as unknown as ClientService,
         },
       ],
     }).compile();

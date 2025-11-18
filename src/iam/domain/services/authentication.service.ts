@@ -18,9 +18,10 @@ import { RiderProfileRepository } from '../../infrastructure/repository/rider-pr
 import { DriverProfileRepository } from '../../infrastructure/repository/driver-profile.repository';
 import { EClientType } from '../../../app/enums/client-type.enum';
 import {
-  NotificationStreamService,
+  NOTIFICATION_PUBLISHER,
+  NotificationPublisher,
   OTP_SIMULATION_TARGET,
-} from '../../../notifications/domain/services/notification-stream.service';
+} from '../../../notifications/domain/ports/notification-publisher.port';
 import { InjectQueue } from '@nestjs/bullmq';
 import {
   ESendOtpQueueJob,
@@ -43,7 +44,8 @@ export class AuthenticationService {
     private readonly driverProfileRepo: DriverProfileRepository,
     @InjectQueue(SEND_OTP_QUEUE_NAME)
     private readonly sendOtpQueue: Queue<ISendOtpQueueData>,
-    private readonly notificationStreamService: NotificationStreamService,
+    @Inject(NOTIFICATION_PUBLISHER)
+    private readonly notificationPublisher: NotificationPublisher,
   ) {}
   async getOtp(getOtpDto: GetOtpDto) {
     const cachedKey = this.getOtpCachedKey(getOtpDto.msisdn);
@@ -156,7 +158,7 @@ export class AuthenticationService {
     clientType: EClientType,
     otpCode: string,
   ) {
-    const delivered = await this.notificationStreamService.emit(
+    const delivered = await this.notificationPublisher.emit(
       OTP_SIMULATION_TARGET,
       msisdn,
       'otp.generated',

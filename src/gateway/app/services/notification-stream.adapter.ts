@@ -9,13 +9,11 @@ import Redis from 'ioredis';
 import { Observable, Subject } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 import { REDIS_CLIENT } from '../../../infrastructure/redis/redis.tokens';
-
-export const OTP_SIMULATION_TARGET = 'otp-simulation' as const;
-
-export type NotificationTarget =
-  | 'driver'
-  | 'rider'
-  | typeof OTP_SIMULATION_TARGET;
+import {
+  NotificationPublisher,
+  NotificationStreamSubscriber,
+  NotificationTarget,
+} from '../../../notifications/domain/ports/notification-publisher.port';
 
 interface NotificationEnvelope {
   target: NotificationTarget;
@@ -26,8 +24,10 @@ interface NotificationEnvelope {
 }
 
 @Injectable()
-export class NotificationStreamService implements OnModuleDestroy {
-  private readonly logger = new Logger(NotificationStreamService.name);
+export class NotificationStreamAdapter
+  implements NotificationPublisher, NotificationStreamSubscriber, OnModuleDestroy
+{
+  private readonly logger = new Logger(NotificationStreamAdapter.name);
   private readonly channels = new Map<string, Set<Subject<MessageEvent>>>();
   private readonly redisPublisher: Redis;
   private readonly redisSubscriber: Redis;
@@ -49,6 +49,7 @@ export class NotificationStreamService implements OnModuleDestroy {
       this.handleRedisMessage(channel, rawPayload);
     });
   }
+
   subscribe(
     target: NotificationTarget,
     targetId: string,

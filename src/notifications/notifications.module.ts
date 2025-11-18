@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
-import { NotificationStreamService } from './domain/services/notification-stream.service';
+import { NotificationStreamModule } from '../gateway/notification-stream.module';
 
 @Module({
-  providers: [NotificationStreamService],
-  exports: [NotificationStreamService],
+  imports: [NotificationStreamModule],
+  exports: [NotificationStreamModule],
 })
 export class NotificationsModule {}
