@@ -59,11 +59,10 @@ export class RideRepository {
 
   async claimDriver(rideId: string, driverId: string): Promise<boolean> {
     const queryRunner = this.dataSource.createQueryRunner();
-
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
     try {
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
       const rideRows = await queryRunner.query(
         `
           SELECT driver_id
@@ -75,8 +74,7 @@ export class RideRepository {
       );
 
       if (!rideRows?.length || rideRows[0].driver_id) {
-        await queryRunner.rollbackTransaction();
-        return false;
+        throw new Error('No ride found to update');
       }
 
       const updateRows = await queryRunner.query(
