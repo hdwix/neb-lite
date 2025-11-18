@@ -58,20 +58,48 @@ export class RideRepository {
   }
 
   async claimDriver(rideId: string, driverId: string): Promise<boolean> {
-    const rows = await this.dataSource.query(
-      `
-        UPDATE rides
-        SET
-          driver_id = $2,
-          updated_at = NOW()
-        WHERE id = $1::bigint
-          AND driver_id IS NULL
-        RETURNING id;
-      `,
-      [rideId, driverId],
-    );
+    const queryRunner = this.dataSource.createQueryRunner();
 
-    return rows?.length > 0;
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const rideRows = await queryRunner.query(
+        `
+          SELECT driver_id
+          FROM rides
+          WHERE id = $1::bigint
+          FOR UPDATE;
+        `,
+        [rideId],
+      );
+
+      if (!rideRows?.length || rideRows[0].driver_id) {
+        await queryRunner.rollbackTransaction();
+        return false;
+      }
+
+      const updateRows = await queryRunner.query(
+        `
+          UPDATE rides
+          SET
+            driver_id = $2,
+            updated_at = NOW()
+          WHERE id = $1::bigint
+            AND driver_id IS NULL
+          RETURNING id;
+        `,
+        [rideId, driverId],
+      );
+
+      await queryRunner.commitTransaction();
+      return updateRows?.length > 0;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async remove(ride: Ride): Promise<Ride> {
