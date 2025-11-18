@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app/controllers/app.controller';
 import { DatabaseModule } from './infrastructure/modules/database.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { IamModule } from './iam/iam.module';
@@ -39,7 +38,7 @@ import { RedisModule } from './infrastructure/redis/redis.module';
     RidesModule,
     RedisModule,
   ],
-  controllers: [AppController],
+  controllers: [],
   providers: [],
 })
 export class NebengliteModule {}
