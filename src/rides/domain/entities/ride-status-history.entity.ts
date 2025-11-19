@@ -16,10 +16,16 @@ export class RideStatusHistory {
   @Column({ name: 'ride_id', type: 'bigint' })
   rideId!: string;
 
-  @Column({ name: 'from_status', type: 'varchar', length: 32, nullable: true })
+  @Column({
+    name: 'from_status',
+    type: 'enum',
+    enum: ERideStatus,
+    enumName: 'ride_status',
+    nullable: true,
+  })
   fromStatus?: ERideStatus | null;
 
-  @Column({ name: 'to_status', type: 'varchar', length: 32 })
+  @Column({ name: 'to_status', type: 'enum', enum: ERideStatus, enumName: 'ride_status' })
   toStatus!: ERideStatus;
 
   @Column({ name: 'context', type: 'varchar', length: 255, nullable: true })

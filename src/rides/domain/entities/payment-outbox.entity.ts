@@ -23,7 +23,12 @@ export class PaymentOutbox {
   @Column({ name: 'order_id', type: 'varchar', length: 128 })
   orderId!: string;
 
-  @Column({ name: 'status', type: 'varchar', length: 32 })
+  @Column({
+    name: 'status',
+    type: 'enum',
+    enum: PaymentOutboxStatus,
+    enumName: 'ride_payment_outbox_status',
+  })
   status!: PaymentOutboxStatus;
 
   @Column({ name: 'attempts', type: 'int', default: 0 })

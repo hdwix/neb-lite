@@ -119,8 +119,9 @@ export class Ride {
 
   @Column({
     name: 'payment_status',
-    type: 'varchar',
-    length: 32,
+    type: 'enum',
+    enum: ERidePaymentStatus,
+    enumName: 'ride_payment_status',
     nullable: true,
   })
   paymentStatus?: ERidePaymentStatus | null;

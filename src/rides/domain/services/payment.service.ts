@@ -37,7 +37,7 @@ export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
   private readonly paymentApiUrl: string | null;
   private readonly paymentApiKey: string | null;
-  private readonly paymentProvider = 'midtrans';
+  private readonly paymentProvider: string;
 
   constructor(
     private readonly configService: ConfigService,
@@ -51,6 +51,8 @@ export class PaymentService {
       this.configService.get<string>('PAYMENT_API_URL') ?? null;
     this.paymentApiKey =
       this.configService.get<string>('PAYMENT_API_KEY') ?? null;
+    this.paymentProvider =
+      this.configService.get<string>('PAYMENT_PROVIDER') ?? '';
   }
 
   async initiatePayment(ride: Ride): Promise<RidePaymentDetail> {
@@ -283,7 +285,7 @@ export class PaymentService {
   }
 
   private ensurePaymentConfiguration(): void {
-    if (!this.paymentApiUrl || !this.paymentApiKey) {
+    if (!this.paymentApiUrl || !this.paymentApiKey || !this.paymentProvider) {
       throw new BadRequestException('Payment service is not configured');
     }
   }
