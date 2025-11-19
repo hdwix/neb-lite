@@ -41,7 +41,7 @@ export class RideDriverCandidateRepository {
         SELECT
           id,
           ride_id,
-          driver_id,
+          driver_id::text AS driver_id,
           status,
           distance_meters,
           reason,
@@ -69,7 +69,7 @@ export class RideDriverCandidateRepository {
         SELECT
           id,
           ride_id,
-          driver_id,
+          driver_id::text AS driver_id,
           status,
           distance_meters,
           reason,
@@ -78,7 +78,7 @@ export class RideDriverCandidateRepository {
           updated_at
         FROM ride_driver_candidates
         WHERE ride_id = $1::bigint
-          AND driver_id = $2
+          AND driver_id = $2::bigint
         LIMIT 1;
       `,
       [rideId, driverId],
@@ -107,7 +107,7 @@ export class RideDriverCandidateRepository {
           responded_at
         ) VALUES (
           $1::bigint,
-          $2,
+          $2::bigint,
           $3,
           $4,
           $5,
@@ -116,7 +116,7 @@ export class RideDriverCandidateRepository {
         RETURNING
           id,
           ride_id,
-          driver_id,
+          driver_id::text AS driver_id,
           status,
           distance_meters,
           reason,
@@ -164,7 +164,7 @@ export class RideDriverCandidateRepository {
         RETURNING
           id,
           ride_id,
-          driver_id,
+          driver_id::text AS driver_id,
           status,
           distance_meters,
           reason,
@@ -193,7 +193,8 @@ export class RideDriverCandidateRepository {
     const candidate = new RideDriverCandidate();
     candidate.id = row.id?.toString?.() ?? row.id ?? candidate.id;
     candidate.rideId = row.ride_id?.toString?.() ?? row.ride_id ?? candidate.rideId;
-    candidate.driverId = row.driver_id ?? candidate.driverId;
+    candidate.driverId =
+      row.driver_id?.toString?.() ?? row.driverId?.toString?.() ?? candidate.driverId;
     candidate.status = row.status ?? candidate.status;
     candidate.distanceMeters =
       row.distance_meters !== undefined && row.distance_meters !== null

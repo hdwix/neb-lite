@@ -66,7 +66,7 @@ export class RideRepository {
       const rideRows: Array<{ driver_id: string | null }> =
         await queryRunner.query(
           `
-        SELECT driver_id
+        SELECT driver_id::text AS driver_id
         FROM rides
         WHERE id = $1::bigint
         FOR UPDATE;
@@ -87,7 +87,7 @@ export class RideRepository {
         `
         UPDATE rides
         SET
-          driver_id = $2,
+          driver_id = $2::bigint,
           updated_at = NOW()
         WHERE id = $1::bigint
           AND driver_id IS NULL
@@ -140,7 +140,7 @@ export class RideRepository {
       `
         SELECT *
         FROM rides
-        WHERE rider_id = $1
+        WHERE rider_id = $1::bigint
           AND status NOT IN ($2, $3)
         ORDER BY created_at DESC
         LIMIT 1;
@@ -172,8 +172,8 @@ export class RideRepository {
       `
         UPDATE rides
         SET
-          rider_id = $2,
-          driver_id = $3,
+          rider_id = $2::bigint,
+          driver_id = $3::bigint,
           pickup_lon = $4::double precision,
           pickup_lat = $5::double precision,
           dropoff_lon = $6::double precision,
@@ -246,7 +246,7 @@ export class RideRepository {
           duration_estimated_seconds,
           note
         ) VALUES (
-          $1,
+          $1::bigint,
           $2::double precision,
           $3::double precision,
           $4::double precision,
@@ -296,11 +296,20 @@ export class RideRepository {
               distance_meters
             ) VALUES (
               $1::bigint,
-              $2,
+              $2::bigint,
               $3,
               $4
             )
-            RETURNING *;
+            RETURNING
+              id,
+              ride_id,
+              driver_id,
+              status,
+              distance_meters,
+              reason,
+              responded_at,
+              created_at,
+              updated_at;
           `,
             [
               rideId,
@@ -313,7 +322,7 @@ export class RideRepository {
       );
 
       const candidateEntities: RideDriverCandidate[] = candidateRowsArrays.map(
-        (rows) => rows[0],
+        (rows) => this.mapCandidateRow(rows[0]),
       );
 
       if (options.historyEntries?.length) {
@@ -384,11 +393,44 @@ export class RideRepository {
     ];
   }
 
+  private mapCandidateRow(row: Record<string, any>): RideDriverCandidate {
+    const candidate = new RideDriverCandidate();
+    candidate.id = row.id?.toString?.() ?? row.id ?? candidate.id;
+    candidate.rideId =
+      row.ride_id?.toString?.() ?? row.rideId?.toString?.() ?? candidate.rideId;
+    candidate.driverId =
+      row.driver_id?.toString?.() ?? row.driverId?.toString?.() ?? candidate.driverId;
+    candidate.status = row.status ?? candidate.status;
+    candidate.distanceMeters =
+      row.distance_meters !== undefined && row.distance_meters !== null
+        ? Number(row.distance_meters)
+        : candidate.distanceMeters ?? null;
+    candidate.reason = row.reason ?? null;
+    candidate.respondedAt = row.responded_at
+      ? new Date(row.responded_at)
+      : row.respondedAt
+        ? new Date(row.respondedAt)
+        : candidate.respondedAt ?? null;
+    candidate.createdAt = row.created_at
+      ? new Date(row.created_at)
+      : row.createdAt
+        ? new Date(row.createdAt)
+        : candidate.createdAt;
+    candidate.updatedAt = row.updated_at
+      ? new Date(row.updated_at)
+      : row.updatedAt
+        ? new Date(row.updatedAt)
+        : candidate.updatedAt;
+    return candidate;
+  }
+
   private mapRideRow(row: Record<string, any>): Ride {
     const ride = new Ride();
     ride.id = row.id?.toString?.() ?? row.id ?? ride.id;
-    ride.riderId = row.rider_id ?? row.riderId ?? ride.riderId;
-    ride.driverId = row.driver_id ?? row.driverId ?? null;
+    ride.riderId =
+      row.rider_id?.toString?.() ?? row.riderId?.toString?.() ?? ride.riderId;
+    ride.driverId =
+      row.driver_id?.toString?.() ?? row.driverId?.toString?.() ?? null;
 
     if (row.pickup_lon !== undefined && row.pickup_lon !== null) {
       ride.pickupLongitude = Number(row.pickup_lon);
