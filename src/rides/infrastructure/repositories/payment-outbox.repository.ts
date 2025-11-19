@@ -54,7 +54,7 @@ export class PaymentOutboxRepository {
           created_at,
           updated_at
         ) VALUES (
-          $1::uuid,
+          $1::bigint,
           $2::bigint,
           $3::bigint,
           $4,

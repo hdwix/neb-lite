@@ -173,7 +173,10 @@ export class RidesManagementService {
     } catch (error) {
       await this.rideQueue.remove(routeJobId).catch(() => undefined);
 
-      if (error instanceof BadRequestException) {
+      if (
+        error instanceof BadRequestException ||
+        error.message === 'unable to find driver, try again later'
+      ) {
         throw error;
       }
 
