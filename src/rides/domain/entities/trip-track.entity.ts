@@ -13,13 +13,12 @@ export class TripTrack {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;
 
-  @Column({ name: 'ride_id', type: 'varchar', length: 64 })
+  @Column({ name: 'ride_id', type: 'bigint' })
   rideId!: string;
 
   @Column({
     name: 'client_id',
-    type: 'varchar',
-    length: 64,
+    type: 'bigint',
   })
   clientId!: string;
 
