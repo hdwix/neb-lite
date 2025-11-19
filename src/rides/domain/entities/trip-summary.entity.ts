@@ -21,10 +21,10 @@ export class TripSummary {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;
 
-  @Column({ name: 'ride_id', type: 'varchar', length: 64 })
+  @Column({ name: 'ride_id', type: 'bigint' })
   rideId!: string;
 
-  @Column({ name: 'client_id', type: 'varchar', length: 64 })
+  @Column({ name: 'client_id', type: 'bigint' })
   clientId!: string;
 
   @Column({
