@@ -34,8 +34,9 @@ export class DriverProfile {
 
   @Column({
     name: 'status',
-    type: 'varchar',
-    length: 10,
+    type: 'enum',
+    enum: EClientStatus,
+    enumName: 'client_status',
     default: EClientStatus.ACTIVE,
   })
   status!: EClientStatus;

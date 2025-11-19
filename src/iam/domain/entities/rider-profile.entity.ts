@@ -25,7 +25,12 @@ export class RiderProfile {
   @Column({ type: 'enum', enum: EClientType, default: EClientType.RIDER })
   role!: EClientType;
 
-  @Column({ type: 'varchar', length: 10, default: EClientStatus.ACTIVE })
+  @Column({
+    type: 'enum',
+    enum: EClientStatus,
+    enumName: 'client_status',
+    default: EClientStatus.ACTIVE,
+  })
   status!: EClientStatus;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })

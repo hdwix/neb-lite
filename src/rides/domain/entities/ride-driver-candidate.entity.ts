@@ -23,8 +23,9 @@ export class RideDriverCandidate {
 
   @Column({
     name: 'status',
-    type: 'varchar',
-    length: 32,
+    type: 'enum',
+    enum: ERideDriverCandidateStatus,
+    enumName: 'ride_driver_candidate_status',
     default: ERideDriverCandidateStatus.INVITED,
   })
   status!: ERideDriverCandidateStatus;
