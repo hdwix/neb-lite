@@ -41,9 +41,7 @@ import { CompleteRideDto } from '../../../rides/app/dto/complete-ride.dto';
 import { PaymentNotificationDto } from '../../../rides/app/dto/payment-notification.dto';
 import { toParticipantLocation } from '../../../rides/app/dto/trip-location.dto';
 import { Ride } from '../../../rides/domain/entities/ride.entity';
-import {
-  NotificationStreamAdapter,
-} from '../services/notification-stream.adapter';
+import { NotificationStreamAdapter } from '../services/notification-stream.adapter';
 import {
   NotificationTarget,
   OTP_SIMULATION_TARGET,
@@ -152,6 +150,7 @@ export class GatewayController {
     @Body() verifyOtpDto: VerifyOtpDto,
     @Res({ passthrough: true }) response: Response,
   ) {
+    console.log(verifyOtpDto);
     const token = await this.authService.verifyOtp(verifyOtpDto);
     response.cookie('accesstoken', token.accessToken, {
       secure: true,

@@ -11,8 +11,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 export class DriverProfileRepository {
   private readonly logger = new Logger(DriverProfileRepository.name);
 
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {
-  }
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   private getExecutor(manager?: EntityManager) {
     return manager ?? this.dataSource;
@@ -83,7 +82,7 @@ export class DriverProfileRepository {
     return await executor.query(findClientQuery, [msisdn]);
   }
 
-  async findDriverbyId(id: number) {
+  async findDriverbyId(id: string) {
     const findClientByIdQuery = `
       SELECT id, msisdn, role FROM driver_profile
       WHERE id=$1 AND status='ACTIVE'

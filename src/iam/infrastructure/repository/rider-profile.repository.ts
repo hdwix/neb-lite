@@ -11,8 +11,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 export class RiderProfileRepository {
   private readonly logger = new Logger(RiderProfileRepository.name);
 
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {
-  }
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   private getExecutor(manager?: EntityManager) {
     return manager ?? this.dataSource;
@@ -40,7 +39,9 @@ export class RiderProfileRepository {
         const [rider] = await manager.query(insertQuery, [msisdn, name]);
 
         if (!rider) {
-          throw new InternalServerErrorException('Failed to create rider profile');
+          throw new InternalServerErrorException(
+            'Failed to create rider profile',
+          );
         }
 
         return rider;
@@ -71,7 +72,8 @@ export class RiderProfileRepository {
     return await executor.query(findClientQuery, [phone]);
   }
 
-  async findRiderbyId(id: number) {
+  async findRiderbyId(id: string) {
+    console.log(id);
     const findClientByIdQuery = `
       SELECT id, msisdn, role FROM rider_profile
       WHERE id=$1 AND status='ACTIVE'

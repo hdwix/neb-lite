@@ -48,16 +48,18 @@ export class AuthenticationService {
     private readonly notificationPublisher: NotificationPublisher,
   ) {}
   async getOtp(getOtpDto: GetOtpDto) {
-    const cachedKey = this.getOtpCachedKey(getOtpDto.msisdn);
+    console.log('getOtpDto : ');
+    console.log(getOtpDto);
     const client = await this.getClientData(
-      getOtpDto.msisdn,
+      getOtpDto.clientId,
       getOtpDto.clientType,
     );
+    const cachedKey = this.getOtpCachedKey(client[0]?.msisdn);
     if (!client || client.length === 0) {
       this.logger.error('Unauthorized: client not found');
       throw new BadRequestException('Client not found');
     }
-    const jobId = `send-otp-${getOtpDto.msisdn}-${getOtpDto.clientType}`;
+    const jobId = `send-otp-${client[0]?.msisdn}-${getOtpDto.clientType}`;
     const otpCode = this.generateOtp();
     const hashedCode = await this.hashingService.hash(otpCode);
 
@@ -65,7 +67,7 @@ export class AuthenticationService {
     await this.cacheManager.set(cachedKey, hashedCode, otpTtl);
 
     await this.emitOtpSimulationEvent(
-      getOtpDto.msisdn,
+      client[0]?.msisdn,
       getOtpDto.clientType,
       otpCode,
     );
@@ -78,7 +80,7 @@ export class AuthenticationService {
     await this.sendOtpQueue.add(
       ESendOtpQueueJob.SendOtpJob,
       {
-        msisdn: getOtpDto.msisdn,
+        msisdn: client[0]?.msisdn,
         otp: otpCode,
       },
       {
@@ -92,7 +94,7 @@ export class AuthenticationService {
 
   async verifyOtp(verifyOtpDto: VerifyOtpDto) {
     const client = await this.getClientData(
-      verifyOtpDto.msisdn,
+      verifyOtpDto.clientId,
       verifyOtpDto.clientType,
     );
     if (!client || client.length === 0) {
@@ -100,7 +102,7 @@ export class AuthenticationService {
       throw new BadRequestException('Client not found');
     }
 
-    const cachedKey = this.getOtpCachedKey(verifyOtpDto.msisdn);
+    const cachedKey = this.getOtpCachedKey(client[0]?.msisdn);
     const cachedHashedOtpCode = await this.cacheManager.get<string>(cachedKey);
     if (!cachedHashedOtpCode) {
       this.logger.error(`Otp code not found`);
@@ -129,6 +131,8 @@ export class AuthenticationService {
         refreshTokenId,
       );
 
+      console.log(client);
+      console.log(refreshTokenId);
       if (isValidRefreshToken) {
         return this.generateTokens(client[0]);
       } else {
@@ -149,8 +153,8 @@ export class AuthenticationService {
     return `otp:${phone}`;
   }
 
-  private getRefreshTokenCacheKey(phone) {
-    return `refresh-token:${phone}`;
+  private getRefreshTokenCacheKey(role: string, clientId: string) {
+    return `refresh-token:${role}:${clientId}`;
   }
 
   private async emitOtpSimulationEvent(
@@ -176,8 +180,8 @@ export class AuthenticationService {
     }
   }
 
-  getAccessTokenKey(phone: any) {
-    return `access-token:${phone}`;
+  getAccessTokenKey(role: string, clientId: string) {
+    return `access-token:${role}:${clientId}`;
   }
 
   async generateTokens(client: any) {
@@ -188,18 +192,19 @@ export class AuthenticationService {
       this.signToken(client.id, this.jwtConfiguration.accessTokenTtl, {
         accessTokenId,
         role: client.role,
-        msisdn: client.msisdn,
+        // msisdn: client.msisdn,
       }),
       this.signToken(client.id, this.jwtConfiguration.refreshTokenTtl, {
         refreshTokenId,
         role: client.role,
-        msisdn: client.msisdn,
+        // msisdn: client.msisdn,
       }),
     ]);
     const getCachedRefreshTokenKey = this.getRefreshTokenCacheKey(
-      client.msisdn,
+      client.role,
+      client.id,
     );
-    const getAccessTokenKey = this.getAccessTokenKey(client.msisdn);
+    const getAccessTokenKey = this.getAccessTokenKey(client.role, client.id);
     await Promise.all([
       this.cacheManager.set(
         getCachedRefreshTokenKey,
@@ -240,7 +245,10 @@ export class AuthenticationService {
       refreshTokenId,
     );
     if (isValidRefreshToken) {
-      const getAccessTokenKey = this.getAccessTokenKey(client[0].msisdn);
+      const getAccessTokenKey = this.getAccessTokenKey(
+        client[0].role,
+        client[0].id,
+      );
       await this.cacheManager.del(getAccessTokenKey);
       return 'successfully logout';
     } else {
@@ -251,7 +259,8 @@ export class AuthenticationService {
 
   private async validateRefreshToken(client: any, refreshTokenId: string) {
     const cachedRefreshTokenKey = this.getRefreshTokenCacheKey(
-      client[0].msisdn,
+      client[0].role,
+      client[0].id,
     );
     const refreshTokenIdFromCache = await this.cacheManager.get(
       cachedRefreshTokenKey,
@@ -271,17 +280,22 @@ export class AuthenticationService {
       await this.jwtService.verifyAsync(refreshTokenDto.refreshToken, {
         secret: this.jwtConfiguration.secret,
       });
-    const client = await this.getClientData(msisdn, role);
+    const client = await this.getClientData(sub, role);
 
     return { client, refreshTokenId };
   }
 
-  private async getClientData(msisdn: string, clientType: EClientType) {
-    console;
-    if (clientType === EClientType.RIDER) {
-      return await this.riderProfileRepo.findRiderByPhone(msisdn);
-    } else {
-      return await this.driverProfileRepo.findDriverByPhone(msisdn);
+  private async getClientData(clientId: string, clientType: EClientType) {
+    const client =
+      clientType === EClientType.RIDER
+        ? await this.riderProfileRepo.findRiderbyId(clientId)
+        : await this.driverProfileRepo.findDriverbyId(clientId);
+    if (!client || client.length === 0) {
+      throw new BadRequestException('client data not found');
     }
+
+    console.log(`clientId : `, clientId);
+    console.log(client);
+    return client;
   }
 }
