@@ -22,17 +22,9 @@ import axios from 'axios';
           sslConfig = {
             ca: caResponse.data,
           };
-          console.log('==== ca response==');
-          console.log(caResponse.data);
-          console.log(`username from secret: `);
-          console.log(configService.get<string>('POSTGRES_USER'));
-          console.log(`passwd from secret: `);
-          console.log(configService.get<string>('POSTGRES_PASSWORD'));
         } else {
           sslConfig = false;
         }
-        console.log('ssl config :');
-        console.log(sslConfig);
 
         return {
           type: 'postgres',

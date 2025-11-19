@@ -25,7 +25,10 @@ interface NotificationEnvelope {
 
 @Injectable()
 export class NotificationStreamAdapter
-  implements NotificationPublisher, NotificationStreamSubscriber, OnModuleDestroy
+  implements
+    NotificationPublisher,
+    NotificationStreamSubscriber,
+    OnModuleDestroy
 {
   private readonly logger = new Logger(NotificationStreamAdapter.name);
   private readonly channels = new Map<string, Set<Subject<MessageEvent>>>();
@@ -171,7 +174,8 @@ export class NotificationStreamAdapter
   private cleanupRedisSubscription(channelKey: string): void {
     const redisChannel = this.getRedisChannel(channelKey);
 
-    const pendingSubscription = this.redisSubscriptionPromises.get(redisChannel);
+    const pendingSubscription =
+      this.redisSubscriptionPromises.get(redisChannel);
 
     if (pendingSubscription) {
       pendingSubscription
@@ -185,7 +189,7 @@ export class NotificationStreamAdapter
           this.cleanupRedisSubscription(channelKey);
         })
         .catch(() => {
-          // Error already logged in ensureRedisSubscription.
+          this.logger.error('Error already logged in ensureRedisSubscription');
         });
       return;
     }
@@ -247,7 +251,8 @@ export class NotificationStreamAdapter
 
   private async waitForRedisSubscription(channelKey: string): Promise<void> {
     const redisChannel = this.getRedisChannel(channelKey);
-    const pendingSubscription = this.redisSubscriptionPromises.get(redisChannel);
+    const pendingSubscription =
+      this.redisSubscriptionPromises.get(redisChannel);
 
     if (!pendingSubscription) {
       return;

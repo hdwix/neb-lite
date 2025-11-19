@@ -39,16 +39,11 @@ export class GeolocationRepository implements OnModuleDestroy {
     );
 
     const defaultTtlSeconds = 300;
-    const configuredTtl = this.configService.get(
-      'DRIVER_LOCATION_TTL_SECONDS',
-    );
+    const configuredTtl = this.configService.get('DRIVER_LOCATION_TTL_SECONDS');
     const parsedTtl = Number(configuredTtl);
 
     if (Number.isFinite(parsedTtl) && parsedTtl > 0) {
-      this.driverLocationTtlSeconds = Math.max(
-        180,
-        Math.floor(parsedTtl),
-      );
+      this.driverLocationTtlSeconds = Math.max(180, Math.floor(parsedTtl));
     } else {
       this.driverLocationTtlSeconds = defaultTtlSeconds;
     }
@@ -193,61 +188,6 @@ export class GeolocationRepository implements OnModuleDestroy {
       .filter((result): result is GeospatialQueryResult => result !== null);
   }
 
-  // async calculateDistanceKm(
-  //   origin: Pick<DriverLocationInput, 'longitude' | 'latitude'>,
-  //   destination: Pick<DriverLocationInput, 'longitude' | 'latitude'>,
-  // ): Promise<number | null> {
-  //   const key = `${this.temporaryDistanceKeyPrefix}:${randomUUID()}`;
-
-  //   try {
-  //     const result = (await this.redis.eval(
-  //       `
-  //         local key = KEYS[1]
-  //         local originMember = ARGV[1]
-  //         local originLon = tonumber(ARGV[2])
-  //         local originLat = tonumber(ARGV[3])
-  //         local destinationMember = ARGV[4]
-  //         local destinationLon = tonumber(ARGV[5])
-  //         local destinationLat = tonumber(ARGV[6])
-  //         local unit = ARGV[7]
-
-  //         if not originLon or not originLat or not destinationLon or not destinationLat then
-  //           return nil
-  //         end
-
-  //         redis.call('DEL', key)
-  //         redis.call('GEOADD', key, originLon, originLat, originMember)
-  //         redis.call('GEOADD', key, destinationLon, destinationLat, destinationMember)
-  //         local distance = redis.call('GEODIST', key, originMember, destinationMember, unit)
-  //         redis.call('DEL', key)
-
-  //         return distance
-  //       `,
-  //       1,
-  //       key,
-  //       'origin',
-  //       origin.longitude.toString(),
-  //       origin.latitude.toString(),
-  //       'destination',
-  //       destination.longitude.toString(),
-  //       destination.latitude.toString(),
-  //       'km',
-  //     )) as number | string | null;
-
-  //     if (result === null) {
-  //       return null;
-  //     }
-
-  //     const distance = Number(result);
-  //     return Number.isFinite(distance) ? distance : null;
-  //   } catch (error) {
-  //     this.logger.warn(
-  //       `Failed to calculate distance via Redis GEO operations: ${error}`,
-  //     );
-  //     return null;
-  //   }
-  // }
-
   private mapGeoradiusEntry(
     entry: unknown,
     metadataMap: Map<string, GeospatialQueryResult['metadata']>,
@@ -288,28 +228,6 @@ export class GeolocationRepository implements OnModuleDestroy {
       metadata: metadataMap.get(driverIdRaw),
     };
   }
-
-  //   private async getDriverMetadata(
-  //     driverId: string,
-  //   ): Promise<DriverLocationEntry | null> {
-  //     const metadataValue = await this.redis.hget(
-  //       this.driverMetadataKey,
-  //       driverId,
-  //     );
-
-  //     if (!metadataValue) {
-  //       return null;
-  //     }
-
-  //     try {
-  //       return JSON.parse(metadataValue) as DriverLocationEntry;
-  //     } catch (error) {
-  //       this.logger.warn(
-  //         `Unable to parse metadata for driver ${driverId}: ${error}`,
-  //       );
-  //       return null;
-  //     }
-  //   }
 }
 
 export type { GeospatialQueryResult };

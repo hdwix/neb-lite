@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RideRepository } from '../../infrastructure/repositories/ride.repository';
 import { Ride } from '../entities/ride.entity';
@@ -64,10 +68,7 @@ export class RidesTrackingService {
       throw new BadRequestException('Completed ride cannot be started');
     }
 
-    const allowedStatuses = [
-      ERideStatus.ENROUTE,
-      ERideStatus.TRIP_STARTED,
-    ];
+    const allowedStatuses = [ERideStatus.ENROUTE, ERideStatus.TRIP_STARTED];
 
     if (!allowedStatuses.includes(ride.status)) {
       throw new BadRequestException('Ride is not ready to start');
@@ -225,24 +226,26 @@ export class RidesTrackingService {
       latitude: ride.dropoffLatitude,
     };
 
-    await this.ensureLocationWithinRadius(
-      input.driverLocation,
-      dropoffPoint,
-      this.tripCompletionProximityMeters,
-      'Driver must arrive at the destination to complete the ride.',
-    );
-    await this.ensureLocationWithinRadius(
-      riderLocation,
-      dropoffPoint,
-      this.tripCompletionProximityMeters,
-      'Rider location does not match destination.',
-    );
-    await this.ensureParticipantsAreNearby(
-      input.driverLocation,
-      riderLocation,
-      this.tripCompletionProximityMeters,
-      'Driver and rider must be at the destination together to complete the ride.',
-    );
+    await Promise.all([
+      this.ensureLocationWithinRadius(
+        input.driverLocation,
+        dropoffPoint,
+        this.tripCompletionProximityMeters,
+        'Driver must arrive at the destination to complete the ride.',
+      ),
+      this.ensureLocationWithinRadius(
+        riderLocation,
+        dropoffPoint,
+        this.tripCompletionProximityMeters,
+        'Rider location does not match destination.',
+      ),
+      this.ensureParticipantsAreNearby(
+        input.driverLocation,
+        riderLocation,
+        this.tripCompletionProximityMeters,
+        'Driver and rider must be at the destination together to complete the ride.',
+      ),
+    ]);
 
     if (ride.driverId) {
       await this.tripTrackingService.recordLocation(

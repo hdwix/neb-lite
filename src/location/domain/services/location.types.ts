@@ -34,7 +34,6 @@ export const MaintenanceJob = {
 export type MaintenanceJobName =
   (typeof MaintenanceJob)[keyof typeof MaintenanceJob];
 
-// tune these to your needs
 export const THRESHOLD_DRIVER_IDLE_MS = 5 * 60 * 1000; // 5 minutes idle threshold
 export const JOB_CLEANUP_IDLE_LOC_EVERY_MS = 60_000; // run every 60s
 export const CLEANUP_DRIVER_IDLE_LOC_BATCH = 1000; // remove in chunks

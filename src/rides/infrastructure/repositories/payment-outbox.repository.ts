@@ -35,7 +35,6 @@ export class PaymentOutboxRepository {
     if (!outbox.id) {
       throw new Error('Outbox id is required for updates');
     }
-    console.log('save to outbox');
 
     const rows = await this.dataSource.query(
       `

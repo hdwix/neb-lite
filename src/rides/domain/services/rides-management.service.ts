@@ -122,9 +122,6 @@ export class RidesManagementService {
       }
 
       const candidateInputs = this.buildDriverCandidateInputs(nearbyDrivers);
-      // if (candidateInputs.length === 0) {
-      //   throw new BadRequestException('unable to find driver');
-      // }
 
       const { ride: createdRide, candidates } =
         await this.rideRepository.createRideWithDetails({
@@ -146,17 +143,6 @@ export class RidesManagementService {
           historyEntries: this.buildInitialHistoryEntries(nearbyDrivers.length),
         });
 
-      // const rideDriverCandidate: RideDriverCandidate = nearbyDrivers.map(
-      //   (driver) => {
-      //     const driverCandidate = new RideDriverCandidate();
-      //     ((driverCandidate.driverId = driver.driverId),
-      //       (driverCandidate.distanceMeters = driver.distanceMeters));
-
-      //     return driverCandidate;
-      //   },
-      // );
-      console.log(' candidates from service : ');
-      console.log(candidates);
       await Promise.all(
         candidates.map((candidate) =>
           this.notificationService.notifyRideOffered(

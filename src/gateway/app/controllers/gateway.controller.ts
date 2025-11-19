@@ -150,7 +150,6 @@ export class GatewayController {
     @Body() verifyOtpDto: VerifyOtpDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    console.log(verifyOtpDto);
     const token = await this.authService.verifyOtp(verifyOtpDto);
     response.cookie('accesstoken', token.accessToken, {
       secure: true,
@@ -439,7 +438,6 @@ export class GatewayController {
     @Param('id') rideId: string,
     @Body() startRideDto: StartRideDto,
   ) {
-    console.log('from controller: ride start');
     const client = this.getAuthenticatedClient(request);
     const ride = await this.ridesTrackingService.startRide(
       rideId,
@@ -538,10 +536,6 @@ export class GatewayController {
     @Req() request: Request,
     @Body() payload: PaymentNotificationDto,
   ) {
-    console.log('processing notification from 3rd party payment servie ...');
-    console.log(`request headers : `);
-    console.log(request.headers);
-
     await this.ridesPaymentService.handlePaymentNotification(
       payload,
       this.extractClientIp(request),
@@ -566,10 +560,6 @@ export class GatewayController {
 
   private extractClientIp(request: Request): string {
     const remoteAddress = request.socket?.remoteAddress;
-    console.log(' remoteAddress :');
-    console.log(remoteAddress);
-    console.log('X-Forwarded-For');
-    console.log(request.headers['X-Forwarded-For']);
 
     if (remoteAddress) {
       return remoteAddress;

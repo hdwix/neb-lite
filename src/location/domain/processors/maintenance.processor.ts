@@ -55,7 +55,7 @@ class MaintenanceProcessor extends WorkerHost {
       m.hdel(DRIVER_METADATA_HASH_KEY, ...staleIds);
       await m.exec();
 
-      if (staleIds.length < CLEANUP_DRIVER_IDLE_LOC_BATCH) break; // finished this pass
+      if (staleIds.length < CLEANUP_DRIVER_IDLE_LOC_BATCH) break;
     }
   }
 }

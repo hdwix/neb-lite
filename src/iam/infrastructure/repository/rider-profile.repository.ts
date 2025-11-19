@@ -73,7 +73,6 @@ export class RiderProfileRepository {
   }
 
   async findRiderbyId(id: string) {
-    console.log(id);
     const findClientByIdQuery = `
       SELECT id, msisdn, role FROM rider_profile
       WHERE id=$1 AND status='ACTIVE'

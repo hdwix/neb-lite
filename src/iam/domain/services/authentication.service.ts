@@ -48,8 +48,6 @@ export class AuthenticationService {
     private readonly notificationPublisher: NotificationPublisher,
   ) {}
   async getOtp(getOtpDto: GetOtpDto) {
-    console.log('getOtpDto : ');
-    console.log(getOtpDto);
     const client = await this.getClientData(
       getOtpDto.clientId,
       getOtpDto.clientType,
@@ -131,8 +129,6 @@ export class AuthenticationService {
         refreshTokenId,
       );
 
-      console.log(client);
-      console.log(refreshTokenId);
       if (isValidRefreshToken) {
         return this.generateTokens(client[0]);
       } else {
@@ -192,12 +188,10 @@ export class AuthenticationService {
       this.signToken(client.id, this.jwtConfiguration.accessTokenTtl, {
         accessTokenId,
         role: client.role,
-        // msisdn: client.msisdn,
       }),
       this.signToken(client.id, this.jwtConfiguration.refreshTokenTtl, {
         refreshTokenId,
         role: client.role,
-        // msisdn: client.msisdn,
       }),
     ]);
     const getCachedRefreshTokenKey = this.getRefreshTokenCacheKey(
@@ -294,8 +288,6 @@ export class AuthenticationService {
       throw new BadRequestException('client data not found');
     }
 
-    console.log(`clientId : `, clientId);
-    console.log(client);
     return client;
   }
 }
