@@ -493,7 +493,8 @@ export class RideRepository {
       ride.dropoffLatitude = Number(row.dropoffLatitude);
     }
 
-    ride.status = row.status ?? ride.status;
+    const normalizedStatus = this.normalizeStatus(row.status ?? ride.status);
+    ride.status = normalizedStatus ?? ride.status ?? ERideStatus.REQUESTED;
     ride.fareEstimated =
       row.fare_estimated ?? row.fareEstimated ?? ride.fareEstimated;
     ride.fareFinal = row.fare_final ?? row.fareFinal ?? ride.fareFinal;
@@ -564,5 +565,14 @@ export class RideRepository {
     });
 
     return merged;
+  }
+
+  private normalizeStatus(status: unknown): ERideStatus | null {
+    const normalized = status?.toString?.().toLowerCase?.();
+    const allowed = new Set(Object.values(ERideStatus));
+    if (normalized && allowed.has(normalized as ERideStatus)) {
+      return normalized as ERideStatus;
+    }
+    return null;
   }
 }

@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { ERidePaymentDetailStatus } from '../constants/ride-payment-detail-status.enum';
 
 @Entity('ride_payment_details')
 @Index('ux_ride_payment_details_ride_id', ['rideId'], { unique: true })
@@ -20,8 +21,14 @@ export class RidePaymentDetail {
   @Column({ name: 'provider', type: 'varchar', length: 64 })
   provider!: string;
 
-  @Column({ name: 'status', type: 'varchar', length: 32 })
-  status!: string;
+  @Column({
+    name: 'status',
+    type: 'enum',
+    enum: ERidePaymentDetailStatus,
+    enumName: 'ride_payment_detail_status',
+    default: ERidePaymentDetailStatus.PENDING,
+  })
+  status!: ERidePaymentDetailStatus;
 
   @Column({ name: 'token', type: 'varchar', length: 255, nullable: true })
   token?: string | null;
