@@ -120,7 +120,30 @@ export class RideRepository {
   async findById(id: string): Promise<Ride | null> {
     const rows = await this.dataSource.query(
       `
-        SELECT *
+        SELECT
+          id,
+          rider_id,
+          driver_id,
+          pickup_lon,
+          pickup_lat,
+          dropoff_lon,
+          dropoff_lat,
+          status,
+          fare_estimated,
+          fare_final,
+          discount_percent,
+          discount_amount,
+          app_fee_amount,
+          distance_estimated_km,
+          duration_estimated_seconds,
+          distance_actual_km,
+          payment_url,
+          payment_status,
+          note,
+          cancel_reason,
+          created_at,
+          updated_at,
+          deleted_at
         FROM rides
         WHERE id = $1::bigint
         LIMIT 1;
@@ -138,7 +161,10 @@ export class RideRepository {
   async findUnfinishedRideByRiderId(riderId: string): Promise<Ride | null> {
     const rows = await this.dataSource.query(
       `
-        SELECT *
+        SELECT
+          id,
+          rider_id,
+          status
         FROM rides
         WHERE rider_id = $1::bigint
           AND status NOT IN ($2, $3)
@@ -399,18 +425,20 @@ export class RideRepository {
     candidate.rideId =
       row.ride_id?.toString?.() ?? row.rideId?.toString?.() ?? candidate.rideId;
     candidate.driverId =
-      row.driver_id?.toString?.() ?? row.driverId?.toString?.() ?? candidate.driverId;
+      row.driver_id?.toString?.() ??
+      row.driverId?.toString?.() ??
+      candidate.driverId;
     candidate.status = row.status ?? candidate.status;
     candidate.distanceMeters =
       row.distance_meters !== undefined && row.distance_meters !== null
         ? Number(row.distance_meters)
-        : candidate.distanceMeters ?? null;
+        : (candidate.distanceMeters ?? null);
     candidate.reason = row.reason ?? null;
     candidate.respondedAt = row.responded_at
       ? new Date(row.responded_at)
       : row.respondedAt
         ? new Date(row.respondedAt)
-        : candidate.respondedAt ?? null;
+        : (candidate.respondedAt ?? null);
     candidate.createdAt = row.created_at
       ? new Date(row.created_at)
       : row.createdAt
