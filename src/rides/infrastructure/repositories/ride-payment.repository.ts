@@ -13,8 +13,8 @@ export class RidePaymentRepository {
       `
         SELECT
           id::text AS "id",
-          rider_id AS "riderId",
-          driver_id AS "driverId",
+          rider_id::text AS "riderId",
+          driver_id::text AS "driverId",
           pickup_lon AS "pickupLongitude",
           pickup_lat AS "pickupLatitude",
           dropoff_lon AS "dropoffLongitude",
@@ -74,7 +74,7 @@ export class RidePaymentRepository {
     const rows = await this.dataSource.query(
       `
         SELECT
-          driver_id AS "driverId",
+          driver_id::text AS "driverId",
           status,
           reason,
           distance_meters AS "distanceMeters",

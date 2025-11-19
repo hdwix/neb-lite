@@ -18,7 +18,7 @@ export class RideDriverCandidate {
   @Column({ name: 'ride_id', type: 'bigint' })
   rideId!: string;
 
-  @Column({ name: 'driver_id', type: 'varchar', length: 64 })
+  @Column({ name: 'driver_id', type: 'bigint' })
   driverId!: string;
 
   @Column({

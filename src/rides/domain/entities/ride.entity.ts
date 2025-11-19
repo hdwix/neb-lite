@@ -18,10 +18,10 @@ export class Ride {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: string;
 
-  @Column({ name: 'rider_id', type: 'varchar', length: 64 })
+  @Column({ name: 'rider_id', type: 'bigint' })
   riderId!: string;
 
-  @Column({ name: 'driver_id', type: 'varchar', length: 64, nullable: true })
+  @Column({ name: 'driver_id', type: 'bigint', nullable: true })
   driverId?: string | null;
 
   @Column({ name: 'pickup_lon', type: 'double precision' })
