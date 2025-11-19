@@ -38,8 +38,9 @@ export class Ride {
 
   @Column({
     name: 'status',
-    type: 'varchar',
-    length: 32,
+    type: 'enum',
+    enum: ERideStatus,
+    enumName: 'ride_status',
     default: ERideStatus.REQUESTED,
   })
   status!: ERideStatus;

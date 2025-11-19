@@ -19,6 +19,7 @@ import {
 } from '../constants/payment.constants';
 import { PaymentNotificationDto } from '../../app/dto/payment-notification.dto';
 import { monotonicFactory } from 'ulid';
+import { ERidePaymentDetailStatus } from '../constants/ride-payment-detail-status.enum';
 
 export interface PaymentQueueJobData {
   outboxId: string;
@@ -26,7 +27,7 @@ export interface PaymentQueueJobData {
 
 export interface PaymentJobResult {
   paymentDetailId: string;
-  status: string;
+  status: ERidePaymentDetailStatus;
   token: string | null;
   redirectUrl: string | null;
 }
@@ -66,7 +67,7 @@ export class PaymentService {
       paymentDetail = this.ridePaymentDetailRepository.create({
         rideId: ride.id,
         provider: this.paymentProvider,
-        status: 'pending',
+        status: ERidePaymentDetailStatus.PENDING,
       });
     }
 
@@ -74,7 +75,7 @@ export class PaymentService {
 
     const requestPayload = this.buildPaymentRequestPayload(ride, orderId);
 
-    paymentDetail.status = 'queued';
+    paymentDetail.status = ERidePaymentDetailStatus.QUEUED;
     paymentDetail.orderId = orderId;
     paymentDetail.requestPayload = requestPayload;
     paymentDetail.responsePayload = null;
@@ -184,7 +185,7 @@ export class PaymentService {
       const responsePayload =
         (response?.data as Record<string, unknown>) ?? null;
 
-      paymentDetail.status = 'initiated';
+      paymentDetail.status = ERidePaymentDetailStatus.INITIATED;
       paymentDetail.responsePayload = responsePayload;
       paymentDetail.requestPayload = outbox.requestPayload;
       paymentDetail.orderId = outbox.orderId;
@@ -217,7 +218,7 @@ export class PaymentService {
       outbox.lastError = message;
       await this.paymentOutboxRepository.save(outbox);
 
-      paymentDetail.status = 'failed';
+      paymentDetail.status = ERidePaymentDetailStatus.FAILED;
       paymentDetail.responsePayload = null;
       await this.ridePaymentDetailRepository.save(paymentDetail);
 
@@ -244,7 +245,7 @@ export class PaymentService {
   }> {
     const orderId = payload.order_id ?? ride.id;
 
-    const status = payload.transaction_status?.toLowerCase?.() ?? 'unknown';
+    const status = this.normalizePaymentStatus(payload.transaction_status);
 
     paymentDetail.status = status;
     paymentDetail.orderId = orderId;
@@ -382,35 +383,52 @@ export class PaymentService {
     return !!error && typeof error === 'object' && 'isAxiosError' in error;
   }
 
-  private isSuccessfulPaymentStatus(status: string): boolean {
-    const normalized = status?.toLowerCase?.() ?? '';
-    return ['capture', 'settlement', 'success', 'completed'].includes(
-      normalized,
-    );
+  private normalizePaymentStatus(
+    status: string | null | undefined,
+  ): ERidePaymentDetailStatus {
+    const normalized = status?.toLowerCase?.() ?? ERidePaymentDetailStatus.UNKNOWN;
+    const allowedStatuses = new Set(Object.values(ERidePaymentDetailStatus));
+    if (allowedStatuses.has(normalized as ERidePaymentDetailStatus)) {
+      return normalized as ERidePaymentDetailStatus;
+    }
+    return ERidePaymentDetailStatus.UNKNOWN;
   }
 
-  private isFinalFailureStatus(status: string): boolean {
+  private isSuccessfulPaymentStatus(status: ERidePaymentDetailStatus): boolean {
     const normalized = status?.toLowerCase?.() ?? '';
     return [
-      'deny',
-      'cancel',
-      'cancelled',
-      'expired',
-      'expire',
-      'failure',
-      'failed',
-    ].includes(normalized);
+      ERidePaymentDetailStatus.CAPTURE,
+      ERidePaymentDetailStatus.SETTLEMENT,
+      ERidePaymentDetailStatus.SUCCESS,
+      ERidePaymentDetailStatus.COMPLETED,
+    ].includes(normalized as ERidePaymentDetailStatus);
   }
 
-  private isPendingPaymentStatus(status: string): boolean {
+  private isFinalFailureStatus(status: ERidePaymentDetailStatus): boolean {
     const normalized = status?.toLowerCase?.() ?? '';
-    return ['pending', 'authorize', 'authorized', 'challenge'].includes(
-      normalized,
-    );
+    return [
+      ERidePaymentDetailStatus.DENY,
+      ERidePaymentDetailStatus.CANCEL,
+      ERidePaymentDetailStatus.CANCELLED,
+      ERidePaymentDetailStatus.EXPIRED,
+      ERidePaymentDetailStatus.EXPIRE,
+      ERidePaymentDetailStatus.FAILURE,
+      ERidePaymentDetailStatus.FAILED,
+    ].includes(normalized as ERidePaymentDetailStatus);
+  }
+
+  private isPendingPaymentStatus(status: ERidePaymentDetailStatus): boolean {
+    const normalized = status?.toLowerCase?.() ?? '';
+    return [
+      ERidePaymentDetailStatus.PENDING,
+      ERidePaymentDetailStatus.AUTHORIZE,
+      ERidePaymentDetailStatus.AUTHORIZED,
+      ERidePaymentDetailStatus.CHALLENGE,
+    ].includes(normalized as ERidePaymentDetailStatus);
   }
 
   private buildOutboxUpdateForStatus(
-    status: string,
+    status: ERidePaymentDetailStatus,
     paid: boolean,
   ): {
     status: PaymentOutboxStatus;

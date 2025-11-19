@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
 import { RidePaymentDetail } from '../../domain/entities/ride-payment-detail.entity';
 import { PaymentOutboxStatus } from '../../domain/constants/payment.constants';
+import { ERidePaymentDetailStatus } from '../../domain/constants/ride-payment-detail-status.enum';
 
 @Injectable()
 export class RidePaymentDetailRepository {
@@ -13,7 +14,8 @@ export class RidePaymentDetailRepository {
     detail.id = data.id ?? detail.id;
     detail.rideId = data.rideId ?? detail.rideId;
     detail.provider = data.provider ?? detail.provider;
-    detail.status = data.status ?? detail.status;
+    detail.status =
+      data.status ?? detail.status ?? ERidePaymentDetailStatus.PENDING;
     detail.token = data.token ?? null;
     detail.redirectUrl = data.redirectUrl ?? null;
     detail.orderId = data.orderId ?? null;
@@ -312,7 +314,7 @@ export class RidePaymentDetailRepository {
     detail.id = row.id?.toString();
     detail.rideId = row.ride_id?.toString();
     detail.provider = row.provider;
-    detail.status = row.status;
+    detail.status = this.normalizeStatus(row.status);
     detail.token = row.token ?? null;
     detail.redirectUrl = row.redirect_url ?? null;
     detail.orderId = row.order_id ?? null;
@@ -339,5 +341,14 @@ export class RidePaymentDetailRepository {
     }
 
     return value as Record<string, unknown>;
+  }
+
+  private normalizeStatus(status: unknown): ERidePaymentDetailStatus {
+    const normalized = status?.toString?.().toLowerCase?.();
+    const allowed = new Set(Object.values(ERidePaymentDetailStatus));
+    if (normalized && allowed.has(normalized as ERidePaymentDetailStatus)) {
+      return normalized as ERidePaymentDetailStatus;
+    }
+    return ERidePaymentDetailStatus.UNKNOWN;
   }
 }
