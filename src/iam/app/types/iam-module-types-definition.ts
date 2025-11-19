@@ -1,4 +1,9 @@
+import type { RegisterQueueOptions } from '@nestjs/bullmq';
 import { QueueLimiterOptions } from '../../../rides/domain/constants/route-estimation-limiter.constant';
+
+export type QueueRegistrationOptions = RegisterQueueOptions & {
+  limiter?: QueueLimiterOptions;
+};
 
 export enum ESendOtpQueueJob {
   SendOtpJob = 'neblite-send-otp',

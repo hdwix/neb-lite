@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { RideRepository } from '../../infrastructure/repositories/ride.repository';
 import { Ride } from '../entities/ride.entity';
-import { ERideStatus } from '../../../app/enums/ride-status.enum';
+import { ERideStatus } from '../constants/ride-status.enum';
 import { EClientType } from '../../../app/enums/client-type.enum';
 import {
   TripTrackingService,
@@ -13,7 +13,7 @@ import {
   RidesManagementService,
   RequestingClient,
 } from './rides-management.service';
-import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
+import { ERidePaymentStatus } from '../constants/ride-payment-status.enum';
 import { FareEngineService } from './fare-engine.service';
 
 @Injectable()

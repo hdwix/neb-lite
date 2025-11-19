@@ -5,7 +5,7 @@ import {
   Index,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { ERideStatus } from '../../../app/enums/ride-status.enum';
+import { ERideStatus } from '../constants/ride-status.enum';
 
 @Entity('ride_status_history')
 @Index('ix_ride_status_history_ride', ['rideId'])

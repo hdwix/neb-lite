@@ -24,7 +24,7 @@ import {
   RideHistoryCreationInput,
 } from '../../infrastructure/repositories/ride.repository';
 import { Ride } from '../entities/ride.entity';
-import { ERideStatus } from '../../../app/enums/ride-status.enum';
+import { ERideStatus } from '../constants/ride-status.enum';
 import { RideStatusHistoryRepository } from '../../infrastructure/repositories/ride-status-history.repository';
 import { EClientType } from '../../../app/enums/client-type.enum';
 import { RideNotificationService } from './ride-notification.service';

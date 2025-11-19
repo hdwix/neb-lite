@@ -8,7 +8,7 @@ import {
   DeleteDateColumn,
 } from 'typeorm';
 import { EClientType } from '../../../app/enums/client-type.enum';
-import { EClientStatus } from '../../../app/enums/client-status.enum';
+import { EClientStatus } from '../constants/client-status.enum';
 
 @Entity('rider_profile')
 @Index('ix_rider_profile_msisdn_status', ['msisdn', 'status'])

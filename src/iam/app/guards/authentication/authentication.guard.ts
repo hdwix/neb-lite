@@ -9,7 +9,7 @@ import { Observable } from 'rxjs';
 
 import { AccessTokenGuard } from '../access-token/access-token.guard';
 import { AUTH_TYPE_KEY } from '../../decorators/auth.decorator';
-import { EAuthType } from '../../../../app/enums/auth-type.enum';
+import { EAuthType } from '../../../domain/constants/auth-type.enum';
 
 @Injectable()
 export class AuthenticationGuard implements CanActivate {

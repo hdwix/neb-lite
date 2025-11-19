@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm';
 import { Ride } from '../../domain/entities/ride.entity';
 import { RideDriverCandidate } from '../../domain/entities/ride-driver-candidate.entity';
 import { ERideDriverCandidateStatus } from '../../domain/constants/ride-driver-candidate-status.enum';
-import { ERideStatus } from '../../../app/enums/ride-status.enum';
+import { ERideStatus } from '../../domain/constants/ride-status.enum';
 import { NearbyDriver } from '../../../location/domain/services/location.types';
 
 type RideInsertAttributes = {
