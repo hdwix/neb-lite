@@ -16,15 +16,15 @@ import { DriverProfileRepository } from './infrastructure/repository/driver-prof
 import { RiderProfile } from './domain/entities/rider-profile.entity';
 import { DriverProfile } from './domain/entities/driver-profile.entity';
 import { HttpModule } from '@nestjs/axios';
-import { BullModule, RegisterQueueOptions } from '@nestjs/bullmq';
+import { BullModule } from '@nestjs/bullmq';
 import { QueueLimiterOptions } from '../rides/domain/constants/route-estimation-limiter.constant';
 import {
+  QueueRegistrationOptions,
   SEND_OTP_QUEUE_LIMITER,
   SEND_OTP_QUEUE_NAME,
 } from './app/types/iam-module-types-definition';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
-import { QueueRegistrationOptions } from '../app/global-type/queue-global-types';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 const sendOtpQueueRegistration: QueueRegistrationOptions = {

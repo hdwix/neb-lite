@@ -2,7 +2,7 @@ import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthenticationGuard } from './authentication.guard';
 import { AccessTokenGuard } from '../access-token/access-token.guard';
-import { EAuthType } from '../../../../app/enums/auth-type.enum';
+import { EAuthType } from '../../../domain/constants/auth-type.enum';
 
 describe('AuthenticationGuard', () => {
   const reflector = {

@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm';
 import { Ride } from '../../domain/entities/ride.entity';
 import { RideDriverCandidate } from '../../domain/entities/ride-driver-candidate.entity';
 import { ERideDriverCandidateStatus } from '../../domain/constants/ride-driver-candidate-status.enum';
-import { ERideStatus } from '../../../app/enums/ride-status.enum';
+import { ERideStatus } from '../../domain/constants/ride-status.enum';
 import { NearbyDriver } from '../../../location/domain/services/location.types';
 
 type RideInsertAttributes = {
@@ -493,7 +493,8 @@ export class RideRepository {
       ride.dropoffLatitude = Number(row.dropoffLatitude);
     }
 
-    ride.status = row.status ?? ride.status;
+    const normalizedStatus = this.normalizeStatus(row.status ?? ride.status);
+    ride.status = normalizedStatus ?? ride.status ?? ERideStatus.REQUESTED;
     ride.fareEstimated =
       row.fare_estimated ?? row.fareEstimated ?? ride.fareEstimated;
     ride.fareFinal = row.fare_final ?? row.fareFinal ?? ride.fareFinal;
@@ -564,5 +565,14 @@ export class RideRepository {
     });
 
     return merged;
+  }
+
+  private normalizeStatus(status: unknown): ERideStatus | null {
+    const normalized = status?.toString?.().toLowerCase?.();
+    const allowed = new Set(Object.values(ERideStatus));
+    if (normalized && allowed.has(normalized as ERideStatus)) {
+      return normalized as ERideStatus;
+    }
+    return null;
   }
 }

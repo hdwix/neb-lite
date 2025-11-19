@@ -7,7 +7,7 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
 } from 'typeorm';
-import { EClientStatus } from '../../../app/enums/client-status.enum';
+import { EClientStatus } from '../constants/client-status.enum';
 import { EClientType } from '../../../app/enums/client-type.enum';
 
 @Entity('driver_profile')

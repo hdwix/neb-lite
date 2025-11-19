@@ -10,8 +10,8 @@ import { RidePaymentDetailRepository } from '../../infrastructure/repositories/r
 import { PaymentIpWhitelistRepository } from '../../infrastructure/repositories/payment-ip-whitelist.repository';
 import { PaymentService } from './payment.service';
 import { RideNotificationService } from './ride-notification.service';
-import { ERideStatus } from '../../../app/enums/ride-status.enum';
-import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
+import { ERideStatus } from '../constants/ride-status.enum';
+import { ERidePaymentStatus } from '../constants/ride-payment-status.enum';
 import { Ride } from '../entities/ride.entity';
 import { PaymentNotificationDto } from '../../app/dto/payment-notification.dto';
 import { RideRepository } from '../../infrastructure/repositories/ride.repository';

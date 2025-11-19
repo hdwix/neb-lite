@@ -7,8 +7,8 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { ERideStatus } from '../../../app/enums/ride-status.enum';
-import { ERidePaymentStatus } from '../../../app/enums/ride-payment-status.enum';
+import { ERideStatus } from '../constants/ride-status.enum';
+import { ERidePaymentStatus } from '../constants/ride-payment-status.enum';
 
 @Entity('rides')
 @Index('ix_rides_rider_id', ['riderId'])
@@ -38,8 +38,9 @@ export class Ride {
 
   @Column({
     name: 'status',
-    type: 'varchar',
-    length: 32,
+    type: 'enum',
+    enum: ERideStatus,
+    enumName: 'ride_status',
     default: ERideStatus.REQUESTED,
   })
   status!: ERideStatus;
