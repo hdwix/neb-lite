@@ -15,7 +15,7 @@ import {
 } from '../services/location.types';
 
 @Processor(MAINTENANCE_CLEANUP_IDLE_DRIVERS)
-class MaintenanceProcessor extends WorkerHost {
+export class MaintenanceProcessor extends WorkerHost {
   private readonly logger = new Logger(MaintenanceProcessor.name);
   private readonly redis: Redis;
 

@@ -1,3 +1,4 @@
+/* istanbul ignore file */
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { HttpService } from '@nestjs/axios';

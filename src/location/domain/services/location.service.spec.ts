@@ -1,6 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { LocationService } from './location.service';
-import { getQueueToken } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
   LOCATION_QUEUE_NAME,
@@ -20,6 +18,7 @@ describe('LocationService', () => {
     queue = {
       name: LOCATION_QUEUE_NAME,
       add: jest.fn(),
+      getJob: jest.fn(),
     } as unknown as jest.Mocked<Queue<LocationUpdateJobData>>;
 
     repository = {
@@ -29,25 +28,7 @@ describe('LocationService', () => {
 
     configService = { get: jest.fn() };
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        LocationService,
-        {
-          provide: getQueueToken(LOCATION_QUEUE_NAME),
-          useValue: queue,
-        },
-        {
-          provide: GeolocationRepository,
-          useValue: repository,
-        },
-        {
-          provide: ConfigService,
-          useValue: configService,
-        },
-      ],
-    }).compile();
-
-    service = module.get<LocationService>(LocationService);
+    service = new LocationService(queue, repository, configService as any);
   });
 
   afterEach(() => {
@@ -126,6 +107,7 @@ describe('LocationService', () => {
     const customQueue = {
       name: LOCATION_QUEUE_NAME,
       add: jest.fn(),
+      getJob: jest.fn(),
     } as unknown as jest.Mocked<Queue<LocationUpdateJobData>>;
 
     const customRepository = {
@@ -137,27 +119,13 @@ describe('LocationService', () => {
       get: jest.fn((key: string) =>
         key === 'SEARCH_RADIUS_METERS' ? '4500' : undefined,
       ),
-    };
+    } as any;
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        LocationService,
-        {
-          provide: getQueueToken(LOCATION_QUEUE_NAME),
-          useValue: customQueue,
-        },
-        {
-          provide: GeolocationRepository,
-          useValue: customRepository,
-        },
-        {
-          provide: ConfigService,
-          useValue: customConfig,
-        },
-      ],
-    }).compile();
-
-    const customService = module.get<LocationService>(LocationService);
+    const customService = new LocationService(
+      customQueue,
+      customRepository,
+      customConfig,
+    );
 
     await customService.getNearbyDrivers(1, 1);
 

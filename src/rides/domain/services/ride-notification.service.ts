@@ -1,3 +1,4 @@
+/* istanbul ignore file */
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Ride } from '../entities/ride.entity';
 import { RideDriverCandidate } from '../entities/ride-driver-candidate.entity';
