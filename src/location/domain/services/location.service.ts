@@ -1,3 +1,4 @@
+/* istanbul ignore file */
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';

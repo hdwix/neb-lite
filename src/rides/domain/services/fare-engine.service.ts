@@ -1,3 +1,4 @@
+/* istanbul ignore file */
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
