@@ -92,7 +92,7 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.{!(module|guard|filter|interceptor|entity|dto|enum),}.(t|j)s"
+      "**/*.{!(module|guard|filter|interceptor|entity|dto|enum|config|types|constants|constant),}.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",

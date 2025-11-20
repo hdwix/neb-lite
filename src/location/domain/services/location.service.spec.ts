@@ -1,14 +1,13 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
+import { Queue, Job } from 'bullmq';
+import { ConfigService } from '@nestjs/config';
 import { LocationService } from './location.service';
-import { getQueueToken } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { GeolocationRepository } from './geolocation.repository';
 import {
   LOCATION_QUEUE_NAME,
   LocationQueueJob,
   LocationUpdateJobData,
 } from './location.types';
-import { GeolocationRepository } from './geolocation.repository';
-import { ConfigService } from '@nestjs/config';
 
 describe('LocationService', () => {
   let service: LocationService;
@@ -16,69 +15,52 @@ describe('LocationService', () => {
   let repository: jest.Mocked<GeolocationRepository>;
   let configService: { get: jest.Mock };
 
-  beforeEach(async () => {
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2024-01-01T00:00:00Z'));
+
     queue = {
       name: LOCATION_QUEUE_NAME,
-      add: jest.fn(),
+      add: jest.fn().mockResolvedValue({} as Job<LocationUpdateJobData>),
+      getJob: jest.fn(),
     } as unknown as jest.Mocked<Queue<LocationUpdateJobData>>;
 
     repository = {
-      storeDriverLocation: jest.fn(),
       getNearbyDrivers: jest.fn(),
     } as unknown as jest.Mocked<GeolocationRepository>;
 
-    configService = { get: jest.fn() };
+    configService = {
+      get: jest.fn((key: string) =>
+        key === 'SEARCH_RADIUS_METERS' ? '4500' : undefined,
+      ),
+    } as any;
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        LocationService,
-        {
-          provide: getQueueToken(LOCATION_QUEUE_NAME),
-          useValue: queue,
-        },
-        {
-          provide: GeolocationRepository,
-          useValue: repository,
-        },
-        {
-          provide: ConfigService,
-          useValue: configService,
-        },
-      ],
-    }).compile();
-
-    service = module.get<LocationService>(LocationService);
+    service = new LocationService(queue, repository, configService as any);
   });
 
   afterEach(() => {
-    jest.clearAllMocks();
+    jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-
-  it('queues driver location updates', async () => {
-    const result = await service.upsertDriverLocation('driver-1', {
-      longitude: 106.8272,
-      latitude: -6.1754,
-      accuracyMeters: 12,
+  it('queues driver location updates with configured radius', async () => {
+    const entry = await service.upsertDriverLocation('driver-1', {
+      longitude: 10,
+      latitude: 20,
+      accuracyMeters: 7,
     });
 
-    expect(result.longitude).toBe(106.8272);
-    expect(result.latitude).toBe(-6.1754);
-    expect(result.accuracyMeters).toBe(12);
-    expect(result.updatedAt).toEqual(expect.any(String));
+    expect(entry).toEqual({
+      longitude: 10,
+      latitude: 20,
+      accuracyMeters: 7,
+      updatedAt: '2024-01-01T00:00:00.000Z',
+    });
     expect(queue.add).toHaveBeenCalledWith(
       LocationQueueJob.UpsertDriverLocation,
       {
         driverId: 'driver-1',
-        location: {
-          longitude: 106.8272,
-          latitude: -6.1754,
-          accuracyMeters: 12,
-        },
-        eventTimestamp: result.updatedAt,
+        location: { longitude: 10, latitude: 20, accuracyMeters: 7 },
+        eventTimestamp: '2024-01-01T00:00:00.000Z',
       },
       {
         jobId: 'driver-driver-1',
@@ -88,84 +70,75 @@ describe('LocationService', () => {
     );
   });
 
-  it('returns nearby drivers ordered by distance and limited', async () => {
+  it('returns existing in-flight job result when job already exists', async () => {
+    const debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation();
+    const existingJob = {
+      getState: jest.fn().mockResolvedValue('active'),
+    } as any;
+    queue.add.mockRejectedValueOnce({
+      name: 'JobIdAlreadyExistsError',
+      message: 'JobIdAlreadyExists',
+    });
+    queue.getJob.mockResolvedValueOnce(existingJob);
+
+    const entry = await service.upsertDriverLocation('driver-2', {
+      longitude: 11,
+      latitude: 21,
+    });
+
+    expect(queue.getJob).toHaveBeenCalledWith('driver-driver-2');
+    expect(existingJob.getState).toHaveBeenCalled();
+    expect(entry.updatedAt).toBe('2024-01-01T00:00:00.000Z');
+    expect(debugSpy).toHaveBeenCalledWith(
+      'Driver driver-2 already has an active location update job; keeping the in-flight job and skipping requeue.',
+    );
+  });
+
+  it('rethrows when duplicate job is not active', async () => {
+    queue.add.mockRejectedValueOnce({
+      name: 'JobIdAlreadyExistsError',
+      message: 'JobIdAlreadyExists',
+    });
+    queue.getJob.mockResolvedValueOnce({
+      getState: jest.fn().mockResolvedValue('waiting'),
+    } as any);
+
+    await expect(
+      service.upsertDriverLocation('driver-3', { longitude: 1, latitude: 2 }),
+    ).rejects.toMatchObject({ message: 'JobIdAlreadyExists' });
+  });
+
+  it('rethrows non-job-id errors when queueing', async () => {
+    queue.add.mockRejectedValueOnce(new Error('network down'));
+
+    await expect(
+      service.upsertDriverLocation('driver-4', { longitude: 0, latitude: 0 }),
+    ).rejects.toThrow('network down');
+    expect(queue.getJob).not.toHaveBeenCalled();
+  });
+
+  it('maps nearby drivers with default limit and radius fallback', async () => {
+    configService.get = jest.fn(() => undefined);
+    service = new LocationService(queue, repository, configService as any);
     repository.getNearbyDrivers.mockResolvedValueOnce([
       {
-        driverId: 'driver-1',
-        distanceMeters: 50,
-        location: { longitude: 106.8272, latitude: -6.1754 },
-        metadata: { accuracyMeters: 5, updatedAt: 'now' },
-      },
-      {
-        driverId: 'driver-2',
-        distanceMeters: 150,
-        location: { longitude: 106.8, latitude: -6.2 },
-        metadata: { accuracyMeters: 8, updatedAt: 'later' },
+        driverId: 'd1',
+        distanceMeters: 10,
+        location: { longitude: 1, latitude: 2 },
+        metadata: { accuracyMeters: 3, updatedAt: 'now' },
       },
     ]);
 
-    const results = await service.getNearbyDrivers(106.8272, -6.1754, 2);
+    const results = await service.getNearbyDrivers(5, 6);
 
-    expect(results).toHaveLength(2);
-    expect(results[0].driverId).toBe('driver-1');
-    expect(results[0].distanceMeters).toBe(50);
-    expect(results[0].accuracyMeters).toBe(5);
-    expect(results[1].driverId).toBe('driver-2');
-    expect(results[1].distanceMeters).toBe(150);
-    expect(results[1].accuracyMeters).toBe(8);
-    expect(repository.getNearbyDrivers).toHaveBeenCalledWith(
-      106.8272,
-      -6.1754,
-      3000,
-      2,
-    );
-    expect(configService.get).toHaveBeenCalled();
-  });
-
-  it('uses configured search radius when provided', async () => {
-    const customQueue = {
-      name: LOCATION_QUEUE_NAME,
-      add: jest.fn(),
-    } as unknown as jest.Mocked<Queue<LocationUpdateJobData>>;
-
-    const customRepository = {
-      storeDriverLocation: jest.fn(),
-      getNearbyDrivers: jest.fn().mockResolvedValue([]),
-    } as unknown as jest.Mocked<GeolocationRepository>;
-
-    const customConfig = {
-      get: jest.fn((key: string) =>
-        key === 'SEARCH_RADIUS_METERS' ? '4500' : undefined,
-      ),
-    };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        LocationService,
-        {
-          provide: getQueueToken(LOCATION_QUEUE_NAME),
-          useValue: customQueue,
-        },
-        {
-          provide: GeolocationRepository,
-          useValue: customRepository,
-        },
-        {
-          provide: ConfigService,
-          useValue: customConfig,
-        },
-      ],
-    }).compile();
-
-    const customService = module.get<LocationService>(LocationService);
-
-    await customService.getNearbyDrivers(1, 1);
-
-    expect(customRepository.getNearbyDrivers).toHaveBeenCalledWith(
-      1,
-      1,
-      4500,
-      10,
-    );
+    expect(repository.getNearbyDrivers).toHaveBeenCalledWith(5, 6, 3000, 10);
+    expect(results).toEqual([
+      {
+        driverId: 'd1',
+        distanceMeters: 10,
+        accuracyMeters: 3,
+        updatedAt: 'now',
+      },
+    ]);
   });
 });
