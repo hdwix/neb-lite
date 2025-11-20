@@ -1,9 +1,12 @@
-/* istanbul ignore file */
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { PAYMENT_QUEUE_NAME } from '../constants/payment.constants';
-import { PaymentService, PaymentQueueJobData, PaymentJobResult } from '../services/payment.service';
+import {
+  PaymentService,
+  PaymentQueueJobData,
+  PaymentJobResult,
+} from '../services/payment.service';
 
 @Processor(PAYMENT_QUEUE_NAME)
 export class PaymentProcessor extends WorkerHost {

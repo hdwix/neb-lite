@@ -1,4 +1,3 @@
-/* istanbul ignore file */
 import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
@@ -43,7 +42,9 @@ export class TripTrackingProcessor extends WorkerHost {
       return;
     }
 
-    this.logger.debug(`Processing trip tracking flush-ride job ${job.id} for ${rideId}`);
+    this.logger.debug(
+      `Processing trip tracking flush-ride job ${job.id} for ${rideId}`,
+    );
     await this.tripTrackingService.flushRide(rideId);
   }
 }

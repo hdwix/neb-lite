@@ -1,4 +1,3 @@
-/* istanbul ignore file */
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -193,9 +192,12 @@ export class RideDriverCandidateRepository {
   private mapRowToEntity(row: Record<string, any>): RideDriverCandidate {
     const candidate = new RideDriverCandidate();
     candidate.id = row.id?.toString?.() ?? row.id ?? candidate.id;
-    candidate.rideId = row.ride_id?.toString?.() ?? row.ride_id ?? candidate.rideId;
+    candidate.rideId =
+      row.ride_id?.toString?.() ?? row.ride_id ?? candidate.rideId;
     candidate.driverId =
-      row.driver_id?.toString?.() ?? row.driverId?.toString?.() ?? candidate.driverId;
+      row.driver_id?.toString?.() ??
+      row.driverId?.toString?.() ??
+      candidate.driverId;
     candidate.status = row.status ?? candidate.status;
     candidate.distanceMeters =
       row.distance_meters !== undefined && row.distance_meters !== null
@@ -204,7 +206,7 @@ export class RideDriverCandidateRepository {
     candidate.reason = row.reason ?? null;
     candidate.respondedAt = row.responded_at
       ? new Date(row.responded_at)
-      : candidate.respondedAt ?? null;
+      : (candidate.respondedAt ?? null);
     candidate.createdAt = row.created_at
       ? new Date(row.created_at)
       : candidate.createdAt;

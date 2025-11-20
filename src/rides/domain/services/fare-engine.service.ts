@@ -1,4 +1,3 @@
-/* istanbul ignore file */
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -28,18 +27,34 @@ export class FareEngineService {
     this.fareRatePerKm = this.getNumberConfig('DEFAULT_FARE_RATE_PER_KM', 3000);
     this.appFeePercent = this.getNumberConfig('APP_FEE_PERCENT', 5);
     this.appFeeMinimumAmount = this.getNumberConfig('APP_FEE_MIN_AMOUNT', 3000);
-    this.appFeeMinimumThreshold = this.getNumberConfig('APP_FEE_MIN_THRESHOLD', 10_000);
+    this.appFeeMinimumThreshold = this.getNumberConfig(
+      'APP_FEE_MIN_THRESHOLD',
+      10_000,
+    );
   }
 
-  calculateFare({ distanceKm, discountAmount }: FareCalculationInput): FareCalculationResult {
+  calculateFare({
+    distanceKm,
+    discountAmount,
+  }: FareCalculationInput): FareCalculationResult {
     const roundedDistanceKm = this.roundDistanceKm(distanceKm);
     const baseFare = Math.max(0, roundedDistanceKm * this.fareRatePerKm);
 
-    const normalizedDiscount = this.resolveDiscountAmount(baseFare, discountAmount);
-    const fareAfterDiscount = this.calculateMonetaryAmount(baseFare - normalizedDiscount);
-    const discountPercent = this.calculateDiscountPercent(baseFare, normalizedDiscount);
+    const normalizedDiscount = this.resolveDiscountAmount(
+      baseFare,
+      discountAmount,
+    );
+    const fareAfterDiscount = this.calculateMonetaryAmount(
+      baseFare - normalizedDiscount,
+    );
+    const discountPercent = this.calculateDiscountPercent(
+      baseFare,
+      normalizedDiscount,
+    );
     const appFeeAmount = this.calculateAppFee(fareAfterDiscount);
-    const finalFare = this.calculateMonetaryAmount(fareAfterDiscount + appFeeAmount);
+    const finalFare = this.calculateMonetaryAmount(
+      fareAfterDiscount + appFeeAmount,
+    );
 
     return {
       roundedDistanceKm,
@@ -72,7 +87,10 @@ export class FareEngineService {
     return Math.round(value * 100) / 100;
   }
 
-  private resolveDiscountAmount(baseFare: number, discountAmount?: number): number {
+  private resolveDiscountAmount(
+    baseFare: number,
+    discountAmount?: number,
+  ): number {
     if (!Number.isFinite(baseFare) || baseFare <= 0) {
       return 0;
     }
@@ -98,7 +116,10 @@ export class FareEngineService {
     return this.calculateMonetaryAmount(normalized);
   }
 
-  private calculateDiscountPercent(baseFare: number, discountAmount: number): number {
+  private calculateDiscountPercent(
+    baseFare: number,
+    discountAmount: number,
+  ): number {
     if (!Number.isFinite(baseFare) || baseFare <= 0) {
       return 0;
     }
@@ -121,7 +142,9 @@ export class FareEngineService {
       return this.appFeeMinimumAmount;
     }
 
-    return this.calculateMonetaryAmount((fareAfterDiscount * this.appFeePercent) / 100);
+    return this.calculateMonetaryAmount(
+      (fareAfterDiscount * this.appFeePercent) / 100,
+    );
   }
 
   private roundDistanceKm(distanceKm: number): number {

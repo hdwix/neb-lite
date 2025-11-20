@@ -1,9 +1,11 @@
-/* istanbul ignore file */
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TripTrack } from '../../domain/entities/trip-track.entity';
-import { TripSummaryRepository, TripSummaryUpsert } from './trip-summary.repository';
+import {
+  TripSummaryRepository,
+  TripSummaryUpsert,
+} from './trip-summary.repository';
 
 @Injectable()
 export class TripTrackRepository {

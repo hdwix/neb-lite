@@ -1,4 +1,3 @@
-/* istanbul ignore file */
 import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
@@ -24,7 +23,9 @@ export class RideProcessor extends WorkerHost {
   async process(job: Job<RideQueueJobData>): Promise<unknown> {
     switch (job.name) {
       case RideQueueJob.EstimateRoute:
-        return this.handleRouteEstimation(job.data as RideRouteEstimationJobData);
+        return this.handleRouteEstimation(
+          job.data as RideRouteEstimationJobData,
+        );
       default:
         this.logger.warn(`Received unknown ride job ${job.name}`);
     }

@@ -1,4 +1,3 @@
-/* istanbul ignore file */
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { HttpService } from '@nestjs/axios';
@@ -389,7 +388,8 @@ export class PaymentService {
   private normalizePaymentStatus(
     status: string | null | undefined,
   ): ERidePaymentDetailStatus {
-    const normalized = status?.toLowerCase?.() ?? ERidePaymentDetailStatus.UNKNOWN;
+    const normalized =
+      status?.toLowerCase?.() ?? ERidePaymentDetailStatus.UNKNOWN;
     const allowedStatuses = new Set(Object.values(ERidePaymentDetailStatus));
     if (allowedStatuses.has(normalized as ERidePaymentDetailStatus)) {
       return normalized as ERidePaymentDetailStatus;

@@ -1,4 +1,3 @@
-/* istanbul ignore file */
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
@@ -296,7 +295,9 @@ export class RidePaymentDetailRepository {
         );
 
         if (!outboxRows?.length) {
-          throw new Error('Payment outbox entry not found while updating status');
+          throw new Error(
+            'Payment outbox entry not found while updating status',
+          );
         }
       }
 
@@ -323,8 +324,12 @@ export class RidePaymentDetailRepository {
     detail.requestPayload = this.parseJsonColumn(row.request_payload);
     detail.responsePayload = this.parseJsonColumn(row.response_payload);
     detail.notificationPayload = this.parseJsonColumn(row.notification_payload);
-    detail.createdAt = row.created_at ? new Date(row.created_at) : detail.createdAt;
-    detail.updatedAt = row.updated_at ? new Date(row.updated_at) : detail.updatedAt;
+    detail.createdAt = row.created_at
+      ? new Date(row.created_at)
+      : detail.createdAt;
+    detail.updatedAt = row.updated_at
+      ? new Date(row.updated_at)
+      : detail.updatedAt;
     return detail;
   }
 

@@ -1,4 +1,3 @@
-/* istanbul ignore file */
 import {
   BadRequestException,
   Injectable,
@@ -123,8 +122,15 @@ export class RidesPaymentService {
       throw new NotFoundException('Ride not found');
     }
 
-    const { detail: updatedDetail, paid, outboxUpdate } =
-      await this.paymentService.applyNotification(ride, payload, paymentDetail);
+    const {
+      detail: updatedDetail,
+      paid,
+      outboxUpdate,
+    } = await this.paymentService.applyNotification(
+      ride,
+      payload,
+      paymentDetail,
+    );
 
     if (paid) {
       ride.paymentStatus = ERidePaymentStatus.PAID;
