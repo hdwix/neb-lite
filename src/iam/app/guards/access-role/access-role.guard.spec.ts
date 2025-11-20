@@ -20,17 +20,17 @@ describe('AccessRoleGuard', () => {
     const reflector = { getAllAndOverride: jest.fn(() => undefined) } as unknown as Reflector;
     const guard = new AccessRoleGuard(reflector);
 
-    expect(guard.canActivate(getExecutionContext(EClientType.CUSTOMER))).toBe(true);
+    expect(guard.canActivate(getExecutionContext(EClientType.RIDER))).toBe(true);
     expect(reflector.getAllAndOverride).toHaveBeenCalled();
   });
 
   it('returns true when client role matches one of the required roles', () => {
     const reflector = {
-      getAllAndOverride: jest.fn(() => [EClientType.DRIVER, EClientType.CUSTOMER]),
+      getAllAndOverride: jest.fn(() => [EClientType.DRIVER, EClientType.RIDER]),
     } as unknown as Reflector;
     const guard = new AccessRoleGuard(reflector);
 
-    expect(guard.canActivate(getExecutionContext(EClientType.CUSTOMER))).toBe(true);
+    expect(guard.canActivate(getExecutionContext(EClientType.RIDER))).toBe(true);
   });
 
   it('returns false when client role does not match required roles', () => {
@@ -39,6 +39,6 @@ describe('AccessRoleGuard', () => {
     } as unknown as Reflector;
     const guard = new AccessRoleGuard(reflector);
 
-    expect(guard.canActivate(getExecutionContext(EClientType.CUSTOMER))).toBe(false);
+    expect(guard.canActivate(getExecutionContext(EClientType.RIDER))).toBe(false);
   });
 });
