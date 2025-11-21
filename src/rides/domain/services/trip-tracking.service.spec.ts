@@ -280,6 +280,20 @@ describe('TripTrackingService', () => {
     });
   });
 
+  it('returns parsed state with defaults when values missing', async () => {
+    redis.get.mockResolvedValueOnce(JSON.stringify({}));
+
+    const state = await (service as any).getState('ride-missing');
+
+    expect(state).toEqual({
+      rideId: 'ride-missing',
+      totalDistanceMeters: 0,
+      lastDriverLocation: undefined,
+      lastRiderLocation: undefined,
+      completed: false,
+    });
+  });
+
   it('uses default flush interval when configured value is invalid', () => {
     configService.get.mockReturnValueOnce(-50 as any);
 
@@ -316,6 +330,16 @@ describe('TripTrackingService', () => {
     ).resolves.toBeNull();
   });
 
+  it('returns null when no rider location exists', async () => {
+    jest
+      .spyOn(service as any, 'getState')
+      .mockResolvedValue({ rideId: 'ride-1', totalDistanceMeters: 0 });
+
+    await expect(
+      service.getLatestLocation('ride-1', EClientType.RIDER),
+    ).resolves.toBeNull();
+  });
+
   it('calculates distance via redis pipeline and handles failures', async () => {
     const result = await (service as any).calculateDistanceMeters(0, 0, 1, 1);
     expect(result).toBe(42);
@@ -327,6 +351,19 @@ describe('TripTrackingService', () => {
 
     expect(fallback).toBe(0);
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('returns zero when redis distance result is not finite', async () => {
+    pipeline.exec.mockResolvedValueOnce([
+      [null, 'OK'],
+      [null, 'OK'],
+      [null, 'not-a-number'],
+      [null, 1],
+    ] as any);
+
+    await expect(
+      (service as any).calculateDistanceMeters(0, 0, 1, 1),
+    ).resolves.toBe(0);
   });
 
   it('returns zero distance when pipeline result missing', async () => {
@@ -378,6 +415,23 @@ describe('TripTrackingService', () => {
 
     expect(tripTrackingQueue.removeJobScheduler).not.toHaveBeenCalled();
     expect(tripTrackingQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('updates scheduler when existing job interval is null', async () => {
+    tripTrackingQueue.getJobSchedulers.mockResolvedValue([
+      { name: TripTrackingQueueJob.FlushAll, every: null, key: 'key-null' },
+    ] as any);
+
+    await (service as any).ensureFlushScheduler();
+
+    expect(tripTrackingQueue.removeJobScheduler).toHaveBeenCalledWith(
+      'key-null',
+    );
+    expect(tripTrackingQueue.add).toHaveBeenCalledWith(
+      TripTrackingQueueJob.FlushAll,
+      {},
+      expect.objectContaining({ jobId: 'trip-tracking:flush-all' }),
+    );
   });
 
   it('handles duplicate flush ride jobs gracefully', async () => {
@@ -463,6 +517,55 @@ describe('TripTrackingService', () => {
         }),
       ]),
     );
+  });
+
+  it('persists rider summaries with null distance', async () => {
+    const riderEvent = JSON.stringify({
+      role: EClientType.RIDER,
+      clientId: 'rider-1',
+      longitude: 1,
+      latitude: 1,
+      recordedAt: 'now',
+      distanceDeltaMeters: 0,
+      totalDistanceMeters: 10,
+    });
+
+    redis.lrange.mockResolvedValue([riderEvent]);
+    jest.spyOn(service as any, 'getState').mockResolvedValue({
+      rideId: 'ride-2',
+      totalDistanceMeters: 0,
+    });
+
+    await service.flushRide('ride-2');
+
+    expect(tripTrackRepository.persistFlush).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.arrayContaining([
+        expect.objectContaining({
+          clientRole: EClientType.RIDER,
+          totalDistanceMeters: null,
+        }),
+      ]),
+    );
+  });
+
+  it('uses default interval when config service returns undefined', () => {
+    configService.get.mockReturnValueOnce(undefined as any);
+
+    const svc = new TripTrackingService(
+      new (Redis as any)(),
+      configService as any,
+      tripTrackRepository,
+      tripTrackingQueue as any,
+    ) as any;
+
+    expect(svc.flushIntervalMs).toBe(60_000);
+  });
+
+  it('identifies duplicate job errors using name field', () => {
+    const error = { name: 'JobIdAlreadyExistsError' };
+
+    expect((service as any).isJobIdAlreadyExistsError(error)).toBe(true);
   });
 
   it('identifies duplicate job errors based on message', () => {
