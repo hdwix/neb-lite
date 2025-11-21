@@ -168,13 +168,11 @@ describe('TripTrackingService', () => {
   });
 
   it('marks ride completed and enqueues flush', async () => {
-    jest
-      .spyOn(service as any, 'getState')
-      .mockResolvedValue({
-        rideId: 'ride-1',
-        totalDistanceMeters: 1,
-        completed: false,
-      });
+    jest.spyOn(service as any, 'getState').mockResolvedValue({
+      rideId: 'ride-1',
+      totalDistanceMeters: 1,
+      completed: false,
+    });
     const enqueueSpy = jest
       .spyOn<any, any>(service as any, 'enqueueFlushRideJob')
       .mockResolvedValue(undefined);
@@ -197,6 +195,15 @@ describe('TripTrackingService', () => {
 
     expect(flushRideSpy).toHaveBeenCalledTimes(2);
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('returns early when no active rides exist', async () => {
+    redis.smembers.mockResolvedValue([]);
+    const flushRideSpy = jest.spyOn(service, 'flushRide');
+
+    await service.flushAll();
+
+    expect(flushRideSpy).not.toHaveBeenCalled();
   });
 
   it('cleans up when flushing empty completed ride', async () => {
@@ -252,6 +259,63 @@ describe('TripTrackingService', () => {
     expect(warnSpy).toHaveBeenCalled();
   });
 
+  it('returns parsed state values', async () => {
+    redis.get.mockResolvedValueOnce(
+      JSON.stringify({
+        totalDistanceMeters: 9,
+        lastDriverLocation: { longitude: 1, latitude: 2, recordedAt: 't1' },
+        lastRiderLocation: { longitude: 3, latitude: 4, recordedAt: 't2' },
+        completed: true,
+      }),
+    );
+
+    const state = await (service as any).getState('ride-abc');
+
+    expect(state).toEqual({
+      rideId: 'ride-abc',
+      totalDistanceMeters: 9,
+      lastDriverLocation: expect.objectContaining({ longitude: 1 }),
+      lastRiderLocation: expect.objectContaining({ longitude: 3 }),
+      completed: true,
+    });
+  });
+
+  it('uses default flush interval when configured value is invalid', () => {
+    configService.get.mockReturnValueOnce(-50 as any);
+
+    const svc = new TripTrackingService(
+      new (Redis as any)(),
+      configService as any,
+      tripTrackRepository,
+      tripTrackingQueue as any,
+    ) as any;
+
+    expect(svc.flushIntervalMs).toBe(60_000);
+  });
+
+  it('uses flush interval value defined in env', () => {
+    configService.get.mockReturnValueOnce(100 as any);
+
+    const svc = new TripTrackingService(
+      new (Redis as any)(),
+      configService as any,
+      tripTrackRepository,
+      tripTrackingQueue as any,
+    ) as any;
+
+    expect(svc.flushIntervalMs).toBe(100);
+  });
+
+  it('returns null when no driver location exists', async () => {
+    jest
+      .spyOn(service as any, 'getState')
+      .mockResolvedValue({ rideId: 'ride-1', totalDistanceMeters: 0 });
+
+    await expect(
+      service.getLatestLocation('ride-1', EClientType.DRIVER),
+    ).resolves.toBeNull();
+  });
+
   it('calculates distance via redis pipeline and handles failures', async () => {
     const result = await (service as any).calculateDistanceMeters(0, 0, 1, 1);
     expect(result).toBe(42);
@@ -263,6 +327,31 @@ describe('TripTrackingService', () => {
 
     expect(fallback).toBe(0);
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('returns zero distance when pipeline result missing', async () => {
+    pipeline.exec.mockResolvedValueOnce([
+      [null, 'OK'],
+      [null, 'OK'],
+    ] as any);
+
+    await expect(
+      (service as any).calculateDistanceMeters(0, 0, 1, 1),
+    ).resolves.toBe(0);
+  });
+
+  it('delegates coordinate distance calculation', async () => {
+    const spy = jest
+      .spyOn<any, any>(service as any, 'calculateDistanceMeters')
+      .mockResolvedValue(123);
+
+    const distance = await service.calculateDistanceBetweenCoordinates(
+      { longitude: 1, latitude: 2 },
+      { longitude: 3, latitude: 4 },
+    );
+
+    expect(distance).toBe(123);
+    expect(spy).toHaveBeenCalledWith(1, 2, 3, 4);
   });
 
   it('ensures scheduler is updated when interval changes', async () => {
@@ -308,5 +397,77 @@ describe('TripTrackingService', () => {
     await expect(
       (service as any).enqueueFlushRideJob('ride-1'),
     ).rejects.toThrow('other');
+  });
+
+  it('detects job id errors only for object inputs', () => {
+    expect((service as any).isJobIdAlreadyExistsError(null)).toBe(false);
+  });
+
+  it('parses string distance results from redis', async () => {
+    pipeline.exec.mockResolvedValueOnce([
+      [null, 'OK'],
+      [null, 'OK'],
+      [null, '123.45'],
+      [null, 1],
+    ] as any);
+
+    await expect(
+      (service as any).calculateDistanceMeters(0, 0, 1, 1),
+    ).resolves.toBeCloseTo(123.45);
+  });
+
+  it('skips scheduler creation when existing interval stored as string', async () => {
+    configService.get.mockReturnValueOnce(2000 as any);
+    const svc = new TripTrackingService(
+      new (Redis as any)(),
+      configService as any,
+      tripTrackRepository,
+      tripTrackingQueue as any,
+    ) as any;
+
+    tripTrackingQueue.getJobSchedulers.mockResolvedValue([
+      { name: TripTrackingQueueJob.FlushAll, every: '2000', key: 'key-2' },
+    ] as any);
+
+    await svc.ensureFlushScheduler();
+
+    expect(tripTrackingQueue.removeJobScheduler).not.toHaveBeenCalled();
+    expect(tripTrackingQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('persists summaries with null distance when value is not finite', async () => {
+    const badEvent = JSON.stringify({
+      role: EClientType.DRIVER,
+      clientId: 'driver-1',
+      longitude: 1,
+      latitude: 1,
+      recordedAt: 'now',
+      distanceDeltaMeters: 0,
+      totalDistanceMeters: 'NaN',
+    });
+
+    redis.lrange.mockResolvedValue([badEvent]);
+    jest.spyOn(service as any, 'getState').mockResolvedValue({
+      rideId: 'ride-1',
+      totalDistanceMeters: 0,
+    });
+
+    await service.flushRide('ride-1');
+
+    expect(tripTrackRepository.persistFlush).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.arrayContaining([
+        expect.objectContaining({
+          totalDistanceMeters: null,
+          clientId: 'driver-1',
+        }),
+      ]),
+    );
+  });
+
+  it('identifies duplicate job errors based on message', () => {
+    const error = { message: 'JobIdAlreadyExists: ride-1' };
+
+    expect((service as any).isJobIdAlreadyExistsError(error)).toBe(true);
   });
 });

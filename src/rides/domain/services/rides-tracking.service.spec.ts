@@ -279,6 +279,17 @@ describe('RidesTrackingService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
+    it('rejects missing requester role before recording location', async () => {
+      rideRepository.findById.mockResolvedValue(baseRide);
+
+      await expect(
+        service.recordTripLocation('ride-1', { id: 'client-1' } as any, {
+          longitude: 0,
+          latitude: 0,
+        } as any),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it('records driver and rider locations based on role', async () => {
       rideRepository.findById.mockResolvedValue(baseRide);
 
@@ -403,6 +414,19 @@ describe('RidesTrackingService', () => {
       );
     });
 
+    it('rejects completion when participants are not at dropoff together', async () => {
+      rideRepository.findById.mockResolvedValue(baseRide);
+      tripTrackingService.getLatestLocation.mockResolvedValue(driverLocation);
+      tripTrackingService.calculateDistanceBetweenCoordinates
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(150);
+
+      await expect(
+        service.completeRide('ride-1', requester, { driverLocation }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it('falls back to ride distance when total distance is invalid', async () => {
       const rideWithDistance = {
         ...baseRide,
@@ -523,6 +547,32 @@ describe('RidesTrackingService', () => {
       expect(ride.paymentStatus).toBe(ERidePaymentStatus.PENDING);
       expect(rideRepository.findById).toHaveBeenCalledTimes(2);
     });
+
+    it('resets payment link and marks tracking as completed', async () => {
+      rideRepository.findById
+        .mockResolvedValueOnce({ ...baseRide, paymentUrl: 'existing' })
+        .mockResolvedValueOnce({
+          ...baseRide,
+          paymentStatus: ERidePaymentStatus.PENDING,
+          status: ERideStatus.COMPLETED,
+          paymentUrl: null,
+        });
+      tripTrackingService.getLatestLocation.mockResolvedValue(driverLocation);
+      tripTrackingService.getTotalDistanceMeters.mockResolvedValue(1500);
+      tripTrackingService.calculateDistanceBetweenCoordinates.mockResolvedValue(0);
+      ridesManagementService.transitionRideStatus.mockResolvedValue({
+        ride: { ...baseRide, status: ERideStatus.COMPLETED },
+        changed: true,
+      });
+      rideRepository.updateRide.mockImplementation(async (ride) => ride);
+
+      const ride = await service.completeRide('ride-1', requester, {
+        driverLocation,
+      });
+
+      expect(ride.paymentUrl).toBeNull();
+      expect(tripTrackingService.markRideCompleted).toHaveBeenCalledWith('ride-1');
+    });
   });
 
   describe('proximity helpers', () => {
@@ -554,6 +604,22 @@ describe('RidesTrackingService', () => {
           'too far',
         ),
       ).rejects.toThrow('too far');
+    });
+
+    it('delegates distance calculation to the tracking service', async () => {
+      tripTrackingService.calculateDistanceBetweenCoordinates.mockResolvedValueOnce(
+        12,
+      );
+
+      const distance = await (service as any).calculateDistanceMeters(1, 2, 3, 4);
+
+      expect(distance).toBe(12);
+      expect(
+        tripTrackingService.calculateDistanceBetweenCoordinates,
+      ).toHaveBeenCalledWith(
+        { longitude: 1, latitude: 2 },
+        { longitude: 3, latitude: 4 },
+      );
     });
   });
 

@@ -294,7 +294,7 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
         completed: parsed.completed ?? false,
       };
     } catch (error) {
-      this.logger.error(
+      this.logger.warn(
         `Unable to parse trip tracking state for ride ${rideId}: ${error}`,
       );
       return {
@@ -410,7 +410,7 @@ export class TripTrackingService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (error) {
       if (this.isJobIdAlreadyExistsError(error)) {
-        this.logger.log(
+        this.logger.debug(
           `Flush ride job already queued for ride ${rideId}; skipping duplicate`,
         );
         return;
