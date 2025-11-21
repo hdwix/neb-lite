@@ -127,6 +127,43 @@ describe('RideNotificationService', () => {
         }),
       );
     });
+    it('call dispatchNotification with apropriate data ', async () => {
+      const ride = makeRide();
+      const cand = makeCandidate({
+        distanceMeters: null,
+        respondedAt: null,
+        createdAt: undefined,
+      });
+      const route = makeRoute();
+
+      const spy = jest
+        .spyOn<any, any>(service as any, 'dispatchNotification')
+        .mockResolvedValue(undefined); // stubbed: no real publish
+
+      await service.notifyRideOffered(ride, cand, route);
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith(
+        'driver',
+        'd-1',
+        'ride.offer',
+        ride,
+        'New ride requested near you',
+        {
+          candidate: {
+            driverId: 'd-1',
+            status: ERideDriverCandidateStatus.INVITED,
+            reason: null,
+            distanceMeters: 123,
+            respondedAt: '2025-01-01T00:01:00.000Z',
+            createdAt: '2025-01-01T00:00:30.000Z',
+          },
+          route: { distanceKm: 2.34, durationSeconds: 420 },
+        },
+      );
+
+      // Do NOT assert publisherMock.emit here, since we stubbed dispatchNotification
+    });
   });
 
   //

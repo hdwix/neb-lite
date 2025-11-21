@@ -53,7 +53,7 @@ export class GeolocationRepository implements OnModuleDestroy {
     try {
       await this.redis.quit();
     } catch (error) {
-      this.logger.warn(`Failed to close redis connection: ${error}`);
+      this.logger.error(`Failed to close redis connection: ${error}`);
     }
   }
 
@@ -175,7 +175,7 @@ export class GeolocationRepository implements OnModuleDestroy {
           updatedAt: parsed.updatedAt,
         });
       } catch (error) {
-        this.logger.warn(
+        this.logger.error(
           `Unable to parse metadata for driver ${driverId}: ${error}`,
         );
       }

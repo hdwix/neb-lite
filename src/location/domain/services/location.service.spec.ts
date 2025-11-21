@@ -71,7 +71,7 @@ describe('LocationService', () => {
   });
 
   it('returns existing in-flight job result when job already exists', async () => {
-    const debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation();
+    const debugSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
     const existingJob = {
       getState: jest.fn().mockResolvedValue('active'),
     } as any;
@@ -140,5 +140,72 @@ describe('LocationService', () => {
         updatedAt: 'now',
       },
     ]);
+  });
+
+  it('rethrows when queue.add rejects with a non-object error (string)', async () => {
+    // Force the catch path with a primitive error so the guard runs:
+    // if (!error || typeof error !== 'object') return false;
+    queue.add.mockRejectedValueOnce('oops' as any);
+
+    await expect(
+      service.upsertDriverLocation('driver-5', { longitude: 1, latitude: 1 }),
+    ).rejects.toEqual('oops');
+
+    // Should not try to inspect existing job since it's not a duplicate error
+    expect(queue.getJob).not.toHaveBeenCalled();
+  });
+
+  it('rethrows when queue.add rejects with null error', async () => {
+    // Covers the "!error" branch in the guard
+    queue.add.mockRejectedValueOnce(null as any);
+
+    await expect(
+      service.upsertDriverLocation('driver-6', { longitude: 2, latitude: 2 }),
+    ).rejects.toBeNull();
+
+    expect(queue.getJob).not.toHaveBeenCalled();
+  });
+
+  describe('isJobIdAlreadyExistsError guard for name/message "in" checks', () => {
+    it('returns false when object has no name/message props', () => {
+      // @ts-ignore accessing private for test
+      expect((service as any).isJobIdAlreadyExistsError({})).toBe(false);
+    });
+
+    it('returns true when name === "JobIdAlreadyExistsError"', () => {
+      // @ts-ignore
+      expect(
+        (service as any).isJobIdAlreadyExistsError({
+          name: 'JobIdAlreadyExistsError',
+        }),
+      ).toBe(true);
+    });
+
+    it('returns true when message contains "JobIdAlreadyExists"', () => {
+      // @ts-ignore
+      expect(
+        (service as any).isJobIdAlreadyExistsError({
+          message: '...JobIdAlreadyExists...',
+        }),
+      ).toBe(true);
+    });
+
+    it('coerces non-string name/message via String()', () => {
+      const errWithWeirdName = {
+        name: { toString: () => 'JobIdAlreadyExistsError' },
+      };
+      const errWithWeirdMsg = {
+        message: { toString: () => 'xx JobIdAlreadyExists yy' },
+      };
+
+      // @ts-ignore
+      expect((service as any).isJobIdAlreadyExistsError(errWithWeirdName)).toBe(
+        true,
+      );
+      // @ts-ignore
+      expect((service as any).isJobIdAlreadyExistsError(errWithWeirdMsg)).toBe(
+        true,
+      );
+    });
   });
 });

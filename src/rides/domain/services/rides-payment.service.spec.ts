@@ -265,4 +265,32 @@ describe('RidesPaymentService', () => {
       expect(result.ride).toEqual(baseRide);
     });
   });
+
+  it('rejects when IP is empty', async () => {
+    const payloadBase = { order_id: 'order-1' } as any;
+    const spyMethod = jest.spyOn<any, any>(
+      service as any,
+      'normalizeIpAddresses',
+    );
+    paymentWhitelistRepository.isIpAllowed.mockResolvedValue(false);
+
+    await expect(
+      service.handlePaymentNotification(payloadBase, ''),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(paymentWhitelistRepository.isIpAllowed).toHaveBeenCalledWith([]);
+  });
+
+  it('rejects when IP is empty after trimming', async () => {
+    const payloadBase = { order_id: 'order-1' } as any;
+    const spyMethod = jest.spyOn<any, any>(
+      service as any,
+      'normalizeIpAddresses',
+    );
+    paymentWhitelistRepository.isIpAllowed.mockResolvedValue(false);
+
+    await expect(
+      service.handlePaymentNotification(payloadBase, '  '),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(paymentWhitelistRepository.isIpAllowed).toHaveBeenCalledWith([]);
+  });
 });

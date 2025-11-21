@@ -29,7 +29,9 @@ export class SmsProcessor extends WorkerHost {
     const smsServiceUrl = this.configService.get<string>('SMS_SERVICE_URL');
 
     if (!smsServiceUrl) {
-      this.logger.warn('SMS service URL is not configured, skipping SMS send.');
+      this.logger.error(
+        'SMS service URL is not configured, skipping SMS send.',
+      );
       return;
     }
 

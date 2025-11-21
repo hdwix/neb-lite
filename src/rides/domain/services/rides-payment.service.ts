@@ -35,21 +35,21 @@ export class RidesPaymentService {
   ): Promise<{ ride: Ride; payment: Record<string, unknown> | null }> {
     const ride = await this.ridePaymentRepository.findById(rideId);
     if (!ride) {
-      this.logger.warn(
+      this.logger.error(
         `Proceed payment failed: ride ${rideId} not found for rider ${riderId}`,
       );
       throw new NotFoundException('Ride not found');
     }
 
     if (ride.riderId !== riderId) {
-      this.logger.warn(
+      this.logger.error(
         `Proceed payment unauthorized: rider ${riderId} attempted ride ${rideId} owned by ${ride.riderId}`,
       );
       throw new UnauthorizedException('Ride not available for this rider');
     }
 
     if (ride.status !== ERideStatus.COMPLETED) {
-      this.logger.warn(
+      this.logger.error(
         `Proceed payment rejected: ride ${rideId} status ${ride.status} is not completed`,
       );
       throw new BadRequestException('Ride must be completed before payment');
@@ -90,14 +90,14 @@ export class RidesPaymentService {
     );
 
     if (!allowed) {
-      this.logger.warn(
+      this.logger.error(
         `Payment notification rejected: source IP ${sourceIp} not allowed`,
       );
       throw new UnauthorizedException('Source IP not allowed');
     }
 
     if (!payload.order_id) {
-      this.logger.warn('Payment notification rejected: missing order_id');
+      this.logger.error('Payment notification rejected: missing order_id');
       throw new BadRequestException('order_id is required');
     }
 
@@ -106,7 +106,7 @@ export class RidesPaymentService {
     );
 
     if (!paymentDetail) {
-      this.logger.warn(
+      this.logger.error(
         `Payment notification rejected: payment detail not found for order ${payload.order_id}`,
       );
       throw new NotFoundException(
@@ -116,28 +116,36 @@ export class RidesPaymentService {
 
     const ride = await this.rideRepository.findById(paymentDetail.rideId);
     if (!ride) {
-      this.logger.warn(
+      this.logger.error(
         `Payment notification rejected: ride ${paymentDetail.rideId} not found for order ${payload.order_id}`,
       );
       throw new NotFoundException('Ride not found');
     }
 
-    const { detail: updatedDetail, paid, outboxUpdate } =
-      await this.paymentService.applyNotification(ride, payload, paymentDetail);
+    const {
+      detail: updatedDetail,
+      paid,
+      outboxUpdate,
+    } = await this.paymentService.applyNotification(
+      ride,
+      payload,
+      paymentDetail,
+    );
 
     if (paid) {
       ride.paymentStatus = ERidePaymentStatus.PAID;
       ride.paymentUrl = null;
     }
 
+    const nextStatus = paid ? ERidePaymentStatus.PAID : null;
     const savedDetail =
       await this.ridePaymentDetailRepository.saveDetailWithRideUpdate({
         detail: updatedDetail,
         rideUpdate: paid
           ? {
               rideId: ride.id,
-              paymentStatus: ride.paymentStatus ?? null,
-              paymentUrl: ride.paymentUrl ?? null,
+              paymentStatus: nextStatus,
+              paymentUrl: null,
             }
           : undefined,
         outboxUpdate: outboxUpdate

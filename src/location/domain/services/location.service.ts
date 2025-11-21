@@ -62,7 +62,7 @@ export class LocationService {
         const existingJobState = await existingJob?.getState();
 
         if (existingJobState === 'active') {
-          this.logger.debug(
+          this.logger.log(
             `Driver ${driverId} already has an active location update job; keeping the in-flight job and skipping requeue.`,
           );
           return entry;

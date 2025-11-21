@@ -84,7 +84,7 @@ export class DataEncryptionService {
     try {
       return Buffer.from(value, encoding);
     } catch (error) {
-      this.logger.warn(`Failed to decode encryption key using ${encoding}`);
+      this.logger.error(`Failed to decode encryption key using ${encoding}`);
       return null;
     }
   }

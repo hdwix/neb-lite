@@ -104,7 +104,8 @@ export class RideNotificationService {
     reason?: string,
   ): Promise<void> {
     const driverMessage =
-      `Rider ${ride.riderId} rejected ride ${ride.id}` + (reason ? `: ${reason}` : '');
+      `Rider ${ride.riderId} rejected ride ${ride.id}` +
+      (reason ? `: ${reason}` : '');
     await this.dispatchNotification(
       'driver',
       candidate.driverId,
@@ -232,13 +233,8 @@ export class RideNotificationService {
     ]);
   }
 
-  async notifyRidePaid(
-    ride: Ride,
-    paymentReference?: string,
-  ): Promise<void> {
-    const extras = paymentReference
-      ? { paymentReference }
-      : {};
+  async notifyRidePaid(ride: Ride, paymentReference?: string): Promise<void> {
+    const extras = paymentReference ? { paymentReference } : {};
     const riderMessage = `Payment for ride ${ride.id} confirmed.`;
     if (!ride.driverId) {
       await this.dispatchNotification(
@@ -283,7 +279,9 @@ export class RideNotificationService {
     extraPayload: Record<string, unknown> = {},
   ): Promise<void> {
     if (!targetId) {
-      this.logger.warn(`Skipping notification for ${target} with missing identifier: ${message}`);
+      this.logger.log(
+        `Skipping notification for ${target} with missing identifier: ${message}`,
+      );
       return;
     }
 
@@ -296,7 +294,7 @@ export class RideNotificationService {
     );
 
     if (!delivered) {
-      this.logger.debug(
+      this.logger.log(
         `No active SSE clients for ${target} ${targetId}. Queued notification: ${message}`,
       );
     }
@@ -335,8 +333,10 @@ export class RideNotificationService {
       status: candidate.status,
       reason: candidate.reason ?? null,
       distanceMeters: candidate.distanceMeters ?? null,
-      respondedAt: candidate.respondedAt?.toISOString?.() ?? candidate.respondedAt ?? null,
-      createdAt: candidate.createdAt?.toISOString?.() ?? candidate.createdAt ?? null,
+      respondedAt:
+        candidate.respondedAt?.toISOString?.() ?? candidate.respondedAt ?? null,
+      createdAt:
+        candidate.createdAt?.toISOString?.() ?? candidate.createdAt ?? null,
     };
   }
 }

@@ -25,12 +25,12 @@ export class TripTrackingProcessor extends WorkerHost {
         await this.handleFlushRide(job);
         break;
       default:
-        this.logger.warn(`Received unknown trip tracking job: ${job.name}`);
+        this.logger.log(`Received unknown trip tracking job: ${job.name}`);
     }
   }
 
   private async handleFlushAll(job: Job<TripTrackingJobData>): Promise<void> {
-    this.logger.debug(`Processing trip tracking flush-all job ${job.id}`);
+    this.logger.log(`Processing trip tracking flush-all job ${job.id}`);
     await this.tripTrackingService.flushAll();
   }
 
@@ -38,11 +38,13 @@ export class TripTrackingProcessor extends WorkerHost {
     const rideId = (job.data as { rideId?: string })?.rideId;
 
     if (!rideId) {
-      this.logger.warn('Received flush-ride job without rideId');
+      this.logger.log('Received flush-ride job without rideId');
       return;
     }
 
-    this.logger.debug(`Processing trip tracking flush-ride job ${job.id} for ${rideId}`);
+    this.logger.log(
+      `Processing trip tracking flush-ride job ${job.id} for ${rideId}`,
+    );
     await this.tripTrackingService.flushRide(rideId);
   }
 }

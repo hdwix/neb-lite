@@ -23,16 +23,18 @@ export class RideProcessor extends WorkerHost {
   async process(job: Job<RideQueueJobData>): Promise<unknown> {
     switch (job.name) {
       case RideQueueJob.EstimateRoute:
-        return this.handleRouteEstimation(job.data as RideRouteEstimationJobData);
+        return this.handleRouteEstimation(
+          job.data as RideRouteEstimationJobData,
+        );
       default:
-        this.logger.warn(`Received unknown ride job ${job.name}`);
+        this.logger.log(`Received unknown ride job ${job.name}`);
     }
   }
 
   private async handleRouteEstimation(
     data: RideRouteEstimationJobData,
   ): Promise<RouteEstimates> {
-    this.logger.debug(`Estimating route for ride ${data.rideId}`);
+    this.logger.log(`Estimating route for ride ${data.rideId}`);
 
     return this.ridesManagementService.fetchRouteEstimates(
       data.pickup,

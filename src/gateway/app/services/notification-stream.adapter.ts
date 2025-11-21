@@ -63,7 +63,7 @@ export class NotificationStreamAdapter
     const subject = new Subject<MessageEvent>();
     subscribers.add(subject);
     this.channels.set(channelKey, subscribers);
-    this.logger.debug(
+    this.logger.log(
       `Registered SSE subscriber for ${channelKey}. Active connections: ${subscribers.size}`,
     );
 
@@ -81,7 +81,7 @@ export class NotificationStreamAdapter
           this.channels.delete(channelKey);
           this.cleanupRedisSubscription(channelKey);
         }
-        this.logger.debug(
+        this.logger.log(
           `SSE subscriber disconnected from ${channelKey}. Remaining connections: ${
             channelSubscribers.size ?? 0
           }`,
@@ -113,7 +113,7 @@ export class NotificationStreamAdapter
       );
 
       if (publishedCount === 0) {
-        this.logger.debug(
+        this.logger.log(
           `No active SSE subscribers for ${channelKey}. Dropping ${event} notification.`,
         );
         return false;
@@ -132,13 +132,15 @@ export class NotificationStreamAdapter
     try {
       await this.redisSubscriber.quit();
     } catch (error) {
-      this.logger.warn(`Failed to close redis subscriber connection: ${error}`);
+      this.logger.error(
+        `Failed to close redis subscriber connection: ${error}`,
+      );
     }
 
     try {
       await this.redisPublisher.quit();
     } catch (error) {
-      this.logger.warn(`Failed to close redis publisher connection: ${error}`);
+      this.logger.error(`Failed to close redis publisher connection: ${error}`);
     }
   }
 
@@ -200,7 +202,7 @@ export class NotificationStreamAdapter
 
     this.redisSubscribedChannels.delete(redisChannel);
     this.redisSubscriber.unsubscribe(redisChannel).catch((error) => {
-      this.logger.warn(
+      this.logger.log(
         `Failed to unsubscribe from redis channel ${redisChannel}: ${error}`,
       );
     });
@@ -210,7 +212,7 @@ export class NotificationStreamAdapter
     const channelKey = this.extractChannelKey(channel);
 
     if (!channelKey) {
-      this.logger.warn(`Received message for unknown channel: ${channel}`);
+      this.logger.log(`Received message for unknown channel: ${channel}`);
       return;
     }
 
@@ -219,7 +221,7 @@ export class NotificationStreamAdapter
     try {
       envelope = JSON.parse(rawPayload) as NotificationEnvelope;
     } catch (error) {
-      this.logger.warn(
+      this.logger.error(
         `Failed to parse notification payload from ${channel}: ${error}`,
       );
       return;
@@ -261,7 +263,7 @@ export class NotificationStreamAdapter
     try {
       await pendingSubscription;
     } catch (error) {
-      this.logger.warn(
+      this.logger.error(
         `Redis subscription for ${redisChannel} failed before publishing: ${error}`,
       );
     }

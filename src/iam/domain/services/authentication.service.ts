@@ -170,7 +170,7 @@ export class AuthenticationService {
     );
 
     if (!delivered) {
-      this.logger.debug(
+      this.logger.log(
         `No active OTP simulation subscribers for ${msisdn}. Event dropped.`,
       );
     }

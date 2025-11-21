@@ -607,14 +607,14 @@ export class RidesManagementService {
     }
 
     if (!allowedStatuses.includes(ride.status)) {
-      this.logger.debug(
+      this.logger.log(
         `Skipping status change for ride ${rideId} from ${ride.status} to ${nextStatus}`,
       );
       return { ride, changed: false };
     }
 
     if (ride.status === nextStatus) {
-      this.logger.debug(
+      this.logger.log(
         `Ride ${rideId} already in status ${nextStatus}, skipping transition`,
       );
       return { ride, changed: false };
@@ -1006,7 +1006,7 @@ export class RidesManagementService {
     try {
       await this.rideQueue.remove(this.buildRouteEstimationJobId(rideId));
     } catch (error) {
-      this.logger.warn(
+      this.logger.error(
         `Failed to remove queue job for ride ${rideId}: ${error}`,
       );
     }

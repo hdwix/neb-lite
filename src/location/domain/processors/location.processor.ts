@@ -22,7 +22,7 @@ export class LocationProcessor extends WorkerHost {
         await this.handleUpsertLocation(job);
         break;
       default:
-        this.logger.warn(`Received unknown job: ${job.name}`);
+        this.logger.log(`Received unknown job: ${job.name}`);
     }
   }
 

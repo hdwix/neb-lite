@@ -24,7 +24,7 @@ class RedisClientLifecycle implements OnModuleDestroy {
     try {
       await this.redisClient.quit();
     } catch (error) {
-      this.logger.warn(`Failed to close redis connection: ${error}`);
+      this.logger.error(`Failed to close redis connection: ${error}`);
     }
   }
 }
