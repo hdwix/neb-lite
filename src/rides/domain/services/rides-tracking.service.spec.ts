@@ -141,6 +141,34 @@ describe('RidesTrackingService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('throws when participants are not within required proximity', async () => {
+      rideRepository.findById.mockResolvedValue(baseRide);
+      tripTrackingService.getLatestLocation.mockResolvedValue(driverLocation);
+      tripTrackingService.calculateDistanceBetweenCoordinates
+        .mockResolvedValueOnce(50) // driver not at pickup
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(100); // participants not nearby
+
+      await expect(
+        service.startRide('ride-1', 'driver-1', driverLocation),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      tripTrackingService.calculateDistanceBetweenCoordinates.mockResolvedValueOnce(
+        0,
+      );
+
+      rideRepository.findById.mockResolvedValue(baseRide);
+      tripTrackingService.getLatestLocation.mockResolvedValue(driverLocation);
+      tripTrackingService.calculateDistanceBetweenCoordinates
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(100);
+
+      await expect(
+        service.startRide('ride-1', 'driver-1', driverLocation),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it('starts ride and notifies when transitioned', async () => {
       rideRepository.findById
         .mockResolvedValueOnce(baseRide)
@@ -171,6 +199,29 @@ describe('RidesTrackingService', () => {
       );
       expect(notificationService.notifyRideStarted).toHaveBeenCalled();
       expect(ride.status).toBe(ERideStatus.TRIP_STARTED);
+    });
+
+    it('returns refreshed ride without notifying when status unchanged', async () => {
+      rideRepository.findById
+        .mockResolvedValueOnce(baseRide)
+        .mockResolvedValueOnce(null);
+      tripTrackingService.getLatestLocation.mockResolvedValue(driverLocation);
+      tripTrackingService.calculateDistanceBetweenCoordinates.mockResolvedValue(
+        0,
+      );
+      ridesManagementService.transitionRideStatus.mockResolvedValue({
+        ride: { ...baseRide, status: ERideStatus.TRIP_STARTED },
+        changed: false,
+      });
+
+      const ride = await service.startRide(
+        'ride-1',
+        'driver-1',
+        driverLocation,
+      );
+
+      expect(ride.status).toBe(ERideStatus.TRIP_STARTED);
+      expect(notificationService.notifyRideStarted).not.toHaveBeenCalled();
     });
   });
 
@@ -350,6 +401,180 @@ describe('RidesTrackingService', () => {
         expect.any(Object),
         expect.objectContaining({ finalFare: '10.00' }),
       );
+    });
+
+    it('falls back to ride distance when total distance is invalid', async () => {
+      const rideWithDistance = {
+        ...baseRide,
+        distanceActualKm: 5.5,
+        distanceEstimatedKm: 4,
+      };
+
+      rideRepository.findById
+        .mockResolvedValueOnce(rideWithDistance)
+        .mockResolvedValueOnce({
+          ...rideWithDistance,
+          status: ERideStatus.COMPLETED,
+          paymentStatus: ERidePaymentStatus.PENDING,
+          paymentUrl: null,
+        });
+      tripTrackingService.getLatestLocation.mockResolvedValue(driverLocation);
+      tripTrackingService.getTotalDistanceMeters.mockResolvedValue(Number.NaN);
+      tripTrackingService.calculateDistanceBetweenCoordinates.mockResolvedValue(
+        0,
+      );
+      ridesManagementService.transitionRideStatus.mockResolvedValue({
+        ride: { ...rideWithDistance, status: ERideStatus.COMPLETED },
+        changed: true,
+      });
+      rideRepository.updateRide.mockImplementation(async (ride) => ride);
+
+      await service.completeRide('ride-1', requester, { driverLocation });
+
+      expect(fareEngine.calculateFare).toHaveBeenCalledWith(
+        expect.objectContaining({ distanceKm: 5.5 }),
+      );
+    });
+
+    it('uses estimated distance when actual distance is missing', async () => {
+      const rideWithEstimatedDistance = {
+        ...baseRide,
+        distanceEstimatedKm: 6.2,
+        distanceActualKm: undefined,
+      } as any;
+
+      rideRepository.findById
+        .mockResolvedValueOnce(rideWithEstimatedDistance)
+        .mockResolvedValueOnce({
+          ...rideWithEstimatedDistance,
+          status: ERideStatus.COMPLETED,
+          paymentStatus: ERidePaymentStatus.PENDING,
+          paymentUrl: null,
+        });
+      tripTrackingService.getLatestLocation.mockResolvedValue(driverLocation);
+      tripTrackingService.getTotalDistanceMeters.mockResolvedValue(0);
+      tripTrackingService.calculateDistanceBetweenCoordinates.mockResolvedValue(0);
+      ridesManagementService.transitionRideStatus.mockResolvedValue({
+        ride: { ...rideWithEstimatedDistance, status: ERideStatus.COMPLETED },
+        changed: true,
+      });
+      rideRepository.updateRide.mockImplementation(async (ride) => ride);
+
+      await service.completeRide('ride-1', requester, { driverLocation });
+
+      expect(fareEngine.calculateFare).toHaveBeenCalledWith(
+        expect.objectContaining({ distanceKm: 6.2 }),
+      );
+    });
+
+    it('defaults to zero distance when no ride distances are available', async () => {
+      const rideWithoutDistances = {
+        ...baseRide,
+        distanceEstimatedKm: undefined,
+        distanceActualKm: undefined,
+      } as any;
+
+      rideRepository.findById
+        .mockResolvedValueOnce(rideWithoutDistances)
+        .mockResolvedValueOnce({
+          ...rideWithoutDistances,
+          status: ERideStatus.COMPLETED,
+          paymentStatus: ERidePaymentStatus.PENDING,
+          paymentUrl: null,
+        });
+      tripTrackingService.getLatestLocation.mockResolvedValue(driverLocation);
+      tripTrackingService.getTotalDistanceMeters.mockResolvedValue(-100);
+      tripTrackingService.calculateDistanceBetweenCoordinates.mockResolvedValue(0);
+      ridesManagementService.transitionRideStatus.mockResolvedValue({
+        ride: { ...rideWithoutDistances, status: ERideStatus.COMPLETED },
+        changed: true,
+      });
+      rideRepository.updateRide.mockImplementation(async (ride) => ride);
+
+      await service.completeRide('ride-1', requester, { driverLocation });
+
+      expect(fareEngine.calculateFare).toHaveBeenCalledWith(
+        expect.objectContaining({ distanceKm: 0 }),
+      );
+    });
+
+    it('uses calculated distance and preserves updated ride when refresh missing', async () => {
+      rideRepository.findById
+        .mockResolvedValueOnce(baseRide)
+        .mockResolvedValueOnce(null);
+      tripTrackingService.getLatestLocation.mockResolvedValue(driverLocation);
+      tripTrackingService.getTotalDistanceMeters.mockResolvedValue(3000);
+      tripTrackingService.calculateDistanceBetweenCoordinates.mockResolvedValue(
+        0,
+      );
+      ridesManagementService.transitionRideStatus.mockResolvedValue({
+        ride: { ...baseRide, status: ERideStatus.COMPLETED },
+        changed: true,
+      });
+      rideRepository.updateRide.mockImplementation(async (ride) => ride);
+
+      const ride = await service.completeRide('ride-1', requester, {
+        driverLocation,
+      });
+
+      expect(fareEngine.calculateFare).toHaveBeenCalledWith(
+        expect.objectContaining({ distanceKm: 3 }),
+      );
+      expect(ride.paymentStatus).toBe(ERidePaymentStatus.PENDING);
+      expect(rideRepository.findById).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('proximity helpers', () => {
+    it('throws when a participant is outside the allowed radius', async () => {
+      tripTrackingService.calculateDistanceBetweenCoordinates.mockResolvedValueOnce(
+        100,
+      );
+
+      await expect(
+        (service as any).ensureLocationWithinRadius(
+          driverLocation,
+          { longitude: 0, latitude: 0 },
+          50,
+          'out of range',
+        ),
+      ).rejects.toThrow('out of range');
+    });
+
+    it('throws when two participants are not nearby one another', async () => {
+      tripTrackingService.calculateDistanceBetweenCoordinates.mockResolvedValueOnce(
+        75,
+      );
+
+      await expect(
+        (service as any).ensureParticipantsAreNearby(
+          driverLocation,
+          { ...driverLocation, longitude: 2 },
+          25,
+          'too far',
+        ),
+      ).rejects.toThrow('too far');
+    });
+  });
+
+  describe('configuration parsing', () => {
+    it('parses numeric strings and falls back to default for invalid values', () => {
+      const configGet = jest
+        .fn()
+        .mockReturnValueOnce('25')
+        .mockReturnValueOnce('invalid');
+
+      const configuredService = new RidesTrackingService(
+        rideRepository,
+        tripTrackingService,
+        notificationService,
+        ridesManagementService,
+        fareEngine,
+        { get: configGet } as any,
+      );
+
+      expect((configuredService as any).tripStartProximityMeters).toBe(25);
+      expect((configuredService as any).tripCompletionProximityMeters).toBe(20);
     });
   });
 });

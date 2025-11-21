@@ -132,6 +132,26 @@ describe('RidesPaymentService', () => {
       expect(result.ride).toEqual(refreshed);
       expect(result.payment).toEqual({ formatted: paymentDetail });
     });
+
+    it('falls back to original ride when refreshed ride is missing', async () => {
+      const paymentDetail = { id: 'detail-3' } as any;
+      ridePaymentRepository.findById
+        .mockResolvedValueOnce(baseRide)
+        .mockResolvedValueOnce(null);
+      paymentService.initiatePayment.mockResolvedValue(paymentDetail);
+
+      const result = await service.proceedRidePayment(
+        baseRide.id,
+        baseRide.riderId,
+      );
+
+      expect(ridePaymentRepository.updatePaymentState).toHaveBeenCalledWith(
+        baseRide.id,
+        ERidePaymentStatus.ON_PROCESS,
+        null,
+      );
+      expect(result.ride).toEqual(baseRide);
+    });
   });
 
   describe('handlePaymentNotification', () => {
@@ -262,6 +282,58 @@ describe('RidesPaymentService', () => {
         rideUpdate: undefined,
         outboxUpdate: undefined,
       });
+      expect(result.ride).toEqual(baseRide);
+    });
+
+    it('uses payload order id when notification lacks order and refresh fails', async () => {
+      const paymentDetail = { rideId: baseRide.id, id: 'detail-z' } as any;
+      const updatedDetail = { ...paymentDetail } as any;
+
+      paymentWhitelistRepository.isIpAllowed.mockResolvedValue(true);
+      ridePaymentDetailRepository.findByOrderId.mockResolvedValue(paymentDetail);
+      rideRepository.findById
+        .mockResolvedValueOnce(baseRide)
+        .mockResolvedValueOnce(null);
+      paymentService.applyNotification.mockResolvedValue({
+        detail: updatedDetail,
+        paid: true,
+        outboxUpdate: {
+          status: 'retry',
+          lastError: 'temporary',
+          setProcessedAt: false,
+        },
+      });
+      ridePaymentDetailRepository.saveDetailWithRideUpdate.mockResolvedValue(
+        updatedDetail,
+      );
+
+      const result = await service.handlePaymentNotification(
+        { ...payloadBase, transaction_id: undefined } as any,
+        '2001:db8::1',
+      );
+
+      expect(
+        ridePaymentDetailRepository.saveDetailWithRideUpdate,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rideUpdate: expect.objectContaining({
+            paymentStatus: ERidePaymentStatus.PAID,
+            paymentUrl: null,
+          }),
+          outboxUpdate: {
+            rideId: baseRide.id,
+            paymentDetailId: updatedDetail.id,
+            orderId: payloadBase.order_id,
+            status: 'retry',
+            lastError: 'temporary',
+            setProcessedAt: false,
+          },
+        }),
+      );
+      expect(notificationService.notifyRidePaid).toHaveBeenCalledWith(
+        baseRide,
+        undefined,
+      );
       expect(result.ride).toEqual(baseRide);
     });
   });
