@@ -150,6 +150,35 @@ describe('TripTrackingService', () => {
     expect(redis.rpush).toHaveBeenCalled();
   });
 
+  it('uses prior rider location without computing distance', async () => {
+    jest.spyOn(service as any, 'getState').mockResolvedValue({
+      rideId: 'ride-1',
+      totalDistanceMeters: 20,
+      lastRiderLocation: {
+        longitude: 5,
+        latitude: 6,
+        recordedAt: 'prev',
+      },
+    });
+    const distanceSpy = jest.spyOn(
+      service as any,
+      'calculateDistanceBetweenCoordinates',
+    );
+
+    const result = await service.recordLocation(
+      'ride-1',
+      'rider-2',
+      EClientType.RIDER,
+      { longitude: 7, latitude: 8, recordedAt: 'now' },
+    );
+
+    expect(result).toEqual({
+      totalDistanceMeters: 20,
+      distanceDeltaMeters: 0,
+    });
+    expect(distanceSpy).not.toHaveBeenCalled();
+  });
+
   it('gets latest locations and totals from state', async () => {
     jest.spyOn(service as any, 'getState').mockResolvedValue({
       rideId: 'ride-1',
@@ -204,6 +233,14 @@ describe('TripTrackingService', () => {
     await service.flushAll();
 
     expect(flushRideSpy).not.toHaveBeenCalled();
+  });
+
+  it('cleans up ride data directly', async () => {
+    await (service as any).cleanupRide('ride-clean');
+
+    expect(redis.del).toHaveBeenCalledWith('trip:state:ride-clean');
+    expect(redis.del).toHaveBeenCalledWith('trip:events:ride-clean');
+    expect(redis.srem).toHaveBeenCalledWith('trip:active', 'ride-clean');
   });
 
   it('cleans up when flushing empty completed ride', async () => {
