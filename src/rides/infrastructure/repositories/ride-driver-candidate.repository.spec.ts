@@ -73,6 +73,24 @@ describe('RideDriverCandidateRepository', () => {
     expect(dataSource.query).not.toHaveBeenCalled();
   });
 
+  it('saveMany persists every candidate with provided ride id', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([createRow()])
+      .mockResolvedValueOnce([{ ...createRow(), id: 2 }]);
+
+    const candidates = [
+      repository.create({ driverId: '20' }),
+      repository.create({ driverId: '21' }),
+    ];
+
+    const results = await repository.saveMany(candidates, '10');
+
+    expect(results).toHaveLength(2);
+    expect(results[0].id).toBe('1');
+    expect(results[1].id).toBe('2');
+    expect(dataSource.query).toHaveBeenCalledTimes(2);
+  });
+
   it('finds by ride id and maps rows', async () => {
     dataSource.query.mockResolvedValue([createRow(), createRow()]);
 
@@ -80,6 +98,14 @@ describe('RideDriverCandidateRepository', () => {
 
     expect(results).toHaveLength(2);
     expect(results[0].distanceMeters).toBe(100);
+  });
+
+  it('returns empty array when no rows found for ride id', async () => {
+    dataSource.query.mockResolvedValue(undefined as any);
+
+    const results = await repository.findByRideId('10');
+
+    expect(results).toEqual([]);
   });
 
   it('finds by ride and driver or returns null', async () => {
@@ -108,5 +134,67 @@ describe('RideDriverCandidateRepository', () => {
         repository.create({ id: '1', driverId: '20', rideId: '10' }),
       ),
     ).rejects.toThrow('Ride driver candidate not found while updating');
+  });
+
+  it('throws when update is called without id', async () => {
+    await expect(
+      (repository as any).updateCandidate(
+        repository.create({ driverId: '20', rideId: '10' }),
+      ),
+    ).rejects.toThrow('Candidate id is required for updates');
+    expect(dataSource.query).not.toHaveBeenCalled();
+  });
+
+  describe('mapRowToEntity', () => {
+    it('maps database row to candidate entity with conversions', () => {
+      const result = (repository as any).mapRowToEntity(createRow());
+
+      expect(result).toBeInstanceOf(RideDriverCandidate);
+      expect(result.id).toBe('1');
+      expect(result.rideId).toBe('10');
+      expect(result.driverId).toBe('20');
+      expect(result.status).toBe('invited');
+      expect(result.distanceMeters).toBe(100);
+      expect(result.reason).toBe('nearby');
+      expect(result.respondedAt).toEqual(new Date('2023-01-01T00:00:00Z'));
+      expect(result.createdAt).toEqual(new Date('2023-01-01T00:00:00Z'));
+      expect(result.updatedAt).toEqual(new Date('2023-01-02T00:00:00Z'));
+    });
+
+    it('handles nullable and alternative source fields', () => {
+      const row = {
+        id: undefined,
+        ride_id: undefined,
+        driverId: '30',
+        status: undefined,
+        distance_meters: undefined,
+        reason: undefined,
+        responded_at: null,
+        created_at: null,
+        updated_at: null,
+      } as any;
+
+      const result = (repository as any).mapRowToEntity(row);
+
+      expect(result.id).toBeNull();
+      expect(result.rideId).toBeNull();
+      expect(result.driverId).toBe('30');
+      expect(result.status).toBeNull();
+      expect(result.distanceMeters).toBeNull();
+      expect(result.reason).toBeNull();
+      expect(result.respondedAt).toBeNull();
+      expect(result.createdAt).toBeUndefined();
+      expect(result.updatedAt).toBeUndefined();
+    });
+
+    it('uses driverId column when driver_id is absent', () => {
+      const row = {
+        driverId: null,
+      } as any;
+
+      const result = (repository as any).mapRowToEntity(row);
+
+      expect(result.driverId).toBeNull();
+    });
   });
 });

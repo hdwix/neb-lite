@@ -50,10 +50,10 @@ export class RideStatusHistoryRepository {
 
   private mapRowToEntity(row: Record<string, any>): RideStatusHistory {
     const history = new RideStatusHistory();
-    history.id = row.id?.toString?.() ?? row.id ?? history.id;
-    history.rideId = row.ride_id?.toString?.() ?? row.ride_id ?? history.rideId;
+    history.id = row.id?.toString?.() ?? row.id ?? null;
+    history.rideId = row.ride_id?.toString?.() ?? row.ride_id ?? null;
     history.fromStatus = row.from_status ?? null;
-    history.toStatus = row.to_status ?? history.toStatus;
+    history.toStatus = row.to_status ?? null;
     history.context = row.context ?? null;
     history.createdAt = row.created_at
       ? new Date(row.created_at)

@@ -92,8 +92,8 @@ export class RidePaymentRepository {
 
   private mapRideRowToEntity(row: Record<string, any>): Ride {
     const ride = new Ride();
-    ride.id = row.id?.toString?.() ?? row.id ?? ride.id;
-    ride.riderId = row.riderId ?? ride.riderId;
+    ride.id = row.id?.toString?.() ?? row.id ?? null;
+    ride.riderId = row.riderId ?? null;
     ride.driverId = row.driverId ?? null;
     if (row.pickupLongitude !== undefined && row.pickupLongitude !== null) {
       ride.pickupLongitude = Number(row.pickupLongitude);
@@ -107,7 +107,7 @@ export class RidePaymentRepository {
     if (row.dropoffLatitude !== undefined && row.dropoffLatitude !== null) {
       ride.dropoffLatitude = Number(row.dropoffLatitude);
     }
-    ride.status = row.status ?? ride.status;
+    ride.status = row.status ?? null;
     ride.fareEstimated = row.fareEstimated ?? ride.fareEstimated;
     ride.fareFinal = row.fareFinal ?? ride.fareFinal;
     ride.discountPercent =
