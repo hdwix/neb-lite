@@ -605,6 +605,18 @@ describe('RideRepository', () => {
     expect(candidate.updatedAt).toBeUndefined();
   });
 
+  it('mapCandidateRow falls back to nulls and preserves ids when fields are missing', () => {
+    const candidate = (repository as any).mapCandidateRow({
+      status: ERideDriverCandidateStatus.INVITED,
+    });
+
+    expect(candidate.id).toBeUndefined();
+    expect(candidate.rideId).toBeUndefined();
+    expect(candidate.driverId).toBeUndefined();
+    expect(candidate.status).toBe(ERideDriverCandidateStatus.INVITED);
+    expect(candidate.distanceMeters).toBeNull();
+  });
+
   it('mapRideRow converts camelCase numeric and date fields', () => {
     const ride = (repository as any).mapRideRow({
       id: '55',
@@ -738,5 +750,83 @@ describe('RideRepository', () => {
     expect(ride.createdAt?.toISOString()).toBe(createdAt.toISOString());
     expect(ride.updatedAt?.toISOString()).toBe(updatedAt.toISOString());
     expect(ride.deletedAt?.toISOString()).toBe(deletedAt.toISOString());
+  });
+
+  it('mapRideRow leaves identifiers undefined when not provided', () => {
+    const ride = (repository as any).mapRideRow({});
+
+    expect(ride.id).toBeUndefined();
+    expect(ride.riderId).toBeUndefined();
+    expect(ride.driverId).toBeNull();
+  });
+
+  it('createRideWithDetails works with default optional arrays', async () => {
+    const runner = createRunner();
+    runner.startTransaction.mockImplementation(() => {
+      runner.isTransactionActive = true;
+    });
+    runner.commitTransaction.mockImplementation(() => {
+      runner.isTransactionActive = false;
+    });
+    runner.query.mockResolvedValueOnce([{ id: 44 as any }]);
+    dataSource.createQueryRunner.mockReturnValue(runner);
+    jest
+      .spyOn(repository, 'findById')
+      .mockResolvedValueOnce({ id: '44' } as any);
+
+    const result = await repository.createRideWithDetails({
+      ride: {
+        riderId: '2',
+        pickupLongitude: 10,
+        pickupLatitude: 20,
+        dropoffLongitude: 30,
+        dropoffLatitude: 40,
+        status: ERideStatus.REQUESTED,
+      },
+      nearbyDrivers: [],
+      historyEntries: [],
+    });
+
+    expect(result.ride.id).toBe('44');
+    expect(runner.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('ride_driver_candidates'),
+      expect.any(Array),
+    );
+  });
+
+  it('createRideWithDetails normalizes ride id with custom toString and skips null nearby drivers', async () => {
+    const runner = createRunner();
+    runner.startTransaction.mockImplementation(() => {
+      runner.isTransactionActive = true;
+    });
+    runner.commitTransaction.mockImplementation(() => {
+      runner.isTransactionActive = false;
+    });
+
+    const rideId = { toString: () => '777' } as any;
+    runner.query.mockResolvedValueOnce([{ id: rideId }]);
+    dataSource.createQueryRunner.mockReturnValue(runner);
+    jest
+      .spyOn(repository, 'findById')
+      .mockResolvedValueOnce({ id: '777' } as any);
+
+    const result = await repository.createRideWithDetails({
+      ride: {
+        riderId: '9',
+        pickupLongitude: 1,
+        pickupLatitude: 2,
+        dropoffLongitude: 3,
+        dropoffLatitude: 4,
+        status: ERideStatus.REQUESTED,
+      },
+      nearbyDrivers: null as any,
+      historyEntries: [],
+    });
+
+    expect(result.ride.id).toBe('777');
+    expect(runner.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('ride_driver_candidates'),
+      expect.any(Array),
+    );
   });
 });
