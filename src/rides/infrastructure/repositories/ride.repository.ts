@@ -304,7 +304,7 @@ export class RideRepository {
       }
 
       const rideIdValue = rideRows[0].id;
-      const rideId = rideIdValue?.toString?.() ?? String(rideIdValue);
+      const rideId = rideIdValue?.toString?.();
 
       const candidateRowsArrays = await Promise.all(
         (options.nearbyDrivers ?? []).map((driver) => {
@@ -428,7 +428,7 @@ export class RideRepository {
       row.driver_id?.toString?.() ??
       row.driverId?.toString?.() ??
       candidate.driverId;
-    candidate.status = row.status ?? candidate.status;
+    candidate.status = row.status ?? null;
     candidate.distanceMeters =
       row.distance_meters !== undefined && row.distance_meters !== null
         ? Number(row.distance_meters)

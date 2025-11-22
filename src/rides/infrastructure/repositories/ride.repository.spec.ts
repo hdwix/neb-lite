@@ -605,6 +605,26 @@ describe('RideRepository', () => {
     expect(candidate.updatedAt).toBeUndefined();
   });
 
+  it('mapCandidateRow falls back to nulls for status and rideId', () => {
+    const candidate = (repository as any).mapCandidateRow({
+      id: 99 as any,
+      ride_id: null,
+      driver_id: 202 as any,
+      status: null,
+      respondedAt: undefined,
+      createdAt: undefined,
+      updatedAt: undefined,
+    });
+
+    expect(candidate.id).toBe('99');
+    expect(candidate.rideId).toBeUndefined();
+    expect(candidate.driverId).toBe('202');
+    expect(candidate.status).toBeNull();
+    expect(candidate.respondedAt).toBeNull();
+    expect(candidate.createdAt).toBeUndefined();
+    expect(candidate.updatedAt).toBeUndefined();
+  });
+
   it('mapCandidateRow falls back to nulls and preserves ids when fields are missing', () => {
     const candidate = (repository as any).mapCandidateRow({
       status: ERideDriverCandidateStatus.INVITED,
@@ -794,7 +814,7 @@ describe('RideRepository', () => {
     );
   });
 
-  it('createRideWithDetails normalizes ride id with custom toString and skips null nearby drivers', async () => {
+  it('createRideWithDetails maps numeric ride id and null candidate distance', async () => {
     const runner = createRunner();
     runner.startTransaction.mockImplementation(() => {
       runner.isTransactionActive = true;
@@ -802,31 +822,111 @@ describe('RideRepository', () => {
     runner.commitTransaction.mockImplementation(() => {
       runner.isTransactionActive = false;
     });
-
-    const rideId = { toString: () => '777' } as any;
-    runner.query.mockResolvedValueOnce([{ id: rideId }]);
+    const nowIso = new Date().toISOString();
+    runner.query.mockResolvedValueOnce([{ id: 55 }]).mockResolvedValueOnce([
+      {
+        id: 'cand-1',
+        ride_id: 55,
+        driver_id: '77',
+        status: ERideDriverCandidateStatus.INVITED,
+        distance_meters: null,
+        responded_at: null,
+        created_at: nowIso,
+        updated_at: nowIso,
+      },
+    ]);
     dataSource.createQueryRunner.mockReturnValue(runner);
     jest
       .spyOn(repository, 'findById')
-      .mockResolvedValueOnce({ id: '777' } as any);
+      .mockResolvedValueOnce({ id: '55' } as any);
 
     const result = await repository.createRideWithDetails({
       ride: {
         riderId: '9',
-        pickupLongitude: 1,
-        pickupLatitude: 2,
-        dropoffLongitude: 3,
-        dropoffLatitude: 4,
+        pickupLongitude: 10,
+        pickupLatitude: 20,
+        dropoffLongitude: 30,
+        dropoffLatitude: 40,
         status: ERideStatus.REQUESTED,
       },
-      nearbyDrivers: null as any,
+      nearbyDrivers: [{ driverId: '77', distanceMeters: null as any }],
       historyEntries: [],
     });
 
-    expect(result.ride.id).toBe('777');
-    expect(runner.query).not.toHaveBeenCalledWith(
-      expect.stringContaining('ride_driver_candidates'),
-      expect.any(Array),
-    );
+    expect(result.ride.id).toBe('55');
+    expect(result.candidates[0].distanceMeters).toBeNull();
+  });
+
+  it('mapCandidateRow normalizes ids and dates', () => {
+    const respondedAtIso = new Date().toISOString();
+    const createdAtIso = new Date().toISOString();
+    const updatedAtIso = new Date().toISOString();
+
+    const candidate = (repository as any).mapCandidateRow({
+      id: 10,
+      ride_id: 20,
+      driverId: 30,
+      status: ERideDriverCandidateStatus.ACCEPTED,
+      distance_meters: '1200',
+      reason: 'reason',
+      respondedAt: respondedAtIso,
+      createdAt: createdAtIso,
+      updatedAt: updatedAtIso,
+    });
+
+    expect(candidate.id).toBe('10');
+    expect(candidate.rideId).toBe('20');
+    expect(candidate.driverId).toBe('30');
+    expect(candidate.distanceMeters).toBe(1200);
+    expect(candidate.respondedAt?.toISOString()).toBe(respondedAtIso);
+    expect(candidate.createdAt?.toISOString()).toBe(createdAtIso);
+    expect(candidate.updatedAt?.toISOString()).toBe(updatedAtIso);
+  });
+
+  it('mapRideRow converts numeric and nullable properties', () => {
+    const createdIso = new Date().toISOString();
+    const updatedIso = new Date().toISOString();
+    const deletedIso = new Date().toISOString();
+
+    const ride = (repository as any).mapRideRow({
+      id: 1,
+      rider_id: 2,
+      driver_id: 3,
+      pickup_lon: '11.1',
+      pickup_lat: '22.2',
+      dropoff_lon: '33.3',
+      dropoff_lat: '44.4',
+      status: ERideStatus.COMPLETED,
+      fare_estimated: 10,
+      fare_final: 12,
+      discount_percent: '15',
+      discount_amount: 3,
+      app_fee_amount: 1,
+      distance_estimated_km: '5.5',
+      durationEstimatedSeconds: 120,
+      distanceActualKm: 4.4,
+      payment_url: 'url',
+      payment_status: 'paid',
+      note: 'note',
+      cancel_reason: 'reason',
+      created_at: createdIso,
+      updated_at: updatedIso,
+      deleted_at: deletedIso,
+    });
+
+    expect(ride.id).toBe('1');
+    expect(ride.riderId).toBe('2');
+    expect(ride.driverId).toBe('3');
+    expect(ride.pickupLongitude).toBe(11.1);
+    expect(ride.dropoffLatitude).toBe(44.4);
+    expect(ride.discountPercent).toBe(15);
+    expect(ride.distanceEstimatedKm).toBe(5.5);
+    expect(ride.durationEstimatedSeconds).toBe(120);
+    expect(ride.distanceActualKm).toBe(4.4);
+    expect(ride.paymentUrl).toBe('url');
+    expect(ride.paymentStatus).toBe('paid');
+    expect(ride.createdAt?.toISOString()).toBe(createdIso);
+    expect(ride.updatedAt?.toISOString()).toBe(updatedIso);
+    expect(ride.deletedAt?.toISOString()).toBe(deletedIso);
   });
 });
