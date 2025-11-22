@@ -64,6 +64,24 @@ describe('RideRepository', () => {
     expect(runner.rollbackTransaction).toHaveBeenCalled();
   });
 
+  it('throws when ride missing while claiming', async () => {
+    const runner = createRunner();
+    runner.startTransaction.mockImplementation(() => {
+      runner.isTransactionActive = true;
+    });
+    runner.rollbackTransaction.mockImplementation(() => {
+      runner.isTransactionActive = false;
+    });
+    runner.query.mockResolvedValueOnce([]);
+    dataSource.createQueryRunner.mockReturnValue(runner);
+
+    await expect(repository.claimDriver('1', '2')).rejects.toThrow(
+      'Ride not found',
+    );
+    expect(runner.rollbackTransaction).toHaveBeenCalled();
+    expect(runner.release).toHaveBeenCalled();
+  });
+
   it('findById returns null when missing', async () => {
     dataSource.query.mockResolvedValue([]);
     await expect(repository.findById('1')).resolves.toBeNull();
@@ -101,6 +119,13 @@ describe('RideRepository', () => {
     expect(ride?.status).toBe(ERideStatus.ACCEPTED);
   });
 
+  it('findUnfinishedRideByRiderId returns null when none found', async () => {
+    dataSource.query.mockResolvedValueOnce([]);
+    await expect(
+      repository.findUnfinishedRideByRiderId('2'),
+    ).resolves.toBeNull();
+  });
+
   it('updateRide merges and persists changes', async () => {
     const base = {
       id: '1',
@@ -124,6 +149,54 @@ describe('RideRepository', () => {
     expect(result.status).toBe(ERideStatus.ENROUTE);
   });
 
+  it('updateRide throws when id missing', async () => {
+    await expect(repository.updateRide({} as any)).rejects.toThrow(
+      'Ride id is required for updates',
+    );
+  });
+
+  it('updateRide throws when update returns no rows', async () => {
+    const base = {
+      id: '1',
+      rider_id: '2',
+      pickup_lon: 1,
+      pickup_lat: 2,
+      dropoff_lon: 3,
+      dropoff_lat: 4,
+      status: ERideStatus.REQUESTED,
+    };
+    jest
+      .spyOn(repository, 'findById')
+      .mockResolvedValueOnce(repository['mapRideRow'](base as any))
+      .mockResolvedValueOnce(repository['mapRideRow'](base as any));
+    dataSource.query.mockResolvedValueOnce([]);
+
+    await expect(repository.updateRide({ id: '1' } as any)).rejects.toThrow(
+      'Ride not found while updating',
+    );
+  });
+
+  it('updateRide throws when ride missing after update', async () => {
+    const base = {
+      id: '1',
+      rider_id: '2',
+      pickup_lon: 1,
+      pickup_lat: 2,
+      dropoff_lon: 3,
+      dropoff_lat: 4,
+      status: ERideStatus.REQUESTED,
+    };
+    jest
+      .spyOn(repository, 'findById')
+      .mockResolvedValueOnce(repository['mapRideRow'](base as any))
+      .mockResolvedValueOnce(null);
+    dataSource.query.mockResolvedValueOnce([{ id: '1' }]);
+
+    await expect(repository.updateRide({ id: '1' } as any)).rejects.toThrow(
+      'Ride not found after update',
+    );
+  });
+
   it('updateRide throws when ride missing', async () => {
     dataSource.query.mockResolvedValueOnce([]);
     await expect(repository.updateRide({ id: '1' } as any)).rejects.toThrow(
@@ -134,6 +207,17 @@ describe('RideRepository', () => {
   it('remove returns ride when no id', async () => {
     const ride: any = { riderId: '1' };
     const removed = await repository.remove(ride);
+    expect(removed).toBe(ride);
+  });
+
+  it('remove deletes ride when id is present', async () => {
+    const ride: any = { id: '42', riderId: '1' };
+    const removed = await repository.remove(ride);
+
+    expect(dataSource.query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM rides'),
+      ['42'],
+    );
     expect(removed).toBe(ride);
   });
 
@@ -192,6 +276,89 @@ describe('RideRepository', () => {
     expect(runner.commitTransaction).toHaveBeenCalled();
   });
 
+  it('createRideWithDetails throws when ride insert returns empty', async () => {
+    const runner = createRunner();
+    runner.startTransaction.mockImplementation(() => {
+      runner.isTransactionActive = true;
+    });
+    runner.rollbackTransaction.mockImplementation(() => {
+      runner.isTransactionActive = false;
+    });
+    runner.release.mockImplementation(() => {
+      runner.isReleased = true;
+    });
+    runner.query.mockResolvedValueOnce([]);
+    dataSource.createQueryRunner.mockReturnValue(runner);
+
+    await expect(
+      repository.createRideWithDetails({
+        ride: {
+          riderId: '1',
+          pickupLongitude: 1,
+          pickupLatitude: 2,
+          dropoffLongitude: 3,
+          dropoffLatitude: 4,
+          status: ERideStatus.REQUESTED,
+        },
+        nearbyDrivers: [],
+        historyEntries: [],
+      }),
+    ).rejects.toThrow('Failed to create ride');
+
+    expect(runner.rollbackTransaction).toHaveBeenCalled();
+    expect(runner.release).toHaveBeenCalled();
+  });
+
+  it('createRideWithDetails throws when ride fails to load after creation', async () => {
+    const runner = createRunner();
+    runner.startTransaction.mockImplementation(() => {
+      runner.isTransactionActive = true;
+    });
+    runner.commitTransaction.mockImplementation(() => {
+      runner.isTransactionActive = false;
+    });
+    runner.release.mockImplementation(() => {
+      runner.isReleased = true;
+    });
+    runner.query.mockResolvedValueOnce([{ id: '10' }]).mockResolvedValue([]);
+    dataSource.createQueryRunner.mockReturnValue(runner);
+    jest.spyOn(repository, 'findById').mockResolvedValueOnce(null);
+
+    await expect(
+      repository.createRideWithDetails({
+        ride: {
+          riderId: '1',
+          pickupLongitude: 1,
+          pickupLatitude: 2,
+          dropoffLongitude: 3,
+          dropoffLatitude: 4,
+          status: ERideStatus.REQUESTED,
+        },
+        nearbyDrivers: [],
+        historyEntries: [],
+      }),
+    ).rejects.toThrow('Failed to load ride after creation');
+
+    expect(runner.commitTransaction).toHaveBeenCalled();
+    expect(runner.release).toHaveBeenCalled();
+  });
+
+  it('mapRideRow handles alternative coordinate property names', () => {
+    const ride = (repository as any).mapRideRow({
+      id: '1',
+      rider_id: '2',
+      pickupLongitude: '5.5',
+      pickupLatitude: '6.6',
+      dropoffLongitude: '7.7',
+      dropoffLatitude: '8.8',
+    });
+
+    expect(ride.pickupLongitude).toBe(5.5);
+    expect(ride.pickupLatitude).toBe(6.6);
+    expect(ride.dropoffLongitude).toBe(7.7);
+    expect(ride.dropoffLatitude).toBe(8.8);
+  });
+
   it('createRideWithDetails rolls back on error', async () => {
     const runner = createRunner();
     runner.startTransaction.mockImplementation(() => {
@@ -222,5 +389,39 @@ describe('RideRepository', () => {
     ).rejects.toThrow('insert failed');
 
     expect(runner.rollbackTransaction).toHaveBeenCalled();
+  });
+
+  it('createRideWithDetails works with default optional arrays', async () => {
+    const runner = createRunner();
+    runner.startTransaction.mockImplementation(() => {
+      runner.isTransactionActive = true;
+    });
+    runner.commitTransaction.mockImplementation(() => {
+      runner.isTransactionActive = false;
+    });
+    runner.query.mockResolvedValueOnce([{ id: 44 as any }]);
+    dataSource.createQueryRunner.mockReturnValue(runner);
+    jest
+      .spyOn(repository, 'findById')
+      .mockResolvedValueOnce({ id: '44' } as any);
+
+    const result = await repository.createRideWithDetails({
+      ride: {
+        riderId: '2',
+        pickupLongitude: 10,
+        pickupLatitude: 20,
+        dropoffLongitude: 30,
+        dropoffLatitude: 40,
+        status: ERideStatus.REQUESTED,
+      },
+      nearbyDrivers: [],
+      historyEntries: [],
+    });
+
+    expect(result.ride.id).toBe('44');
+    expect(runner.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('ride_driver_candidates'),
+      expect.any(Array),
+    );
   });
 });
