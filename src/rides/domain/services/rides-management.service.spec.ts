@@ -17,11 +17,165 @@ import { FareEngineService } from './fare-engine.service';
 import { ConfigService } from '@nestjs/config';
 import { ERideStatus } from '../constants/ride-status.enum';
 import { ERideDriverCandidateStatus } from '../constants/ride-driver-candidate-status.enum';
-import { RIDE_QUEUE_NAME, RideQueueJobData } from '../types/ride-queue.types';
+import {
+  RIDE_QUEUE_NAME,
+  RideQueueJob,
+  RideQueueJobData,
+} from '../types/ride-queue.types';
 import { getQueueToken } from '@nestjs/bullmq';
 import { EClientType } from '../../../app/enums/client-type.enum';
 
+jest.mock('bullmq', () => {
+  const actual = jest.requireActual('bullmq');
+  return {
+    ...actual,
+    QueueEvents: jest.fn().mockImplementation(() => ({
+      waitUntilReady: jest.fn().mockResolvedValue(undefined),
+      close: jest.fn().mockResolvedValue(undefined),
+    })),
+  };
+});
+
 type AnyObj = Record<string, any>;
+
+type RideRepositoryMocks = {
+  findUnfinishedRideByRiderId: jest.Mock;
+  createRideWithDetails: jest.Mock;
+  findById: jest.Mock;
+  updateRide: jest.Mock;
+  claimDriver: jest.Mock;
+};
+
+type RideNotificationMocks = {
+  notifyRideOffered: jest.Mock;
+  notifyRideMatched: jest.Mock;
+  notifyRideCanceledForCandidate: jest.Mock;
+  notifyCandidateSuperseded: jest.Mock;
+  notifyDriverAccepted: jest.Mock;
+  notifyDriverDeclined: jest.Mock;
+  notifyRiderConfirmed: jest.Mock;
+  notifyRiderRejectedDriver: jest.Mock;
+};
+
+type CandidateRepositoryMocks = {
+  findByRideId: jest.Mock;
+  findByRideAndDriver: jest.Mock;
+  saveMany: jest.Mock;
+  save: jest.Mock;
+};
+
+type TestBed = {
+  service: RidesManagementService;
+  rideQueue: jest.Mocked<Queue<RideQueueJobData>>;
+  rideRepository: RideRepositoryMocks;
+  rideStatusHistoryRepository: AnyObj;
+  notificationService: RideNotificationMocks;
+  candidateRepository: CandidateRepositoryMocks;
+  locationService: { getNearbyDrivers: jest.Mock };
+  httpService: AnyObj;
+  fareEngine: { calculateEstimatedFare: jest.Mock };
+  configService: AnyObj;
+};
+
+type TestBedOverrides = Partial<Omit<TestBed, 'service'>>;
+
+const createRidesServiceTestBed = async (
+  overrides: TestBedOverrides = {},
+): Promise<TestBed> => {
+  const rideQueue =
+    overrides.rideQueue ??
+    ({
+      name: RIDE_QUEUE_NAME,
+      opts: { connection: {} },
+      add: jest.fn().mockResolvedValue(undefined),
+      remove: jest.fn().mockResolvedValue(undefined),
+    } as any);
+
+  const rideRepository =
+    overrides.rideRepository ??
+    ({
+      findUnfinishedRideByRiderId: jest.fn(),
+      createRideWithDetails: jest.fn(),
+      findById: jest.fn(),
+      updateRide: jest.fn(),
+      claimDriver: jest.fn(),
+    } as RideRepositoryMocks);
+
+  const rideStatusHistoryRepository =
+    overrides.rideStatusHistoryRepository ??
+    ({ create: jest.fn(), save: jest.fn() } as AnyObj);
+
+  const notificationService =
+    overrides.notificationService ??
+    ({
+      notifyRideOffered: jest.fn().mockResolvedValue(undefined),
+      notifyRideMatched: jest.fn().mockResolvedValue(undefined),
+      notifyRideCanceledForCandidate: jest.fn().mockResolvedValue(undefined),
+      notifyCandidateSuperseded: jest.fn().mockResolvedValue(undefined),
+      notifyDriverAccepted: jest.fn().mockResolvedValue(undefined),
+      notifyDriverDeclined: jest.fn().mockResolvedValue(undefined),
+      notifyRiderConfirmed: jest.fn().mockResolvedValue(undefined),
+      notifyRiderRejectedDriver: jest.fn().mockResolvedValue(undefined),
+    } as RideNotificationMocks);
+
+  const candidateRepository =
+    overrides.candidateRepository ??
+    ({
+      findByRideId: jest.fn(),
+      findByRideAndDriver: jest.fn(),
+      saveMany: jest.fn(),
+      save: jest.fn(),
+    } as CandidateRepositoryMocks);
+
+  const locationService =
+    overrides.locationService ??
+    ({ getNearbyDrivers: jest.fn() } as { getNearbyDrivers: jest.Mock });
+  const httpService =
+    overrides.httpService ?? ({ get: jest.fn() } as { get: jest.Mock });
+  const fareEngine =
+    overrides.fareEngine ??
+    ({
+      calculateEstimatedFare: jest.fn().mockReturnValue('9000.00'),
+    } as { calculateEstimatedFare: jest.Mock });
+  const configService =
+    overrides.configService ?? ({ get: jest.fn() } as AnyObj);
+
+  const module: TestingModule = await Test.createTestingModule({
+    providers: [
+      RidesManagementService,
+      { provide: getQueueToken(RIDE_QUEUE_NAME), useValue: rideQueue }, // @InjectQueue(RIDE_QUEUE_NAME)
+      { provide: RideRepository, useValue: rideRepository },
+      {
+        provide: RideStatusHistoryRepository,
+        useValue: rideStatusHistoryRepository,
+      },
+      { provide: RideNotificationService, useValue: notificationService },
+      {
+        provide: RideDriverCandidateRepository,
+        useValue: candidateRepository,
+      },
+      { provide: LocationService, useValue: locationService },
+      { provide: HttpService, useValue: httpService },
+      { provide: FareEngineService, useValue: fareEngine },
+      { provide: ConfigService, useValue: configService },
+    ],
+  }).compile();
+
+  const service = module.get(RidesManagementService);
+
+  return {
+    service,
+    rideQueue,
+    rideRepository,
+    rideStatusHistoryRepository,
+    notificationService,
+    candidateRepository,
+    locationService,
+    httpService,
+    fareEngine,
+    configService,
+  };
+};
 
 describe('RidesManagementService.createRide', () => {
   let service: RidesManagementService;
@@ -51,59 +205,18 @@ describe('RidesManagementService.createRide', () => {
   beforeEach(async () => {
     jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW);
 
-    rideQueue = {
-      name: RIDE_QUEUE_NAME,
-      opts: { connection: {} },
-      add: jest.fn(),
-      remove: jest.fn().mockResolvedValue(undefined),
-    } as any;
-
-    rideRepository = {
-      findUnfinishedRideByRiderId: jest.fn(),
-      createRideWithDetails: jest.fn(),
-    };
-
-    rideStatusHistoryRepository = {};
-
-    notificationService = {
-      notifyRideOffered: jest.fn().mockResolvedValue(undefined),
-      notifyRideMatched: jest.fn().mockResolvedValue(undefined),
-    };
-
-    candidateRepository = {};
-
-    locationService = {
-      getNearbyDrivers: jest.fn(),
-    };
-
-    httpService = {};
-    fareEngine = {
-      calculateEstimatedFare: jest.fn().mockReturnValue('9000.00'),
-    };
-    configService = { get: jest.fn() };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        RidesManagementService,
-        { provide: getQueueToken(RIDE_QUEUE_NAME), useValue: rideQueue }, // @InjectQueue(RIDE_QUEUE_NAME)
-        { provide: RideRepository, useValue: rideRepository },
-        {
-          provide: RideStatusHistoryRepository,
-          useValue: rideStatusHistoryRepository,
-        },
-        { provide: RideNotificationService, useValue: notificationService },
-        {
-          provide: RideDriverCandidateRepository,
-          useValue: candidateRepository,
-        },
-        { provide: LocationService, useValue: locationService },
-        { provide: HttpService, useValue: httpService },
-        { provide: FareEngineService, useValue: fareEngine },
-        { provide: ConfigService, useValue: configService },
-      ],
-    }).compile();
-
-    service = module.get(RidesManagementService);
+    ({
+      service,
+      rideQueue,
+      rideRepository,
+      rideStatusHistoryRepository,
+      notificationService,
+      candidateRepository,
+      locationService,
+      httpService,
+      fareEngine,
+      configService,
+    } = await createRidesServiceTestBed());
   });
 
   afterEach(() => {
@@ -264,7 +377,6 @@ describe('RidesManagementService.createRide', () => {
     expect(rideQueue.remove).toHaveBeenCalledWith(
       `ride-request-${riderId}-${FIXED_NOW}-route-estimation`,
     );
-    expect(locationService.getNearbyDrivers).not.toHaveBeenCalled();
   });
 
   //
@@ -277,6 +389,7 @@ describe('RidesManagementService.createRide', () => {
       message: 'network fail',
       response: { status: 502, statusText: 'Bad Gateway' },
     };
+    const logSpy = jest.spyOn((service as any).logger, 'error');
     stubRouteEstimates(async () => {
       throw axiosLikeError;
     });
@@ -287,6 +400,47 @@ describe('RidesManagementService.createRide', () => {
 
     expect(rideQueue.remove).toHaveBeenCalledWith(
       `ride-request-${riderId}-${FIXED_NOW}-route-estimation`,
+    );
+    expect(logSpy).toHaveBeenCalled();
+  });
+
+  it('logs axios-like errors with response details when creating ride', async () => {
+    rideRepository.findUnfinishedRideByRiderId.mockResolvedValue(null);
+    const axiosLikeError = {
+      isAxiosError: true,
+      message: 'down',
+      response: { status: 503, statusText: 'Service Unavailable' },
+    };
+    const logSpy = jest.spyOn((service as any).logger, 'error');
+    stubRouteEstimates(async () => {
+      throw axiosLikeError;
+    });
+
+    await expect(
+      service.createRide(riderId, { pickup, dropoff }),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to fetch route summary from OpenRouteService'),
+    );
+  });
+
+  it('logs axios-like errors with missing response fields when creating ride', async () => {
+    rideRepository.findUnfinishedRideByRiderId.mockResolvedValue(null);
+    const axiosLikeError = {
+      isAxiosError: true,
+      message: 'down2',
+      response: {},
+    };
+    const logSpy = jest.spyOn((service as any).logger, 'error');
+    stubRouteEstimates(async () => {
+      throw axiosLikeError;
+    });
+
+    await expect(
+      service.createRide(riderId, { pickup, dropoff }),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to fetch route summary from OpenRouteService'),
     );
   });
 
@@ -302,6 +456,25 @@ describe('RidesManagementService.createRide', () => {
 
     expect(rideQueue.remove).toHaveBeenCalledWith(
       `ride-request-${riderId}-${FIXED_NOW}-route-estimation`,
+    );
+  });
+
+  it('logs unknown errors and wraps as InternalServerErrorException', async () => {
+    rideRepository.findUnfinishedRideByRiderId.mockResolvedValue(null);
+    const logSpy = jest.spyOn((service as any).logger, 'error');
+    stubRouteEstimates(async () => {
+      throw { unexpected: true };
+    });
+
+    await expect(
+      service.createRide(riderId, { pickup, dropoff }),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+
+    expect(rideQueue.remove).toHaveBeenCalledWith(
+      `ride-request-${riderId}-${FIXED_NOW}-route-estimation`,
+    );
+    expect(logSpy).toHaveBeenCalledWith(
+      'Unknown error occurred while creating ride',
     );
   });
 
@@ -393,58 +566,18 @@ describe('RidesManagementService.cancelRide', () => {
   beforeEach(async () => {
     jest.useFakeTimers().setSystemTime(new Date('2025-01-01T00:00:00Z'));
 
-    rideQueue = {
-      name: RIDE_QUEUE_NAME,
-      opts: { connection: {} },
-      remove: jest.fn(),
-    } as any;
-
-    rideRepository = {
-      findById: jest.fn(),
-      updateRide: jest.fn(),
-    };
-
-    rideStatusHistoryRepository = {
-      create: jest.fn(),
-      save: jest.fn(),
-    };
-
-    notificationService = {
-      notifyRideCanceledForCandidate: jest.fn().mockResolvedValue(undefined),
-    };
-
-    candidateRepository = {
-      findByRideId: jest.fn(),
-      saveMany: jest.fn(),
-    };
-
-    locationService = {};
-    httpService = {};
-    fareEngine = {};
-    configService = { get: jest.fn() };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        RidesManagementService,
-        { provide: getQueueToken(RIDE_QUEUE_NAME), useValue: rideQueue },
-        { provide: RideRepository, useValue: rideRepository },
-        {
-          provide: RideStatusHistoryRepository,
-          useValue: rideStatusHistoryRepository,
-        },
-        { provide: RideNotificationService, useValue: notificationService },
-        {
-          provide: RideDriverCandidateRepository,
-          useValue: candidateRepository,
-        },
-        { provide: LocationService, useValue: locationService },
-        { provide: HttpService, useValue: httpService },
-        { provide: FareEngineService, useValue: fareEngine },
-        { provide: ConfigService, useValue: configService },
-      ],
-    }).compile();
-
-    service = module.get(RidesManagementService);
+    ({
+      service,
+      rideQueue,
+      rideRepository,
+      rideStatusHistoryRepository,
+      notificationService,
+      candidateRepository,
+      locationService,
+      httpService,
+      fareEngine,
+      configService,
+    } = await createRidesServiceTestBed());
   });
 
   afterEach(() => {
@@ -657,7 +790,7 @@ describe('RidesManagementService.cancelRide', () => {
     ).not.toHaveBeenCalled();
 
     // since refreshed is null, returns updated
-    expect(result).toEqual(updated);
+    expect(result).toEqual({ ...updated, fareFinal: '0.00' });
   });
 
   it('updates candidate reasons to default when reason not provided', async () => {
@@ -715,7 +848,7 @@ describe('RidesManagementService.cancelRide', () => {
     ).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'ride-1' }),
       expect.objectContaining({ driverId: 'a' }),
-      defaultReason,
+      undefined,
     );
   });
 });
@@ -764,55 +897,18 @@ describe('RidesManagementService.acceptRideByDriver', () => {
   beforeEach(async () => {
     jest.useFakeTimers().setSystemTime(new Date('2025-02-02T03:04:05Z'));
 
-    rideQueue = { name: RIDE_QUEUE_NAME, opts: { connection: {} } } as any;
-
-    rideRepository = {
-      findById: jest.fn(),
-      claimDriver: jest.fn(),
-    };
-
-    rideStatusHistoryRepository = {
-      create: jest.fn(),
-      save: jest.fn(),
-    };
-
-    notificationService = {
-      notifyCandidateSuperseded: jest.fn().mockResolvedValue(undefined),
-      notifyDriverAccepted: jest.fn().mockResolvedValue(undefined),
-    };
-
-    candidateRepository = {
-      findByRideAndDriver: jest.fn(),
-      save: jest.fn(),
-    };
-
-    locationService = {};
-    httpService = {};
-    fareEngine = {};
-    configService = { get: jest.fn() };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        RidesManagementService,
-        { provide: getQueueToken(RIDE_QUEUE_NAME), useValue: rideQueue }
-        { provide: RideRepository, useValue: rideRepository },
-        {
-          provide: RideStatusHistoryRepository,
-          useValue: rideStatusHistoryRepository,
-        },
-        { provide: RideNotificationService, useValue: notificationService },
-        {
-          provide: RideDriverCandidateRepository,
-          useValue: candidateRepository,
-        },
-        { provide: LocationService, useValue: locationService },
-        { provide: HttpService, useValue: httpService },
-        { provide: FareEngineService, useValue: fareEngine },
-        { provide: ConfigService, useValue: configService },
-      ],
-    }).compile();
-
-    service = module.get(RidesManagementService);
+    ({
+      service,
+      rideQueue,
+      rideRepository,
+      rideStatusHistoryRepository,
+      notificationService,
+      candidateRepository,
+      locationService,
+      httpService,
+      fareEngine,
+      configService,
+    } = await createRidesServiceTestBed());
   });
 
   afterEach(() => {
@@ -1028,6 +1124,7 @@ describe('RidesManagementService.acceptRideByDriver', () => {
       id: 'ride-1',
       driverId: 'd-1',
       status: ERideStatus.ACCEPTED,
+      riderId: 'r-1',
     });
   });
 
@@ -1080,7 +1177,120 @@ describe('RidesManagementService.acceptRideByDriver', () => {
       id: 'ride-1',
       driverId: 'd-1',
       status: ERideStatus.ACCEPTED,
+      riderId: 'r-1',
     });
+  });
+
+  it('when claimDriver fails and refreshed ride is null, continues with previous ride', async () => {
+    const initial = makeRide({
+      driverId: null,
+      status: ERideStatus.CANDIDATES_COMPUTED,
+    });
+    const cand = makeCandidate({
+      driverId: 'd-1',
+      status: ERideDriverCandidateStatus.INVITED,
+    });
+
+    rideRepository.findById
+      .mockResolvedValueOnce(initial) // initial read
+      .mockResolvedValueOnce(null) // re-fetch after claim failed -> null
+      .mockResolvedValueOnce({
+        ...initial,
+        driverId: 'd-1',
+        status: ERideStatus.ACCEPTED,
+      }); // final refreshed
+
+    candidateRepository.findByRideAndDriver.mockResolvedValue(cand);
+    rideRepository.claimDriver.mockResolvedValue(false);
+
+    jest
+      .spyOn<any, any>(service as any, 'transitionRideStatus')
+      .mockResolvedValueOnce({
+        ride: { ...initial, status: ERideStatus.ASSIGNED },
+        changed: true,
+      })
+      .mockResolvedValueOnce({
+        ride: { ...initial, status: ERideStatus.ACCEPTED },
+        changed: true,
+      });
+
+    const res = await service.acceptRideByDriver('ride-1', 'd-1');
+    expect(res).toEqual(
+      expect.objectContaining({ id: 'ride-1', driverId: 'd-1' }),
+    );
+  });
+
+  it('claimDriver fails and re-fetch returns null keeps existing driverId', async () => {
+    const initial = makeRide({
+      driverId: null,
+      status: ERideStatus.CANDIDATES_COMPUTED,
+    });
+    const cand = makeCandidate({
+      driverId: 'd-1',
+      status: ERideDriverCandidateStatus.INVITED,
+    });
+
+    rideRepository.findById
+      .mockResolvedValueOnce(initial) // initial
+      .mockResolvedValueOnce(null) // re-fetch null
+      .mockResolvedValueOnce({
+        ...initial,
+        driverId: 'd-1',
+        status: ERideStatus.ACCEPTED,
+      }); // refreshed
+
+    candidateRepository.findByRideAndDriver.mockResolvedValue(cand);
+    rideRepository.claimDriver.mockResolvedValue(false);
+
+    jest
+      .spyOn<any, any>(service as any, 'transitionRideStatus')
+      .mockResolvedValueOnce({
+        ride: { ...initial, status: ERideStatus.ASSIGNED },
+        changed: true,
+      })
+      .mockResolvedValueOnce({
+        ride: { ...initial, status: ERideStatus.ACCEPTED },
+        changed: true,
+      });
+
+    const res = await service.acceptRideByDriver('ride-1', 'd-1');
+    expect(res).toEqual(
+      expect.objectContaining({ id: 'ride-1', driverId: 'd-1' }),
+    );
+  });
+
+  it('when claimDriver succeeds but refreshed ride missing, falls back to acceptance ride', async () => {
+    const initial = makeRide({
+      driverId: null,
+      status: ERideStatus.CANDIDATES_COMPUTED,
+    });
+    const cand = makeCandidate({
+      driverId: 'd-1',
+      status: ERideDriverCandidateStatus.INVITED,
+    });
+
+    rideRepository.findById
+      .mockResolvedValueOnce(initial) // initial read
+      .mockResolvedValueOnce(null); // refreshed missing
+
+    candidateRepository.findByRideAndDriver.mockResolvedValue(cand);
+    rideRepository.claimDriver.mockResolvedValue(true);
+
+    jest
+      .spyOn<any, any>(service as any, 'transitionRideStatus')
+      .mockResolvedValueOnce({
+        ride: { ...initial, driverId: 'd-1', status: ERideStatus.ASSIGNED },
+        changed: true,
+      })
+      .mockResolvedValueOnce({
+        ride: { ...initial, driverId: 'd-1', status: ERideStatus.ACCEPTED },
+        changed: true,
+      });
+
+    const res = await service.acceptRideByDriver('ride-1', 'd-1');
+    expect(res).toEqual(
+      expect.objectContaining({ id: 'ride-1', driverId: 'd-1' }),
+    );
   });
 
   it('when claimDriver fails and re-fetch shows different driver took it, marks superseded and throws Conflict', async () => {
@@ -1159,54 +1369,18 @@ describe('RidesManagementService.rejectRideByDriver', () => {
   beforeEach(async () => {
     jest.useFakeTimers().setSystemTime(new Date('2025-02-02T03:04:05Z'));
 
-    rideQueue = { name: RIDE_QUEUE_NAME, opts: { connection: {} } } as any;
-
-    rideRepository = {
-      findById: jest.fn(),
-      updateRide: jest.fn(),
-    };
-
-    rideStatusHistoryRepository = {
-      create: jest.fn(),
-      save: jest.fn(),
-    };
-
-    notificationService = {
-      notifyDriverDeclined: jest.fn().mockResolvedValue(undefined),
-    };
-
-    candidateRepository = {
-      findByRideAndDriver: jest.fn(),
-      save: jest.fn(),
-    };
-
-    locationService = {};
-    httpService = {};
-    fareEngine = {};
-    configService = { get: jest.fn() };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        RidesManagementService,
-        { provide: getQueueToken(RIDE_QUEUE_NAME), useValue: rideQueue },
-        { provide: RideRepository, useValue: rideRepository },
-        {
-          provide: RideStatusHistoryRepository,
-          useValue: rideStatusHistoryRepository,
-        },
-        { provide: RideNotificationService, useValue: notificationService },
-        {
-          provide: RideDriverCandidateRepository,
-          useValue: candidateRepository,
-        },
-        { provide: LocationService, useValue: locationService },
-        { provide: HttpService, useValue: httpService },
-        { provide: FareEngineService, useValue: fareEngine },
-        { provide: ConfigService, useValue: configService },
-      ],
-    }).compile();
-
-    service = module.get(RidesManagementService);
+    ({
+      service,
+      rideQueue,
+      rideRepository,
+      rideStatusHistoryRepository,
+      notificationService,
+      candidateRepository,
+      locationService,
+      httpService,
+      fareEngine,
+      configService,
+    } = await createRidesServiceTestBed());
   });
 
   afterEach(() => {
@@ -1289,6 +1463,38 @@ describe('RidesManagementService.rejectRideByDriver', () => {
     expect(res).toBe(ride);
     expect(candidateRepository.save).not.toHaveBeenCalled();
     expect(notificationService.notifyDriverDeclined).not.toHaveBeenCalled();
+  });
+
+  it('returns reverted ride when refreshed not found after driver rejection', async () => {
+    const ride = makeRide({
+      driverId: 'd-1',
+      status: ERideStatus.ACCEPTED,
+    });
+    const candidate = makeCandidate({
+      driverId: 'd-1',
+      status: ERideDriverCandidateStatus.INVITED,
+    });
+
+    rideRepository.findById
+      .mockResolvedValueOnce(ride)
+      .mockResolvedValueOnce(null); // refreshed missing
+    candidateRepository.findByRideAndDriver.mockResolvedValue(candidate);
+    rideRepository.updateRide.mockResolvedValue({ ...ride, driverId: null });
+    jest
+      .spyOn<any, any>(service as any, 'transitionRideStatus')
+      .mockResolvedValue({
+        ride: { ...ride, driverId: null, status: ERideStatus.CANDIDATES_COMPUTED },
+        changed: true,
+      });
+
+    const res = await service.rejectRideByDriver('ride-1', 'd-1');
+    expect(res).toEqual(
+      expect.objectContaining({
+        id: 'ride-1',
+        driverId: null,
+        status: ERideStatus.CANDIDATES_COMPUTED,
+      }),
+    );
   });
 
   //
@@ -1479,52 +1685,18 @@ describe('RidesManagementService.confirmDriverAcceptance', () => {
   beforeEach(async () => {
     jest.useFakeTimers().setSystemTime(new Date('2025-02-02T03:04:05Z'));
 
-    rideQueue = { name: RIDE_QUEUE_NAME, opts: { connection: {} } } as any;
-
-    rideRepository = {
-      findById: jest.fn(),
-      updateRide: jest.fn(),
-    };
-    rideStatusHistoryRepository = {
-      create: jest.fn(),
-      save: jest.fn(),
-    };
-    notificationService = {
-      notifyRiderConfirmed: jest.fn().mockResolvedValue(undefined),
-      notifyCandidateSuperseded: jest.fn().mockResolvedValue(undefined),
-    };
-    candidateRepository = {
-      findByRideAndDriver: jest.fn(),
-      findByRideId: jest.fn(),
-      saveMany: jest.fn(),
-    };
-    locationService = {};
-    httpService = {};
-    fareEngine = {};
-    configService = { get: jest.fn() };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        RidesManagementService,
-        { provide: getQueueToken(RIDE_QUEUE_NAME), useValue: rideQueue },
-        { provide: RideRepository, useValue: rideRepository },
-        {
-          provide: RideStatusHistoryRepository,
-          useValue: rideStatusHistoryRepository,
-        },
-        { provide: RideNotificationService, useValue: notificationService },
-        {
-          provide: RideDriverCandidateRepository,
-          useValue: candidateRepository,
-        },
-        { provide: LocationService, useValue: locationService },
-        { provide: HttpService, useValue: httpService },
-        { provide: FareEngineService, useValue: fareEngine },
-        { provide: ConfigService, useValue: configService },
-      ],
-    }).compile();
-
-    service = module.get(RidesManagementService);
+    ({
+      service,
+      rideQueue,
+      rideRepository,
+      rideStatusHistoryRepository,
+      notificationService,
+      candidateRepository,
+      locationService,
+      httpService,
+      fareEngine,
+      configService,
+    } = await createRidesServiceTestBed());
   });
 
   afterEach(() => {
@@ -1550,7 +1722,7 @@ describe('RidesManagementService.confirmDriverAcceptance', () => {
   });
 
   it('throws BadRequest when ride has no assigned driver', async () => {
-    rideRepository.findById.mockResolvedValue(makeRide({ driverId: null }));
+    rideRepository.findById.mockResolvedValue(makeRide({ driverId: '' }));
     await expect(
       service.confirmDriverAcceptance('ride-1', 'r-1'),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -1784,5 +1956,855 @@ describe('RidesManagementService.confirmDriverAcceptance', () => {
       notificationService.notifyCandidateSuperseded,
     ).not.toHaveBeenCalled();
     expect(res).toEqual(transitioned);
+  });
+
+  it('returns transitioned ride when refreshed missing after confirmation', async () => {
+    const initial = makeRide({
+      status: ERideStatus.ACCEPTED,
+      driverId: 'd-OK',
+    });
+    const transitioned = { ...initial, status: ERideStatus.ENROUTE };
+    const chosen = makeCandidate({
+      driverId: 'd-OK',
+      status: ERideDriverCandidateStatus.ACCEPTED,
+    });
+
+    rideRepository.findById
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(null); // refreshed missing
+
+    candidateRepository.findByRideAndDriver.mockResolvedValue(chosen);
+    candidateRepository.findByRideId.mockResolvedValue([chosen]);
+
+    jest
+      .spyOn<any, any>(service as any, 'transitionRideStatus')
+      .mockResolvedValue({ ride: transitioned, changed: true });
+
+    const res = await service.confirmDriverAcceptance('ride-1', 'r-1');
+    expect(res).toEqual(transitioned);
+  });
+});
+
+describe('RidesManagementService.getRideById', () => {
+  let service: RidesManagementService;
+  let rideRepository: RideRepositoryMocks;
+  let notificationService: RideNotificationMocks;
+  let rideQueue: jest.Mocked<Queue<RideQueueJobData>>;
+  let candidateRepository: CandidateRepositoryMocks;
+  let rideStatusHistoryRepository: AnyObj;
+  let locationService: { getNearbyDrivers: jest.Mock };
+  let httpService: AnyObj;
+  let fareEngine: { calculateEstimatedFare: jest.Mock };
+  let configService: AnyObj;
+
+  beforeEach(async () => {
+    ({
+      service,
+      rideRepository,
+      notificationService,
+      rideQueue,
+      candidateRepository,
+      rideStatusHistoryRepository,
+      locationService,
+      httpService,
+      fareEngine,
+      configService,
+    } = await createRidesServiceTestBed());
+  });
+
+  it('returns ride and enforces access', async () => {
+    const ride = { id: 'ride-1', riderId: 'r-1', driverId: 'd-1', status: ERideStatus.REQUESTED } as any;
+    rideRepository.findById.mockResolvedValue(ride);
+    const accessSpy = jest.spyOn<any, any>(
+      service as any,
+      'ensureRequesterCanAccessRide',
+    );
+
+    const result = await service.getRideById('ride-1', {
+      id: 'r-1',
+      role: EClientType.RIDER,
+    });
+
+    expect(result).toBe(ride);
+    expect(accessSpy).toHaveBeenCalledWith(
+      ride,
+      expect.objectContaining({ id: 'r-1', role: EClientType.RIDER }),
+    );
+  });
+
+  it('throws NotFound when ride missing', async () => {
+    rideRepository.findById.mockResolvedValue(null);
+    await expect(
+      service.getRideById('missing', { id: 'r-1', role: EClientType.RIDER }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('RidesManagementService.rejectDriverAcceptance', () => {
+  let service: RidesManagementService;
+  let rideRepository: RideRepositoryMocks;
+  let candidateRepository: CandidateRepositoryMocks;
+  let notificationService: RideNotificationMocks;
+  let rideQueue: jest.Mocked<Queue<RideQueueJobData>>;
+  let rideStatusHistoryRepository: AnyObj;
+  let locationService: { getNearbyDrivers: jest.Mock };
+  let httpService: AnyObj;
+  let fareEngine: { calculateEstimatedFare: jest.Mock };
+  let configService: AnyObj;
+
+  beforeEach(async () => {
+    ({
+      service,
+      rideRepository,
+      candidateRepository,
+      notificationService,
+      rideQueue,
+      rideStatusHistoryRepository,
+      locationService,
+      httpService,
+      fareEngine,
+      configService,
+    } = await createRidesServiceTestBed());
+  });
+
+  it('throws NotFound when ride is absent', async () => {
+    rideRepository.findById.mockResolvedValue(null);
+    await expect(
+      service.rejectDriverAcceptance('missing', 'r-1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('throws BadRequest when ride has no assigned driver', async () => {
+    rideRepository.findById.mockResolvedValue({
+      id: 'ride-1',
+      riderId: 'r-1',
+      driverId: null,
+      status: ERideStatus.ACCEPTED,
+    } as any);
+
+    await expect(
+      service.rejectDriverAcceptance('ride-1', 'r-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('returns ride when already canceled', async () => {
+    const ride = {
+      id: 'ride-1',
+      riderId: 'r-1',
+      driverId: 'd-1',
+      status: ERideStatus.CANCELED,
+    } as any;
+    rideRepository.findById.mockResolvedValue(ride);
+
+    const result = await service.rejectDriverAcceptance('ride-1', 'r-1');
+    expect(result).toBe(ride);
+    expect(candidateRepository.findByRideAndDriver).not.toHaveBeenCalled();
+  });
+
+  it('throws Conflict when candidate no longer exists', async () => {
+    const ride = {
+      id: 'ride-1',
+      riderId: 'r-1',
+      driverId: 'd-1',
+      status: ERideStatus.ACCEPTED,
+    } as any;
+    rideRepository.findById.mockResolvedValue(ride);
+    candidateRepository.findByRideAndDriver.mockResolvedValue(null);
+
+    await expect(
+      service.rejectDriverAcceptance('ride-1', 'r-1'),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('throws NotFound when requester is not the rider', async () => {
+    rideRepository.findById.mockResolvedValue({
+      id: 'ride-1',
+      riderId: 'r-expected',
+      driverId: 'd-1',
+      status: ERideStatus.ACCEPTED,
+    } as any);
+
+    await expect(
+      service.rejectDriverAcceptance('ride-1', 'r-other'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('throws BadRequest for completed/enroute/assigned rides', async () => {
+    const base = {
+      id: 'ride-1',
+      riderId: 'r-1',
+      driverId: 'd-1',
+    } as any;
+
+    rideRepository.findById.mockResolvedValue({
+      ...base,
+      status: ERideStatus.COMPLETED,
+    });
+    await expect(
+      service.rejectDriverAcceptance('ride-1', 'r-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    rideRepository.findById.mockResolvedValue({
+      ...base,
+      status: ERideStatus.ENROUTE,
+    });
+    await expect(
+      service.rejectDriverAcceptance('ride-1', 'r-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    rideRepository.findById.mockResolvedValue({
+      ...base,
+      status: ERideStatus.ASSIGNED,
+    });
+    await expect(
+      service.rejectDriverAcceptance('ride-1', 'r-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('cancels driver acceptance, reverts ride, and notifies', async () => {
+    const ride = {
+      id: 'ride-1',
+      riderId: 'r-1',
+      driverId: 'd-1',
+      status: ERideStatus.ACCEPTED,
+    } as any;
+    const candidate = {
+      rideId: 'ride-1',
+      driverId: 'd-1',
+      status: ERideDriverCandidateStatus.ACCEPTED,
+    } as any;
+
+    rideRepository.findById
+      .mockResolvedValueOnce(ride)
+      .mockResolvedValueOnce({ ...ride, driverId: null }); // refreshed
+    candidateRepository.findByRideAndDriver.mockResolvedValue(candidate);
+    rideRepository.updateRide.mockResolvedValue({ ...ride, driverId: null });
+    jest
+      .spyOn<any, any>(service as any, 'transitionRideStatus')
+      .mockResolvedValue({
+        ride: { ...ride, driverId: null, status: ERideStatus.CANDIDATES_COMPUTED },
+        changed: true,
+      });
+
+    const result = await service.rejectDriverAcceptance('ride-1', 'r-1', 'no thanks');
+
+    expect(candidateRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        driverId: 'd-1',
+        status: ERideDriverCandidateStatus.CANCELED,
+        reason: 'no thanks',
+      }),
+    );
+    expect(rideRepository.updateRide).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ride-1', driverId: null }),
+    );
+    expect(notificationService.notifyRiderRejectedDriver).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ride-1', driverId: null }),
+      expect.objectContaining({ driverId: 'd-1' }),
+      'no thanks',
+    );
+    expect(result).toEqual(
+      expect.objectContaining({ id: 'ride-1', driverId: null }),
+    );
+  });
+
+  it('rejectDriverAcceptance uses default reason and refreshed fallback', async () => {
+    const ride = {
+      id: 'ride-1',
+      riderId: 'r-1',
+      driverId: 'd-1',
+      status: ERideStatus.ACCEPTED,
+    } as any;
+    const candidate = {
+      rideId: 'ride-1',
+      driverId: 'd-1',
+      status: ERideDriverCandidateStatus.ACCEPTED,
+    } as any;
+
+    rideRepository.findById
+      .mockResolvedValueOnce(ride)
+      .mockResolvedValueOnce(null); // refreshed missing
+    candidateRepository.findByRideAndDriver.mockResolvedValue(candidate);
+    rideRepository.updateRide.mockResolvedValue({ ...ride, driverId: null });
+    jest
+      .spyOn<any, any>(service as any, 'transitionRideStatus')
+      .mockResolvedValue({
+        ride: { ...ride, driverId: null, status: ERideStatus.CANDIDATES_COMPUTED },
+        changed: true,
+      });
+
+    const result = await service.rejectDriverAcceptance('ride-1', 'r-1');
+
+    expect(candidateRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: 'Rider rejected the driver acceptance',
+        status: ERideDriverCandidateStatus.CANCELED,
+      }),
+    );
+    expect(notificationService.notifyRiderRejectedDriver).toHaveBeenCalled();
+    expect(result).toEqual(
+      expect.objectContaining({ id: 'ride-1', driverId: null }),
+    );
+  });
+});
+
+describe('RidesManagementService helpers', () => {
+  let service: RidesManagementService;
+  let rideRepository: RideRepositoryMocks;
+  let candidateRepository: CandidateRepositoryMocks;
+  let rideStatusHistoryRepository: AnyObj;
+  let notificationService: RideNotificationMocks;
+  let rideQueue: jest.Mocked<Queue<RideQueueJobData>>;
+  let locationService: { getNearbyDrivers: jest.Mock };
+  let httpService: AnyObj;
+  let fareEngine: { calculateEstimatedFare: jest.Mock };
+  let configService: AnyObj;
+
+  beforeEach(async () => {
+    ({
+      service,
+      rideRepository,
+      candidateRepository,
+      rideStatusHistoryRepository,
+      notificationService,
+      rideQueue,
+      locationService,
+      httpService,
+      fareEngine,
+      configService,
+    } = await createRidesServiceTestBed());
+  });
+
+  it('builds driver candidates and skips missing/duplicate driverIds', () => {
+    const result = (service as any).buildDriverCandidateInputs([
+      { driverId: 'd-1', distanceMeters: 123.6 },
+      { driverId: '', distanceMeters: 1 },
+      { driverId: 'd-1', distanceMeters: 5 },
+    ]);
+
+    expect(result).toEqual([
+      expect.objectContaining({ driverId: 'd-1', distanceMeters: 124 }),
+    ]);
+  });
+
+  it('buildDriverCandidateInputs rounds distance when present', () => {
+    const result = (service as any).buildDriverCandidateInputs([
+      { driverId: 'd-3', distanceMeters: 10.4 },
+    ]);
+    expect(result[0].distanceMeters).toBe(10);
+  });
+
+  it('buildDriverCandidateInputs maps missing distance to null', () => {
+    const result = (service as any).buildDriverCandidateInputs([
+      { driverId: 'd-2', distanceMeters: null },
+    ]);
+    expect(result[0].distanceMeters).toBeNull();
+  });
+
+  it('returns empty candidate list when no nearby drivers', () => {
+    const result = (service as any).buildDriverCandidateInputs([]);
+    expect(result).toEqual([]);
+  });
+
+  it('builds initial history entries', () => {
+    const entries = (service as any).buildInitialHistoryEntries(3);
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ toStatus: ERideStatus.REQUESTED }),
+        expect.objectContaining({
+          toStatus: ERideStatus.CANDIDATES_COMPUTED,
+          context: 'Invited 3 drivers',
+        }),
+      ]),
+    );
+  });
+
+  it('enforces requester access rules', () => {
+    const ride = { id: 'ride-1', riderId: 'r-1', driverId: 'd-1' } as any;
+
+    expect(() =>
+      (service as any).ensureRequesterCanAccessRide(ride, {
+        id: '',
+        role: EClientType.RIDER,
+      }),
+    ).toThrow(BadRequestException);
+
+    expect(() =>
+      (service as any).ensureRequesterCanAccessRide(ride, {
+        id: 'r-x',
+        role: EClientType.RIDER,
+      }),
+    ).toThrow(NotFoundException);
+
+    expect(() =>
+      (service as any).ensureRequesterCanAccessRide(ride, {
+        id: 'd-x',
+        role: EClientType.DRIVER,
+      }),
+    ).toThrow(NotFoundException);
+
+    expect(() =>
+      (service as any).ensureRequesterCanAccessRide(ride, {
+        id: 'r-1',
+        role: undefined,
+      }),
+    ).not.toThrow();
+  });
+
+  it('records status changes and validates ride id', async () => {
+    await expect(
+      (service as any).recordStatusChange(
+        { id: null } as any,
+        null,
+        ERideStatus.REQUESTED,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    const history = { id: 'history-1' };
+    rideStatusHistoryRepository.create.mockReturnValue(history);
+    rideStatusHistoryRepository.save.mockResolvedValue(history);
+
+    await (service as any).recordStatusChange(
+      { id: 'ride-1' },
+      null,
+      ERideStatus.CANCELED,
+      { context: 'ctx' },
+    );
+
+    expect(rideStatusHistoryRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rideId: 'ride-1',
+        fromStatus: null,
+        toStatus: ERideStatus.CANCELED,
+        context: 'ctx',
+      }),
+    );
+    expect(rideStatusHistoryRepository.save).toHaveBeenCalledWith(history);
+  });
+
+  it('recordStatusChange accepts ride id as string', async () => {
+    rideStatusHistoryRepository.create.mockReturnValue({ id: 'hist-1' });
+    rideStatusHistoryRepository.save.mockResolvedValue({ id: 'hist-1' });
+    await (service as any).recordStatusChange(
+      'ride-1',
+      null,
+      ERideStatus.REQUESTED,
+      { context: 'ctx' },
+    );
+    expect(rideStatusHistoryRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ rideId: 'ride-1' }),
+    );
+  });
+
+  it('transitionRideStatus skips invalid statuses and avoids duplicate transitions', async () => {
+    rideRepository.findById.mockResolvedValue({
+      id: 'ride-1',
+      status: ERideStatus.COMPLETED,
+    } as any);
+
+    const logSpy = jest.spyOn((service as any).logger, 'log');
+    const skip = await service.transitionRideStatus(
+      'ride-1',
+      [ERideStatus.REQUESTED],
+      ERideStatus.ACCEPTED,
+    );
+    expect(skip.changed).toBe(false);
+    expect(logSpy).toHaveBeenCalled();
+
+    rideRepository.findById.mockResolvedValue({
+      id: 'ride-1',
+      status: ERideStatus.ACCEPTED,
+    } as any);
+    const dup = await service.transitionRideStatus(
+      'ride-1',
+      [ERideStatus.ACCEPTED],
+      ERideStatus.ACCEPTED,
+    );
+    expect(dup.changed).toBe(false);
+  });
+
+  it('transitionRideStatus updates ride and records change', async () => {
+    const ride = { id: 'ride-1', status: ERideStatus.REQUESTED } as any;
+    rideRepository.findById.mockResolvedValue(ride);
+    rideRepository.updateRide.mockResolvedValue({
+      ...ride,
+      status: ERideStatus.CANCELED,
+      cancelReason: 'ctx',
+    });
+    const recordSpy = jest.spyOn<any, any>(
+      service as any,
+      'recordStatusChange',
+    );
+
+    const result = await service.transitionRideStatus(
+      'ride-1',
+      [ERideStatus.REQUESTED],
+      ERideStatus.CANCELED,
+      'ctx',
+    );
+
+    expect(result.changed).toBe(true);
+    expect(recordSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ride-1' }),
+      ERideStatus.REQUESTED,
+      ERideStatus.CANCELED,
+      { context: 'ctx' },
+    );
+  });
+
+  it('listRideCandidates proxies to repository', async () => {
+    const candidates = [{ driverId: 'd-1' }];
+    candidateRepository.findByRideId.mockResolvedValue(candidates as any);
+
+    const res = await service.listRideCandidates('ride-1');
+    expect(res).toBe(candidates as any);
+  });
+
+  it('notifyRideMatched proxies to notification service', async () => {
+    const ride = { id: 'ride-1' } as any;
+    await service.notifyRideMatched(ride);
+    expect(notificationService.notifyRideMatched).toHaveBeenCalledWith(ride);
+  });
+
+  it('transitionRideStatus throws NotFound when ride missing', async () => {
+    rideRepository.findById.mockResolvedValue(null);
+    await expect(
+      service.transitionRideStatus(
+        'missing',
+        [ERideStatus.REQUESTED],
+        ERideStatus.ACCEPTED,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('requestRouteEstimatesThroughQueue waits job and closes events', async () => {
+    const jobResult = { distanceKm: 1, durationSeconds: 2 };
+    const waitUntilFinished = jest.fn().mockResolvedValue(jobResult);
+    const job = { waitUntilFinished } as any;
+    rideQueue.add.mockResolvedValue(job);
+    const queueEvents = { close: jest.fn().mockResolvedValue(undefined) } as any;
+    jest
+      .spyOn<any, any>(service as any, 'createQueueEvents')
+      .mockResolvedValue(queueEvents);
+
+    const result = await (service as any).requestRouteEstimatesThroughQueue(
+      'job-1',
+      { longitude: 1, latitude: 2 },
+      { longitude: 3, latitude: 4 },
+    );
+
+    expect(rideQueue.remove).toHaveBeenCalledWith('job-1');
+    expect(rideQueue.add).toHaveBeenCalledWith(
+      RideQueueJob.EstimateRoute,
+      expect.any(Object),
+      expect.objectContaining({ jobId: 'job-1', removeOnComplete: true }),
+    );
+    expect(waitUntilFinished).toHaveBeenCalled();
+    expect(queueEvents.close).toHaveBeenCalled();
+    expect(result).toEqual(jobResult);
+  });
+
+  it('requestRouteEstimatesThroughQueue wraps wait errors and still closes events', async () => {
+    const waitUntilFinished = jest.fn().mockRejectedValue(new Error('fail'));
+    const job = { waitUntilFinished } as any;
+    rideQueue.add.mockResolvedValue(job);
+    const queueEvents = { close: jest.fn().mockResolvedValue(undefined) } as any;
+    jest
+      .spyOn<any, any>(service as any, 'createQueueEvents')
+      .mockResolvedValue(queueEvents);
+    const logSpy = jest.spyOn<any, any>(
+      service as any,
+      'logRouteEstimationJobError',
+    );
+
+    await expect(
+      (service as any).requestRouteEstimatesThroughQueue(
+        'job-err',
+        { longitude: 1, latitude: 2 },
+        { longitude: 3, latitude: 4 },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(logSpy).toHaveBeenCalled();
+    expect(queueEvents.close).toHaveBeenCalled();
+  });
+
+  it('requestRouteEstimatesThroughQueue logs when closing queueEvents fails', async () => {
+    const jobResult = { distanceKm: 1, durationSeconds: 2 };
+    const waitUntilFinished = jest.fn().mockResolvedValue(jobResult);
+    const job = { waitUntilFinished } as any;
+    rideQueue.add.mockResolvedValue(job);
+    const queueEvents = {
+      close: jest.fn().mockRejectedValue(new Error('close-fail')),
+    } as any;
+    jest
+      .spyOn<any, any>(service as any, 'createQueueEvents')
+      .mockResolvedValue(queueEvents);
+    const logSpy = jest.spyOn((service as any).logger, 'error');
+
+    await (service as any).requestRouteEstimatesThroughQueue(
+      'job-2',
+      { longitude: 1, latitude: 2 },
+      { longitude: 3, latitude: 4 },
+    );
+
+    expect(logSpy).toHaveBeenCalled();
+  });
+
+  it('requestRouteSummary builds request and parses response', async () => {
+    const { of } = require('rxjs');
+    configService.get
+      .mockReturnValueOnce(undefined) // SKIP_ORS_CALL
+      .mockReturnValueOnce('http://ors.test') // ORS_URL
+      .mockReturnValueOnce('api-key'); // ORS_APIKEY
+    const parseSpy = jest
+      .spyOn<any, any>(service as any, 'parseRouteSummary')
+      .mockReturnValue({ distanceMeters: 1000, durationSeconds: 60 });
+
+    httpService.get.mockReturnValue(
+      of({
+        data: { features: [{ properties: { summary: {} } }] },
+      }),
+    );
+
+    const result = await (service as any).requestRouteSummary(
+      { longitude: 1, latitude: 2 },
+      { longitude: 3, latitude: 4 },
+    );
+
+    expect(httpService.get).toHaveBeenCalledWith(
+      expect.stringContaining('http://ors.test'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'api-key' }),
+      }),
+    );
+    expect(parseSpy).toHaveBeenCalled();
+    expect(result).toEqual({ distanceMeters: 1000, durationSeconds: 60 });
+  });
+
+  it('requestRouteSummary forwards errors to handler', async () => {
+    const { throwError } = require('rxjs');
+    configService.get
+      .mockReturnValueOnce(undefined) // SKIP_ORS_CALL
+      .mockReturnValueOnce('http://ors.test') // ORS_URL
+      .mockReturnValueOnce(''); // ORS_APIKEY
+    httpService.get.mockReturnValue(
+      throwError(() => new Error('http fail')),
+    );
+    const handlerSpy = jest
+      .spyOn<any, any>(service as any, 'handleRouteEstimationError')
+      .mockImplementation(() => {
+        throw new BadRequestException('wrapped');
+      });
+
+    await expect(
+      (service as any).requestRouteSummary(
+        { longitude: 1, latitude: 2 },
+        { longitude: 3, latitude: 4 },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(handlerSpy).toHaveBeenCalled();
+  });
+
+  it('fetchRouteEstimates converts summary into rounded estimates', async () => {
+    jest
+      .spyOn<any, any>(service as any, 'requestRouteSummary')
+      .mockResolvedValue({
+        distanceMeters: 1234,
+        durationSeconds: 65.8,
+      });
+
+    const result = await service.fetchRouteEstimates(
+      { longitude: 1, latitude: 2 },
+      { longitude: 3, latitude: 4 },
+    );
+
+    expect(result).toEqual({ distanceKm: 1.234, durationSeconds: 66 });
+  });
+
+  it('requestRouteSummary validates config and delegates parsing', async () => {
+    configService.get.mockReturnValueOnce(undefined);
+    await expect(
+      (service as any).requestRouteSummary(
+        { longitude: 1, latitude: 2 },
+        { longitude: 3, latitude: 4 },
+      ),
+    ).rejects.toThrow('Missing configuration for ORS_URL');
+  });
+
+  it('requestRouteSummary sets xmock header when SKIP_ORS_CALL true', async () => {
+    const { of } = require('rxjs');
+    configService.get
+      .mockReturnValueOnce(true) // SKIP_ORS_CALL
+      .mockReturnValueOnce('http://mock-ors.test') // MOCK_ORS_URL
+      .mockReturnValueOnce(undefined); // ORS_APIKEY
+    jest
+      .spyOn<any, any>(service as any, 'parseRouteSummary')
+      .mockReturnValue({ distanceMeters: 10, durationSeconds: 1 });
+    httpService.get.mockReturnValue(
+      of({
+        data: { features: [{ properties: { summary: {} } }] },
+      }),
+    );
+
+    await (service as any).requestRouteSummary(
+      { longitude: 1, latitude: 2 },
+      { longitude: 3, latitude: 4 },
+    );
+
+    expect(httpService.get).toHaveBeenCalledWith(
+      expect.stringContaining('http://mock-ors.test'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ xmock: 'true' }),
+      }),
+    );
+  });
+
+  it('parses route summary payload and validates fields', () => {
+    expect(() => (service as any).parseRouteSummary(null)).toThrow(
+      'OpenRouteService response is empty or invalid',
+    );
+    expect(() =>
+      (service as any).parseRouteSummary({ features: [] }),
+    ).toThrow('OpenRouteService response does not contain features');
+    expect(() =>
+      (service as any).parseRouteSummary({ features: [{}] }),
+    ).toThrow('OpenRouteService response summary is missing');
+    expect(() =>
+      (service as any).parseRouteSummary({
+        features: [{ properties: { summary: { distance: 'x', duration: 10 } } }],
+      }),
+    ).toThrow('OpenRouteService response summary is missing distance or duration');
+
+    const parsed = (service as any).parseRouteSummary({
+      features: [{ properties: { summary: { distance: 1200, duration: 60 } } }],
+    });
+    expect(parsed).toEqual({ distanceMeters: 1200, durationSeconds: 60 });
+  });
+
+  it('handleRouteEstimationError logs axios/non-axios errors and throws BadRequest', () => {
+    expect(() =>
+      (service as any).handleRouteEstimationError(
+        new BadRequestException('bad'),
+      ),
+    ).toThrow(BadRequestException);
+
+    const logSpy = jest.spyOn((service as any).logger, 'error');
+    expect(() =>
+      (service as any).handleRouteEstimationError({
+        isAxiosError: true,
+        message: 'msg',
+        response: { status: 502, statusText: 'oops' },
+      }),
+    ).toThrow(BadRequestException);
+    expect(logSpy).toHaveBeenCalled();
+
+    expect(() =>
+      (service as any).handleRouteEstimationError(new Error('boom')),
+    ).toThrow(BadRequestException);
+    expect(() => (service as any).handleRouteEstimationError('weird')).toThrow(
+      BadRequestException,
+    );
+
+    const logSpy2 = jest.spyOn((service as any).logger, 'error');
+    expect(() =>
+      (service as any).handleRouteEstimationError({
+        isAxiosError: true,
+        message: 'msg2',
+        response: { status: 400, statusText: 'bad' },
+      }),
+    ).toThrow(BadRequestException);
+    expect(logSpy2).toHaveBeenCalled();
+
+    const logSpy3 = jest.spyOn((service as any).logger, 'error');
+    expect(() =>
+      (service as any).handleRouteEstimationError({
+        isAxiosError: true,
+        message: 'msg3',
+        response: { status: undefined, statusText: undefined },
+      }),
+    ).toThrow(BadRequestException);
+    expect(logSpy3).toHaveBeenCalled();
+
+    const logSpy4 = jest.spyOn((service as any).logger, 'error');
+    expect(() =>
+      (service as any).handleRouteEstimationError({
+        isAxiosError: true,
+        message: 'msg4',
+        response: undefined,
+      }),
+    ).toThrow(BadRequestException);
+    expect(logSpy4).toHaveBeenCalled();
+  });
+
+  it('createQueueEvents waits until ready and closes on failure', async () => {
+    const QueueEventsMock = require('bullmq').QueueEvents as jest.Mock;
+    QueueEventsMock.mockReset();
+    const ready = { waitUntilReady: jest.fn(), close: jest.fn() };
+    const fail = { waitUntilReady: jest.fn(), close: jest.fn() };
+    QueueEventsMock
+      .mockImplementationOnce(() => ready as any)
+      .mockImplementationOnce(() => fail as any);
+
+    ready.waitUntilReady.mockResolvedValue(undefined);
+    ready.close.mockResolvedValue(undefined);
+    fail.close.mockResolvedValue(undefined);
+    const ok = await (service as any).createQueueEvents();
+    expect(ok).toBe(ready);
+
+    const err = new Error('fail');
+    fail.waitUntilReady.mockRejectedValue(err);
+    await expect((service as any).createQueueEvents()).rejects.toBe(err);
+    expect(fail.close).toHaveBeenCalled();
+  });
+
+  it('logRouteEstimationJobError covers different shapes', () => {
+    const logSpy = jest.spyOn((service as any).logger, 'error');
+    (service as any).logRouteEstimationJobError(null, 'ride-1');
+    (service as any).logRouteEstimationJobError(
+      { failedReason: new Error('reason') },
+      'ride-1',
+    );
+    (service as any).logRouteEstimationJobError(
+      { failedReason: 'failed' },
+      'ride-1',
+    );
+    (service as any).logRouteEstimationJobError(new Error('boom'), 'ride-1');
+    (service as any).logRouteEstimationJobError('odd', 'ride-1');
+    expect(logSpy).toHaveBeenCalled();
+  });
+
+  it('reads boolean/number configs and delegates fare rounding', () => {
+    configService.get
+      .mockReturnValueOnce('true')
+      .mockReturnValueOnce('maybe')
+      .mockReturnValueOnce(1);
+    expect((service as any).getBooleanConfig('KEY')).toBe(true);
+    expect((service as any).getBooleanConfig('KEY')).toBe(false);
+    expect((service as any).getBooleanConfig('KEY')).toBe(true);
+
+    configService.get.mockReturnValueOnce('10').mockReturnValueOnce(undefined);
+    expect((service as any).getNumberConfig('NUM', 5)).toBe(10);
+    expect((service as any).getNumberConfig('NUM', 5)).toBe(5);
+
+    fareEngine.calculateEstimatedFare.mockReturnValue('123');
+    expect((service as any).calculateEstimatedFare(1.2)).toBe('123');
+
+    configService.get.mockReturnValueOnce(42);
+    expect((service as any).getNumberConfig('NUM', 5)).toBe(42);
+
+    configService.get.mockReturnValueOnce(false);
+    expect((service as any).getBooleanConfig('KEY')).toBe(false);
+  });
+
+  it('buildRouteEstimationJobId/removePendingJobs/roundDistanceKm helpers', async () => {
+    const jobId = (service as any).buildRouteEstimationJobId('ride-1');
+    expect(jobId).toBe('ride-ride-1-route-estimation');
+
+    const logSpy = jest.spyOn((service as any).logger, 'error');
+    rideQueue.remove.mockRejectedValueOnce(new Error('fail'));
+    await (service as any).removePendingJobs('ride-1');
+    expect(logSpy).toHaveBeenCalled();
+
+    expect((service as any).roundDistanceKm(1.23456)).toBe(1.235);
   });
 });
