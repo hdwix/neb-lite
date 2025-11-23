@@ -1,17 +1,14 @@
-import { ConfigService } from '@nestjs/config';
 import { RideResponseService } from './ride-response.service';
 import { ERideStatus } from '../constants/ride-status.enum';
 
 describe('RideResponseService', () => {
-  const configService = { get: jest.fn() } as unknown as ConfigService;
   let service: RideResponseService;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    service = new RideResponseService(configService);
+    service = new RideResponseService();
   });
 
-  it('computes fare breakdown when distanceActualKm is present', () => {
+  it('returns ride details and candidates without recalculating fares', () => {
     const ride = {
       id: 'ride-1',
       riderId: 'r1',
@@ -21,14 +18,14 @@ describe('RideResponseService', () => {
       dropoffLongitude: 106.9,
       dropoffLatitude: -6.3,
       status: ERideStatus.CANDIDATES_COMPUTED,
-      fareEstimated: 10000,
-      fareFinal: null,
+      fareEstimated: '10000.00',
+      fareFinal: '7035.00',
       distanceEstimatedKm: 3.2,
       durationEstimatedSeconds: 600,
       distanceActualKm: 2.345,
-      discountPercent: null,
-      discountAmount: 500,
-      appFeeAmount: '1000',
+      discountPercent: 10,
+      discountAmount: '500.00',
+      appFeeAmount: '1000.00',
       paymentUrl: null,
       paymentStatus: null,
       createdAt: new Date('2025-01-01T00:00:00Z'),
@@ -55,11 +52,13 @@ describe('RideResponseService', () => {
 
     const res = service.toRideResponse(ride, candidates);
 
-    expect(res.baseFare).toBe('7035.00');
-    expect(res.fareRatePerKm).toBe(3000);
-    expect(res.discountAmountByDriver).toBe('500.00');
-    expect(res.fareAfterDiscount).toBe('6535.00');
-    expect(res.finalFare).toBe('7535.00');
+    expect(res).toMatchObject({
+      fareEstimated: '10000.00',
+      fareFinal: '7035.00',
+      distanceActualKm: 2.345,
+      discountAmount: '500.00',
+      appFeeAmount: '1000.00',
+    });
     expect(res.candidates).toEqual([
       {
         driverId: 'D-01',
@@ -97,10 +96,10 @@ describe('RideResponseService', () => {
     const res = service.toRideResponse(ride);
 
     expect(res.candidates).toBeUndefined();
-    expect(res.baseFare).toBeUndefined();
+    expect(res.fareFinal).toBeNull();
   });
 
-  it('preserves raw fareFinal when currency parsing fails', () => {
+  it('passes through raw fare values', () => {
     const ride = {
       id: 'ride-raw',
       riderId: 'r1',
@@ -117,11 +116,10 @@ describe('RideResponseService', () => {
 
     const res = service.toRideResponse(ride);
 
-    expect(res.finalFare).toBeUndefined();
     expect(res.fareFinal).toBe('oops');
   });
 
-  it('normalizes negative currency values and candidate timestamps', () => {
+  it('normalizes candidate timestamps', () => {
     const ride = {
       id: 'ride-neg',
       riderId: 'r1',
@@ -158,10 +156,6 @@ describe('RideResponseService', () => {
 
     const res = service.toRideResponse(ride, candidates);
 
-    expect(res.baseFare).toBe('3000.00');
-    expect(res.discountAmountByDriver).toBe('0.00');
-    expect(res.fareAfterDiscount).toBe('3000.00');
-    expect(res.finalFare).toBe('3000.00');
     expect(res.candidates).toEqual([
       {
         driverId: 'D-STR',
