@@ -119,6 +119,35 @@ describe('RideResponseService', () => {
     expect(res.fareFinal).toBe('oops');
   });
 
+  it('defaults candidate distance to null when missing', () => {
+    const ride = {
+      id: 'ride-nodist',
+      riderId: 'r1',
+      driverId: 'd1',
+      pickupLongitude: 0,
+      pickupLatitude: 0,
+      dropoffLongitude: 0,
+      dropoffLatitude: 0,
+      status: ERideStatus.CANDIDATES_COMPUTED,
+      createdAt: '2025-01-06T00:00:00Z',
+    } as any;
+
+    const candidates = [
+      {
+        driverId: 'D-NODIST',
+        status: 'PENDING',
+        reason: 'No GPS',
+        distanceMeters: undefined,
+        respondedAt: '2025-01-06T00:05:00.000Z',
+        createdAt: '2025-01-06T00:01:00.000Z',
+      },
+    ] as any[];
+
+    const res = service.toRideResponse(ride, candidates);
+
+    expect(res.candidates?.[0].distanceMeters).toBeNull();
+  });
+
   it('normalizes candidate timestamps', () => {
     const ride = {
       id: 'ride-neg',
