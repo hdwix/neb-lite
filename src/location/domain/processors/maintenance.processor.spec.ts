@@ -125,6 +125,18 @@ describe('MaintenanceProcessor', () => {
     expect(exec).toHaveBeenCalledTimes(2);
   });
 
+  it('exits immediately when no stale drivers exist', async () => {
+    const { processor, zrangebyscore, multiReturn } = setupProcessor();
+    zrangebyscore.mockResolvedValueOnce([]);
+
+    await processor.process({ name: MaintenanceJob.CleanupIdleDrivers } as any);
+
+    expect(zrangebyscore).toHaveBeenCalledTimes(1);
+    expect(multiReturn.exec).not.toHaveBeenCalled();
+    expect(multiReturn.zrem).not.toHaveBeenCalled();
+    expect(multiReturn.hdel).not.toHaveBeenCalled();
+  });
+
   it('logs redis connection errors', () => {
     const logErrorSpy = jest
       .spyOn(Logger.prototype, 'error')
