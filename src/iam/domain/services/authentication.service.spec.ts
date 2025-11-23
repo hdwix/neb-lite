@@ -18,7 +18,10 @@ import {
   NotificationPublisher,
   OTP_SIMULATION_TARGET,
 } from '../../../notifications/domain/ports/notification-publisher.port';
-import { ISendOtpQueueData } from '../../app/types/iam-module-types-definition';
+import {
+  ESendOtpQueueJob,
+  ISendOtpQueueData,
+} from '../../app/types/iam-module-types-definition';
 
 describe('AuthenticationService', () => {
   let service: AuthenticationService;
@@ -112,6 +115,38 @@ describe('AuthenticationService', () => {
     otpSpy.mockRestore();
   });
 
+  it('throws BadRequestException when OTP client lookup returns empty', async () => {
+    jest.spyOn(service as any, 'getClientData').mockResolvedValue([]);
+
+    await expect(
+      service.getOtp({
+        clientId: 'missing',
+        clientType: EClientType.RIDER,
+      } as GetOtpDto),
+    ).rejects.toThrow(new BadRequestException('Client not found'));
+  });
+
+  it('sends OTP via queue when SMS notifications are enabled', async () => {
+    jest.spyOn(service as any, 'generateOtp').mockReturnValue('987654');
+    jest.spyOn(configService, 'get').mockImplementation((key: string) => {
+      if (key === 'OTP_TTL_SEC') return 30;
+      if (key === 'SKIP_SMS_NOTIF') return false;
+      return undefined;
+    });
+
+    const result = await service.getOtp({
+      clientId: riderClient.id,
+      clientType: EClientType.RIDER,
+    } as GetOtpDto);
+
+    expect(result).toBe('otp code sent');
+    expect(sendOtpQueue.add).toHaveBeenCalledWith(
+      ESendOtpQueueJob.SendOtpJob,
+      { msisdn: riderClient.msisdn, otp: '987654' },
+      expect.objectContaining({ jobId: expect.stringContaining(riderClient.msisdn) }),
+    );
+  });
+
   it('throws when cached OTP is missing', async () => {
     jest.spyOn(cacheManager, 'get').mockResolvedValue(undefined);
 
@@ -122,6 +157,18 @@ describe('AuthenticationService', () => {
         otpCode: '654321',
       } as VerifyOtpDto),
     ).rejects.toThrow(new UnauthorizedException('Otp code not found : 654321'));
+  });
+
+  it('throws BadRequestException when verifyOtp client lookup returns empty', async () => {
+    jest.spyOn(service as any, 'getClientData').mockResolvedValue([]);
+
+    await expect(
+      service.verifyOtp({
+        clientId: 'missing',
+        clientType: EClientType.RIDER,
+        otpCode: '123123',
+      } as VerifyOtpDto),
+    ).rejects.toThrow(new BadRequestException('Client not found'));
   });
 
   it('verifies OTP and returns generated tokens', async () => {
@@ -140,6 +187,19 @@ describe('AuthenticationService', () => {
     expect(result).toEqual({ accessToken: 'access', refreshToken: 'refresh' });
     expect(cacheManager.del).toHaveBeenCalledWith('otp:+6281112345678');
     expect(tokenSpy).toHaveBeenCalledWith(riderClient);
+  });
+
+  it('throws UnauthorizedException when OTP comparison fails', async () => {
+    jest.spyOn(cacheManager, 'get').mockResolvedValue('hashed');
+    jest.spyOn(hashingService, 'compare').mockResolvedValue(false);
+
+    await expect(
+      service.verifyOtp({
+        clientId: riderClient.id,
+        clientType: EClientType.RIDER,
+        otpCode: '000000',
+      } as VerifyOtpDto),
+    ).rejects.toThrow(new UnauthorizedException('invalid otp-code'));
   });
 
   it('generates and caches tokens with unique ids', async () => {
@@ -234,5 +294,50 @@ describe('AuthenticationService', () => {
     await expect(
       service.logout({ refreshToken: 'token' } as RefreshTokenDto),
     ).rejects.toThrow(new BadRequestException('error validating refresh token'));
+  });
+
+  it('generates a six digit OTP code', () => {
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.123456);
+
+    const otp = (service as any).generateOtp();
+
+    expect(otp).toBe('211110');
+    randomSpy.mockRestore();
+  });
+
+  it('logs when no OTP simulation subscribers are available', async () => {
+    jest.spyOn(notificationPublisher, 'emit').mockResolvedValue(false);
+    const loggerSpy = jest.spyOn((service as any).logger, 'log');
+
+    await (service as any).emitOtpSimulationEvent(
+      riderClient.msisdn,
+      EClientType.RIDER,
+      '123456',
+    );
+
+    expect(loggerSpy).toHaveBeenCalledWith(
+      `No active OTP simulation subscribers for ${riderClient.msisdn}. Event dropped.`,
+    );
+  });
+
+  it('returns driver data when client type is DRIVER', async () => {
+    const driverClient = { id: 'driver-1', msisdn: '+62819999999', role: EClientType.DRIVER };
+    driverRepo.findDriverbyId.mockResolvedValue([driverClient]);
+
+    const result = await (service as any).getClientData(
+      driverClient.id,
+      EClientType.DRIVER,
+    );
+
+    expect(driverRepo.findDriverbyId).toHaveBeenCalledWith(driverClient.id);
+    expect(result).toEqual([driverClient]);
+  });
+
+  it('throws when client data is missing during lookup', async () => {
+    riderRepo.findRiderbyId.mockResolvedValue([]);
+
+    await expect(
+      (service as any).getClientData('missing', EClientType.RIDER),
+    ).rejects.toThrow(new BadRequestException('client data not found'));
   });
 });
