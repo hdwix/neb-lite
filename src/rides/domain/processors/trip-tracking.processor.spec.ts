@@ -11,8 +11,8 @@ import { TripTrackingService } from '../services/trip-tracking.service';
 describe('TripTrackingProcessor', () => {
   let processor: TripTrackingProcessor;
   let service: jest.Mocked<TripTrackingService>;
-  let debugSpy: jest.SpyInstance;
-  let warnSpy: jest.SpyInstance;
+  let logSpy: jest.SpyInstance;
+  // let warnSpy: jest.SpyInstance;
 
   beforeEach(() => {
     service = {
@@ -23,12 +23,12 @@ describe('TripTrackingProcessor', () => {
     processor = new TripTrackingProcessor(service);
 
     // silence Logger output while allowing assertions
-    debugSpy = jest
-      .spyOn(Logger.prototype as any, 'debug')
+    logSpy = jest
+      .spyOn(Logger.prototype as any, 'log')
       .mockImplementation(() => {});
-    warnSpy = jest
-      .spyOn(Logger.prototype as any, 'warn')
-      .mockImplementation(() => {});
+    // warnSpy = jest
+    //   .spyOn(Logger.prototype as any, 'warn')
+    //   .mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -60,8 +60,8 @@ describe('TripTrackingProcessor', () => {
       await processor.process(job);
 
       expect(service.flushAll).toHaveBeenCalledTimes(1);
-      expect(debugSpy).toHaveBeenCalled();
-      const messages = debugSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logSpy).toHaveBeenCalled();
+      const messages = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
       expect(messages).toContain(
         'Processing trip tracking flush-all job flush-all-007',
       );
@@ -88,7 +88,7 @@ describe('TripTrackingProcessor', () => {
       expect(service.flushRide).toHaveBeenCalledTimes(1);
       expect(service.flushRide).toHaveBeenCalledWith('ride-42');
 
-      const messages = debugSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      const messages = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
       expect(messages).toContain(
         'Processing trip tracking flush-ride job flush-ride-123 for ride-42',
       );
@@ -111,9 +111,9 @@ describe('TripTrackingProcessor', () => {
       await processor.process(job);
 
       expect(service.flushRide).not.toHaveBeenCalled();
-      expect(warnSpy).toHaveBeenCalled();
-      const warnMessage = String(warnSpy.mock.calls[0][0]);
-      expect(warnMessage).toContain('Received flush-ride job without rideId');
+      expect(logSpy).toHaveBeenCalled();
+      const logMessage = String(logSpy.mock.calls[0][0]);
+      expect(logMessage).toContain('Received flush-ride job without rideId');
     });
 
     it('logs a warning for unknown job names and does nothing', async () => {
@@ -123,9 +123,9 @@ describe('TripTrackingProcessor', () => {
 
       expect(service.flushAll).not.toHaveBeenCalled();
       expect(service.flushRide).not.toHaveBeenCalled();
-      expect(warnSpy).toHaveBeenCalled();
-      const warnMessage = String(warnSpy.mock.calls[0][0]);
-      expect(warnMessage).toContain(
+      expect(logSpy).toHaveBeenCalled();
+      const logMessage = String(logSpy.mock.calls[0][0]);
+      expect(logMessage).toContain(
         'Received unknown trip tracking job: SomeUnknownJob',
       );
     });

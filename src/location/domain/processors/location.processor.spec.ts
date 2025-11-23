@@ -38,7 +38,7 @@ describe('LocationProcessor', () => {
   });
 
   it('logs unknown jobs', async () => {
-    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const warnSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
     const processor = new LocationProcessor(geolocationRepository);
     const job = { name: 'unknown' } as Job<LocationUpdateJobData>;
 

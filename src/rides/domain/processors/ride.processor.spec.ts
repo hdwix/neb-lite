@@ -72,12 +72,12 @@ describe('RideProcessor', () => {
 
   it('logs a debug message including the ride id when estimating route', async () => {
     ridesManagementService.fetchRouteEstimates.mockResolvedValue({} as any);
-    const debugSpy = jest.spyOn(Logger.prototype as any, 'debug');
+    const logSpy = jest.spyOn(Logger.prototype as any, 'log');
 
     const job = makeEstimateJob({ rideId: 'ride-xyz' }, { id: 'job-log' });
     await processor.process(job);
 
-    const logged = debugSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const logged = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
     expect(logged).toContain('Estimating route for ride ride-xyz');
   });
 
@@ -92,7 +92,7 @@ describe('RideProcessor', () => {
   });
 
   it('logs a warning and returns undefined for unknown job names', async () => {
-    const warnSpy = jest.spyOn(Logger.prototype as any, 'warn');
+    const logSpy = jest.spyOn(Logger.prototype as any, 'log');
 
     const job = {
       id: 'job-unknown',
@@ -104,8 +104,8 @@ describe('RideProcessor', () => {
     const result = await processor.process(job);
 
     expect(result).toBeUndefined();
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    const message = String(warnSpy.mock.calls[0][0]);
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const message = String(logSpy.mock.calls[0][0]);
     expect(message).toContain('Received unknown ride job');
     expect(message).toContain('TotallyUnknownJob');
     // Also ensure service was not touched

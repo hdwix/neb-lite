@@ -50,15 +50,15 @@ describe('PaymentProcessor', () => {
   });
 
   it('logs the job id via Logger.debug', async () => {
-    const debugSpy = jest.spyOn(Logger.prototype as any, 'debug');
+    const logSpy = jest.spyOn(Logger.prototype as any, 'log');
     paymentService.processOutbox.mockResolvedValue({} as any);
 
     const job = makeJob({ id: 'job-log-1', data: { outboxId: 'ob-log' } });
     await processor.process(job);
 
-    expect(debugSpy).toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalled();
     // message contains both "Processing payment outbox job" and job id
-    const logged = debugSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const logged = logSpy.mock.calls.map((c) => String(c[0])).join('\n');
     expect(logged).toContain('Processing payment outbox job');
     expect(logged).toContain('job-log-1');
   });

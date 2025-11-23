@@ -388,7 +388,8 @@ export class PaymentService {
   private normalizePaymentStatus(
     status: string | null | undefined,
   ): ERidePaymentDetailStatus {
-    const normalized = status?.toLowerCase?.() ?? ERidePaymentDetailStatus.UNKNOWN;
+    const normalized =
+      status?.toLowerCase?.() ?? ERidePaymentDetailStatus.UNKNOWN;
     const allowedStatuses = new Set(Object.values(ERidePaymentDetailStatus));
     if (allowedStatuses.has(normalized as ERidePaymentDetailStatus)) {
       return normalized as ERidePaymentDetailStatus;
@@ -446,7 +447,7 @@ export class PaymentService {
     }
 
     if (this.isFinalFailureStatus(status)) {
-      const normalized = status?.toLowerCase?.() ?? 'unknown';
+      const normalized = status?.toLowerCase();
       return {
         status: PaymentOutboxStatus.Failed,
         setProcessedAt: true,

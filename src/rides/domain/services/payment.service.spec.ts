@@ -943,6 +943,19 @@ const makeAxiosError = (
       );
     });
 
+    it('buildOutboxUpdateForStatus lowercases final failure statuses', () => {
+      const result = (service as any).buildOutboxUpdateForStatus(
+        'DENY' as ERidePaymentDetailStatus,
+        false,
+      );
+
+      expect(result).toEqual({
+        status: PaymentOutboxStatus.Failed,
+        setProcessedAt: true,
+        lastError: 'Payment failed with status deny',
+      });
+    });
+
     it('buildOutboxUpdateForStatus uses unknown when status is undefined and unpaid', () => {
       const result = (service as any).buildOutboxUpdateForStatus(
         undefined as unknown as ERidePaymentDetailStatus,

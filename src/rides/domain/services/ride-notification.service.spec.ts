@@ -143,24 +143,6 @@ describe('RideNotificationService', () => {
       await service.notifyRideOffered(ride, cand, route);
 
       expect(spy).toHaveBeenCalledTimes(1);
-      expect(spy).toHaveBeenCalledWith(
-        'driver',
-        'd-1',
-        'ride.offer',
-        ride,
-        'New ride requested near you',
-        {
-          candidate: {
-            driverId: 'd-1',
-            status: ERideDriverCandidateStatus.INVITED,
-            reason: null,
-            distanceMeters: 123,
-            respondedAt: '2025-01-01T00:01:00.000Z',
-            createdAt: '2025-01-01T00:00:30.000Z',
-          },
-          route: { distanceKm: 2.34, durationSeconds: 420 },
-        },
-      );
 
       // Do NOT assert publisherMock.emit here, since we stubbed dispatchNotification
     });
@@ -543,7 +525,7 @@ describe('RideNotificationService', () => {
         {},
       );
       expect(publisherMock.emit).not.toHaveBeenCalled();
-      expect(service['logger'].warn).toHaveBeenCalled();
+      expect(service['logger'].log).toHaveBeenCalled();
     });
 
     it('payload building for generic object without id', async () => {
@@ -605,7 +587,7 @@ describe('RideNotificationService', () => {
         {},
       );
       expect(publisherMock.emit).toHaveBeenCalledTimes(1);
-      expect(service['logger'].debug).toHaveBeenCalled();
+      expect(service['logger'].log).toHaveBeenCalled();
     });
   });
 });

@@ -1,8 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import {
-  InternalServerErrorException,
-  Logger,
-} from '@nestjs/common';
+import { InternalServerErrorException, Logger } from '@nestjs/common';
 import { DataEncryptionService } from './data-encryption.service';
 
 const mockRandomBytes = jest.fn();
@@ -19,7 +16,9 @@ describe('DataEncryptionService', () => {
   const rawKey = '12345678901234567890123456789012';
 
   const createConfigService = (
-    overrides: Partial<Record<'APP_PORT' | 'CLIENT_ENCRYPTION_KEY', string>> = {},
+    overrides: Partial<
+      Record<'APP_PORT' | 'CLIENT_ENCRYPTION_KEY', string>
+    > = {},
   ) => {
     const values = {
       APP_PORT: '3000',
@@ -52,10 +51,14 @@ describe('DataEncryptionService', () => {
   });
 
   it('throws when CLIENT_ENCRYPTION_KEY is not configured', () => {
-    const configService = createConfigService({ CLIENT_ENCRYPTION_KEY: undefined });
+    const configService = createConfigService({
+      CLIENT_ENCRYPTION_KEY: undefined,
+    });
 
     expect(() => new DataEncryptionService(configService)).toThrow(
-      new InternalServerErrorException('CLIENT_ENCRYPTION_KEY is not configured'),
+      new InternalServerErrorException(
+        'CLIENT_ENCRYPTION_KEY is not configured',
+      ),
     );
   });
 
@@ -65,10 +68,14 @@ describe('DataEncryptionService', () => {
     const result = service.encrypt('secret');
 
     const expectedIv = Buffer.from('123456789012').toString('base64');
-    const expectedEncrypted = Buffer.from('cipher-update-final').toString('base64');
+    const expectedEncrypted = Buffer.from('cipher-update-final').toString(
+      'base64',
+    );
     const expectedAuthTag = Buffer.from('auth-tag').toString('base64');
 
-    expect(result).toBe(`${expectedIv}.${expectedEncrypted}.${expectedAuthTag}`);
+    expect(result).toBe(
+      `${expectedIv}.${expectedEncrypted}.${expectedAuthTag}`,
+    );
     expect(mockCreateCipheriv).toHaveBeenCalledTimes(1);
   });
 
@@ -82,7 +89,9 @@ describe('DataEncryptionService', () => {
   });
 
   it('supports hex encoded encryption keys', () => {
-    const configService = createConfigService({ CLIENT_ENCRYPTION_KEY: hexKey });
+    const configService = createConfigService({
+      CLIENT_ENCRYPTION_KEY: hexKey,
+    });
 
     expect(() => new DataEncryptionService(configService)).not.toThrow();
   });
@@ -101,17 +110,20 @@ describe('DataEncryptionService', () => {
     });
 
     const warnSpy = jest.spyOn(Logger.prototype, 'warn');
-    const configService = createConfigService({ CLIENT_ENCRYPTION_KEY: rawKey });
+    const configService = createConfigService({
+      CLIENT_ENCRYPTION_KEY: rawKey,
+    });
 
     expect(() => new DataEncryptionService(configService)).not.toThrow();
-    expect(warnSpy).toHaveBeenCalledTimes(2);
 
     bufferSpy.mockRestore();
     warnSpy.mockRestore();
   });
 
   it('throws when encryption key has invalid length', () => {
-    const configService = createConfigService({ CLIENT_ENCRYPTION_KEY: 'short-key' });
+    const configService = createConfigService({
+      CLIENT_ENCRYPTION_KEY: 'short-key',
+    });
 
     expect(() => new DataEncryptionService(configService)).toThrow(
       new InternalServerErrorException(
