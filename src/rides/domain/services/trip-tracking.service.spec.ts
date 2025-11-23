@@ -414,6 +414,15 @@ describe('TripTrackingService', () => {
     ).resolves.toBe(0);
   });
 
+  it('swallows errors when deleting geo keys during cleanup', async () => {
+    redis.del.mockRejectedValueOnce(new Error('delete-fail'));
+
+    await expect(
+      (service as any).calculateDistanceMeters(0, 0, 1, 1),
+    ).resolves.toBe(42);
+    expect(redis.del).toHaveBeenCalled();
+  });
+
   it('delegates coordinate distance calculation', async () => {
     const spy = jest
       .spyOn<any, any>(service as any, 'calculateDistanceMeters')
