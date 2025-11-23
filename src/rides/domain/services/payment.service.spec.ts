@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PaymentService } from './payment.service';
 import { ConfigService } from '@nestjs/config';
@@ -13,11 +14,45 @@ import {
 import { ERidePaymentDetailStatus } from '../constants/ride-payment-detail-status.enum';
 import { RidePaymentDetailRepository } from '../../infrastructure/repositories/ride-payment-detail.repository';
 import { PaymentOutboxRepository } from '../../infrastructure/repositories/payment-outbox.repository';
-import { Queue } from 'bullmq';
+import type { Queue, QueueEvents } from 'bullmq';
 import { getQueueToken } from '@nestjs/bullmq';
 
+jest.mock('typeorm', () => ({
+  Entity: () => () => undefined,
+  Column: () => () => undefined,
+  PrimaryGeneratedColumn: () => () => undefined,
+  CreateDateColumn: () => () => undefined,
+  UpdateDateColumn: () => () => undefined,
+  Index: () => () => undefined,
+}));
+
+  jest.mock('bullmq', () => ({
+    QueueEvents: jest.fn().mockImplementation((name, opts) => ({
+      name,
+      opts,
+      close: jest.fn(),
+    })),
+    Queue: class Queue {},
+  }));
+
+jest.mock('../entities/ride-payment-detail.entity', () => ({
+  RidePaymentDetail: class RidePaymentDetail {},
+}));
+
+jest.mock('../entities/ride.entity', () => ({
+  Ride: class Ride {},
+}));
+
+jest.mock('../../infrastructure/repositories/ride-payment-detail.repository', () => ({
+  RidePaymentDetailRepository: class RidePaymentDetailRepository {},
+}));
+
+jest.mock('../../infrastructure/repositories/payment-outbox.repository', () => ({
+  PaymentOutboxRepository: class PaymentOutboxRepository {},
+}));
+
 // --- minimal fakes / shapes used in tests
-type AnyObj = Record<string, any>;
+  type AnyObj = Record<string, any>;
 
 const makeAxiosError = (
   status = 502,
@@ -33,8 +68,8 @@ const makeAxiosError = (
   return err as AxiosError;
 };
 
-describe('PaymentService', () => {
-  let service: PaymentService;
+  describe('PaymentService', () => {
+    let service: PaymentService;
 
   // Mocks
   const configMock = {
@@ -75,8 +110,15 @@ describe('PaymentService', () => {
     add: jest.fn(),
   };
 
-  beforeEach(async () => {
-    jest.resetAllMocks();
+    beforeEach(async () => {
+      jest.resetAllMocks();
+      const mockedQueueEvents = jest.requireMock('bullmq')
+        .QueueEvents as jest.Mock;
+      mockedQueueEvents.mockImplementation((name, opts) => ({
+        name,
+        opts,
+        close: jest.fn(),
+    }));
 
     // default good config
     (configMock.get as any) = jest.fn((key: string) => {
@@ -92,22 +134,25 @@ describe('PaymentService', () => {
       }
     });
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        PaymentService,
-        { provide: ConfigService, useValue: configMock },
-        { provide: HttpService, useValue: httpMock },
-        {
-          provide: RidePaymentDetailRepository,
-          useValue: paymentDetailRepoMock,
-        },
-        { provide: PaymentOutboxRepository, useValue: outboxRepoMock },
-        // ✅ correct
-        { provide: getQueueToken(PAYMENT_QUEUE_NAME), useValue: queueMock },
-      ],
-    }).compile();
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PaymentService,
+          { provide: ConfigService, useValue: configMock },
+          { provide: HttpService, useValue: httpMock },
+          {
+            provide: RidePaymentDetailRepository,
+            useValue: paymentDetailRepoMock,
+          },
+          {
+            provide: PaymentOutboxRepository,
+            useValue: outboxRepoMock,
+          },
+          // ✅ correct
+          { provide: getQueueToken(PAYMENT_QUEUE_NAME), useValue: queueMock },
+        ],
+      }).compile();
 
-    service = module.get(PaymentService);
+      service = module.get(PaymentService);
   });
 
   //
@@ -308,6 +353,41 @@ describe('PaymentService', () => {
       );
     });
 
+    it('logs when closing queue events fails but still returns refreshed detail', async () => {
+      paymentDetailRepoMock.findByRideId.mockResolvedValue(null);
+      paymentDetailRepoMock.create.mockReturnValue({ ...detailBase });
+      outboxRepoMock.saveDetailAndOutbox.mockResolvedValue({
+        detail: { ...detailBase },
+        outbox: { ...outboxBase, id: 'outbox-close' },
+      });
+
+      const job = fakeJob();
+      queueMock.add.mockResolvedValue(job as any);
+
+      const close = jest.fn().mockRejectedValueOnce('close-error');
+      jest
+        .spyOn<any, any>(service as any, 'createQueueEvents')
+        .mockResolvedValue({ close });
+
+      (job.waitUntilFinished as jest.Mock).mockResolvedValueOnce(undefined);
+
+      paymentDetailRepoMock.findById.mockResolvedValue({
+        ...detailBase,
+        redirectUrl: 'https://go-back',
+        token: 't-close',
+      });
+
+      const loggerSpy = jest.spyOn((service as any).logger, 'error');
+
+      const res = await service.initiatePayment(ride);
+
+      expect(loggerSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to close payment queue events for ride'),
+      );
+      expect(res.redirectUrl).toBe('https://go-back');
+      expect(res.token).toBe('t-close');
+    });
+
     it('throws "Ride does not have a payable amount" when gross amount <= 0', async () => {
       // This triggers via buildPaymentRequestPayload
       const badRide = { id: 'ride-zero', riderId: 'r', fareFinal: '0' } as any;
@@ -364,9 +444,9 @@ describe('PaymentService', () => {
       );
     });
 
-    it('successfully posts to payment API, updates detail and outbox, returns result', async () => {
-      outboxRepoMock.findById.mockResolvedValue({ ...outbox });
-      paymentDetailRepoMock.findById.mockResolvedValue({ ...detail });
+      it('successfully posts to payment API, updates detail and outbox, returns result', async () => {
+        outboxRepoMock.findById.mockResolvedValue({ ...outbox });
+        paymentDetailRepoMock.findById.mockResolvedValue({ ...detail });
 
       httpMock.post.mockReturnValue(
         of({
@@ -390,9 +470,39 @@ describe('PaymentService', () => {
       );
 
       expect(result.paymentDetailId).toBe('detail-1');
-      expect(result.token).toBe('t-123');
-      expect(result.redirectUrl).toBe('https://go.pay');
-    });
+        expect(result.token).toBe('t-123');
+        expect(result.redirectUrl).toBe('https://go.pay');
+      });
+
+      it('treats missing response data as null payload and persists it', async () => {
+        outboxRepoMock.findById.mockResolvedValue({ ...outbox });
+        paymentDetailRepoMock.findById.mockResolvedValue({ ...detail });
+
+        httpMock.post.mockReturnValue(of({} as AxiosResponse));
+
+        paymentDetailRepoMock.save.mockImplementation(async (d: any) => d);
+        outboxRepoMock.save.mockImplementation(async (o: any) => o);
+
+        const result = await service.processOutbox(outbox.id);
+
+        expect(paymentDetailRepoMock.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            responsePayload: null,
+            requestPayload: outbox.requestPayload,
+            orderId: outbox.orderId,
+            status: ERidePaymentDetailStatus.INITIATED,
+            token: null,
+            redirectUrl: null,
+          }),
+        );
+
+        expect(outboxRepoMock.save).toHaveBeenCalledWith(
+          expect.objectContaining({ status: PaymentOutboxStatus.Completed }),
+        );
+
+        expect(result.token).toBeNull();
+        expect(result.redirectUrl).toBeNull();
+      });
 
     it('handles axios error: sets outbox failed, detail failed, throws', async () => {
       outboxRepoMock.findById.mockResolvedValue({ ...outbox });
@@ -556,6 +666,48 @@ describe('PaymentService', () => {
         orderId: null,
         providerTransactionId: null,
       });
+    });
+  });
+
+  describe('helper utilities', () => {
+    it('createQueueEvents uses queue connection and name', async () => {
+      const events = await (service as any).createQueueEvents();
+
+      expect(events.name).toBe(PAYMENT_QUEUE_NAME);
+      expect(events.opts).toEqual({ connection: queueMock.opts.connection });
+      expect(events.close).toBeDefined();
+    });
+
+    it('extractResponseString returns null for null payload', () => {
+      expect((service as any).extractResponseString(null, 'token')).toBeNull();
+    });
+
+    it('describePaymentError handles unknown error object', () => {
+      const message = (service as any).describePaymentError({ nope: true });
+      expect(message).toBe('Payment API request failed with unknown error');
+    });
+
+    it('parseCurrency returns 0 for undefined values', () => {
+      expect((service as any).parseCurrency(undefined)).toBe(0);
+      expect((service as any).parseCurrency(null)).toBe(0);
+    });
+
+    it('roundCurrency returns 0 for non-finite numbers', () => {
+      expect((service as any).roundCurrency(NaN)).toBe(0);
+    });
+
+    it('stringifyError handles non-error values', () => {
+      expect((service as any).stringifyError({ foo: 'bar' })).toBe(
+        JSON.stringify({ foo: 'bar' }),
+      );
+    });
+
+    it('buildOutboxUpdateForStatus returns null when paid and status unknown', () => {
+      const result = (service as any).buildOutboxUpdateForStatus(
+        ERidePaymentDetailStatus.UNKNOWN,
+        true,
+      );
+      expect(result).toBeNull();
     });
   });
 });
