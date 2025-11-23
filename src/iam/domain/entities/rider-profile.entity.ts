@@ -1,0 +1,44 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  Index,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
+} from 'typeorm';
+import { EClientType } from '../../../app/enums/client-type.enum';
+import { EClientStatus } from '../constants/client-status.enum';
+
+@Entity('rider_profile')
+@Index('ix_rider_profile_msisdn_status', ['msisdn', 'status'])
+export class RiderProfile {
+  @PrimaryGeneratedColumn({ type: 'bigint' })
+  id!: string;
+
+  @Column({ name: 'msisdn', type: 'varchar', length: 32 })
+  msisdn!: string;
+
+  @Column({ type: 'text', nullable: true })
+  name?: string;
+
+  @Column({ type: 'enum', enum: EClientType, default: EClientType.RIDER })
+  role!: EClientType;
+
+  @Column({
+    type: 'enum',
+    enum: EClientStatus,
+    enumName: 'client_status',
+    default: EClientStatus.ACTIVE,
+  })
+  status!: EClientStatus;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt?: Date | null;
+}

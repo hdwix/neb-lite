@@ -1,4 +1,4 @@
 export enum EClientType {
   DRIVER = 'DRIVER',
-  CUSTOMER = 'CUSTOMER',
+  RIDER = 'RIDER',
 }

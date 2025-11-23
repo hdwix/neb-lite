@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app/controllers/app.controller';
 import { DatabaseModule } from './infrastructure/modules/database.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { IamModule } from './iam/iam.module';
@@ -7,6 +6,11 @@ import { RedisWorkerModule } from './redis-worker/redis-worker.module';
 import KeyvRedis, { Keyv } from '@keyv/redis';
 import { CacheModule } from '@nestjs/cache-manager';
 import { LoggingModule } from './infrastructure/modules/logging.module';
+import { GatewayModule } from './gateway/gateway.module';
+import { HttpModule } from '@nestjs/axios';
+import { LocationModule } from './location/location.module';
+import { RidesModule } from './rides/rides.module';
+import { RedisModule } from './infrastructure/redis/redis.module';
 
 @Module({
   imports: [
@@ -28,8 +32,13 @@ import { LoggingModule } from './infrastructure/modules/logging.module';
     IamModule,
     RedisWorkerModule,
     LoggingModule,
+    GatewayModule,
+    HttpModule,
+    LocationModule,
+    RidesModule,
+    RedisModule,
   ],
-  controllers: [AppController],
+  controllers: [],
   providers: [],
 })
 export class NebengliteModule {}
