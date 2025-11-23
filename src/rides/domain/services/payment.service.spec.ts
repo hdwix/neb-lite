@@ -388,6 +388,74 @@ const makeAxiosError = (
       expect(res.token).toBe('t-close');
     });
 
+    it('keeps existing outbox jobId when queue job has no id', async () => {
+      paymentDetailRepoMock.findByRideId.mockResolvedValue(null);
+      paymentDetailRepoMock.create.mockReturnValue({ ...detailBase });
+      outboxRepoMock.saveDetailAndOutbox.mockResolvedValue({
+        detail: { ...detailBase },
+        outbox: { ...outboxBase, id: 'outbox-jobless', jobId: 'existing-job' },
+      });
+
+      const job: AnyObj = { ...fakeJob(), id: undefined };
+      queueMock.add.mockResolvedValue(job as any);
+
+      const close = jest.fn().mockResolvedValue(undefined);
+      jest
+        .spyOn<any, any>(service as any, 'createQueueEvents')
+        .mockResolvedValue({ close });
+
+      (job.waitUntilFinished as jest.Mock).mockResolvedValueOnce(undefined);
+
+      paymentDetailRepoMock.findById.mockResolvedValue({
+        ...detailBase,
+        redirectUrl: 'https://go-existing',
+        token: 't-existing',
+      });
+
+      outboxRepoMock.save.mockImplementation(async (o: any) => o);
+
+      const res = await service.initiatePayment(ride);
+
+      expect(outboxRepoMock.save).toHaveBeenCalledWith(
+        expect.objectContaining({ jobId: 'existing-job' }),
+      );
+      expect(res.redirectUrl).toBe('https://go-existing');
+    });
+
+    it('stores null jobId when queue returns no id and none existed', async () => {
+      paymentDetailRepoMock.findByRideId.mockResolvedValue(null);
+      paymentDetailRepoMock.create.mockReturnValue({ ...detailBase });
+      outboxRepoMock.saveDetailAndOutbox.mockResolvedValue({
+        detail: { ...detailBase },
+        outbox: { ...outboxBase, id: 'outbox-null', jobId: undefined },
+      });
+
+      const job: AnyObj = { ...fakeJob(), id: undefined };
+      queueMock.add.mockResolvedValue(job as any);
+
+      const close = jest.fn().mockResolvedValue(undefined);
+      jest
+        .spyOn<any, any>(service as any, 'createQueueEvents')
+        .mockResolvedValue({ close });
+
+      (job.waitUntilFinished as jest.Mock).mockResolvedValueOnce(undefined);
+
+      paymentDetailRepoMock.findById.mockResolvedValue({
+        ...detailBase,
+        redirectUrl: 'https://go-null',
+        token: 't-null',
+      });
+
+      outboxRepoMock.save.mockImplementation(async (o: any) => o);
+
+      const res = await service.initiatePayment(ride);
+
+      expect(outboxRepoMock.save).toHaveBeenCalledWith(
+        expect.objectContaining({ jobId: null }),
+      );
+      expect(res.redirectUrl).toBe('https://go-null');
+    });
+
     it('throws "Ride does not have a payable amount" when gross amount <= 0', async () => {
       // This triggers via buildPaymentRequestPayload
       const badRide = { id: 'ride-zero', riderId: 'r', fareFinal: '0' } as any;
@@ -538,6 +606,28 @@ const makeAxiosError = (
         expect.objectContaining({ status: PaymentOutboxStatus.Failed }),
       );
     });
+
+    it('increments outbox attempts before processing', async () => {
+      outboxRepoMock.findById.mockResolvedValue({ ...outbox, attempts: undefined });
+      paymentDetailRepoMock.findById.mockResolvedValue({ ...detail });
+      httpMock.post.mockReturnValue(
+        of({
+          data: { token: 'tok', redirect_url: 'https://url' },
+        } as unknown as AxiosResponse),
+      );
+      const firstSaveArgs: AnyObj[] = [];
+      outboxRepoMock.save.mockImplementation(async (o: any) => {
+        firstSaveArgs.push({ ...o });
+        return { ...o };
+      });
+      paymentDetailRepoMock.save.mockImplementation(async (d: any) => d);
+
+      await service.processOutbox(outbox.id);
+
+      expect(firstSaveArgs[0]).toEqual(
+        expect.objectContaining({ attempts: 1, status: PaymentOutboxStatus.Processing }),
+      );
+    });
   });
 
   //
@@ -643,6 +733,28 @@ const makeAxiosError = (
       });
     });
 
+    it('defaults orderId to ride id and clones payload when fields missing', async () => {
+      const payload = {
+        transaction_status: ERidePaymentDetailStatus.PENDING,
+      } as any;
+
+      const { detail, outboxUpdate } = await service.applyNotification(
+        ride,
+        payload,
+        { ...pd },
+      );
+
+      expect(detail.orderId).toBe(ride.id);
+      expect(detail.providerTransactionId).toBeNull();
+      expect(detail.notificationPayload).toEqual(payload);
+      expect(detail.notificationPayload).not.toBe(payload);
+      expect(outboxUpdate).toEqual({
+        status: PaymentOutboxStatus.Processing,
+        setProcessedAt: false,
+        lastError: null,
+      });
+    });
+
     it('formatPaymentDetail returns null for null', () => {
       expect(service.formatPaymentDetail(null)).toBeNull();
     });
@@ -682,14 +794,53 @@ const makeAxiosError = (
       expect((service as any).extractResponseString(null, 'token')).toBeNull();
     });
 
+    it('extractResponseString returns string values when present', () => {
+      expect(
+        (service as any).extractResponseString({ token: 'abc-123' }, 'token'),
+      ).toBe('abc-123');
+    });
+
+    it('extractResponseString returns null for non-string values', () => {
+      expect(
+        (service as any).extractResponseString({ token: 123 }, 'token'),
+      ).toBeNull();
+    });
+
     it('describePaymentError handles unknown error object', () => {
       const message = (service as any).describePaymentError({ nope: true });
       expect(message).toBe('Payment API request failed with unknown error');
     });
 
+    it('describePaymentError formats axios errors with response data', () => {
+      const err = makeAxiosError(418, 'teapot');
+      const message = (service as any).describePaymentError(err);
+      expect(message).toContain('418');
+      expect(message).toContain('teapot');
+    });
+
+    it('describePaymentError stringifies non-string axios data', () => {
+      const err = makeAxiosError(null as any, { reason: 'struct' });
+      const message = (service as any).describePaymentError(err);
+      expect(message).toContain('unknown status');
+      expect(message).toContain('"reason":"struct"');
+    });
+
+    it('describePaymentError handles axios error with empty data', () => {
+      const err = makeAxiosError(503);
+      (err.response as any).data = undefined;
+      const message = (service as any).describePaymentError(err);
+      expect(message).toContain('503');
+      expect(message).toContain('{}');
+    });
+
     it('parseCurrency returns 0 for undefined values', () => {
       expect((service as any).parseCurrency(undefined)).toBe(0);
       expect((service as any).parseCurrency(null)).toBe(0);
+    });
+
+    it('parseCurrency converts numeric strings and returns 0 for NaN', () => {
+      expect((service as any).parseCurrency('12.34')).toBeCloseTo(12.34);
+      expect((service as any).parseCurrency('not-a-number')).toBe(0);
     });
 
     it('roundCurrency returns 0 for non-finite numbers', () => {
@@ -708,6 +859,101 @@ const makeAxiosError = (
         true,
       );
       expect(result).toBeNull();
+    });
+
+    it('normalizePaymentStatus falls back to unknown on undefined', () => {
+      expect((service as any).normalizePaymentStatus(undefined)).toBe(
+        ERidePaymentDetailStatus.UNKNOWN,
+      );
+    });
+
+    it('maps payment statuses to helper predicates', () => {
+      expect(
+        (service as any).isSuccessfulPaymentStatus(
+          ERidePaymentDetailStatus.CAPTURE,
+        ),
+      ).toBe(true);
+      expect(
+        (service as any).isFinalFailureStatus(ERidePaymentDetailStatus.EXPIRED),
+      ).toBe(true);
+      expect(
+        (service as any).isPendingPaymentStatus(
+          ERidePaymentDetailStatus.CHALLENGE,
+        ),
+      ).toBe(true);
+      expect(
+        (service as any).isSuccessfulPaymentStatus(
+          'weird-status' as ERidePaymentDetailStatus,
+        ),
+      ).toBe(false);
+    });
+
+    it('returns false for non-matching final failure and pending statuses', () => {
+      expect(
+        (service as any).isFinalFailureStatus(
+          'not-final' as ERidePaymentDetailStatus,
+        ),
+      ).toBe(false);
+      expect(
+        (service as any).isPendingPaymentStatus(
+          'not-pending' as ERidePaymentDetailStatus,
+        ),
+      ).toBe(false);
+    });
+
+    it('handles undefined status across helper predicates', () => {
+      expect(
+        (service as any).isSuccessfulPaymentStatus(
+          undefined as unknown as ERidePaymentDetailStatus,
+        ),
+      ).toBe(false);
+      expect(
+        (service as any).isFinalFailureStatus(
+          undefined as unknown as ERidePaymentDetailStatus,
+        ),
+      ).toBe(false);
+      expect(
+        (service as any).isPendingPaymentStatus(
+          undefined as unknown as ERidePaymentDetailStatus,
+        ),
+      ).toBe(false);
+    });
+
+    it('buildOutboxUpdateForStatus handles failure and unknown unpaid states', () => {
+      const failure = (service as any).buildOutboxUpdateForStatus(
+        ERidePaymentDetailStatus.FAILURE,
+        false,
+      );
+      expect(failure).toEqual(
+        expect.objectContaining({
+          status: PaymentOutboxStatus.Failed,
+          lastError: 'Payment failed with status failure',
+        }),
+      );
+
+      const unknown = (service as any).buildOutboxUpdateForStatus(
+        'MysteryStatus' as ERidePaymentDetailStatus,
+        false,
+      );
+      expect(unknown).toEqual(
+        expect.objectContaining({
+          status: PaymentOutboxStatus.Failed,
+          lastError: 'Payment resulted in status mysterystatus',
+        }),
+      );
+    });
+
+    it('buildOutboxUpdateForStatus uses unknown when status is undefined and unpaid', () => {
+      const result = (service as any).buildOutboxUpdateForStatus(
+        undefined as unknown as ERidePaymentDetailStatus,
+        false,
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: PaymentOutboxStatus.Failed,
+          lastError: 'Payment resulted in status unknown',
+        }),
+      );
     });
   });
 });
