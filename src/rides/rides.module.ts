@@ -46,6 +46,7 @@ import { PaymentService } from './domain/services/payment.service';
 import { PaymentProcessor } from './domain/processors/payment.processor';
 import { RidePaymentRepository } from './infrastructure/repositories/ride-payment.repository';
 import { FareEngineService } from './domain/services/fare-engine.service';
+import { RideResponseService } from './domain/services/ride-response.service';
 
 type RideQueueRegistrationOptions = RegisterQueueOptions & {
   limiter?: QueueLimiterOptions;
@@ -132,12 +133,14 @@ const paymentQueueRegistration: RegisterQueueOptions = {
     PaymentService,
     PaymentProcessor,
     FareEngineService,
+    RideResponseService,
   ],
   exports: [
     RidesManagementService,
     RidesTrackingService,
     RidesPaymentService,
     FareEngineService,
+    RideResponseService,
   ],
 })
 export class RidesModule {}
