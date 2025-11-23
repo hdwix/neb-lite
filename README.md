@@ -1,204 +1,150 @@
-# Project Nebengjek
+# Nebengjek (neb-lite)
 
-Nebengjek is an application to unite rider/consumer and driver for ride haling service, with following logic
+Nebengjek is a monolithic ride-hailing backend built with NestJS. It couples a thin HTTP/SSE edge with Redis-backed queues and a relational store to keep ride operations simple while still supporting realtime updates, payments, and notifications.
 
-Nebengjek Logic
+## High-Level Design (HLD)
+- **Monolith API (NestJS)** exposes HTTP and SSE endpoints for all clients.
+- **Redis** provides geospatial indexing for active drivers and Streams for asynchronous jobs/events.
+- **Relational database (PostgreSQL/MySQL)** persists identities, rides, payments, and audit history.
+- **Background workers** consume Redis Streams and queues for matching, tracking, payments, and notifications.
+- **Server-Sent Events (SSE)** push OTP simulation and ride status updates without dedicated WebSocket infra.
 
-1. user/rider activate order ⇒ being informed of all drivers within range
-2. driver ⇒ always send location data
-3. user select specific driver
-4. driver being informed if he/she is selected ⇒ driver will be informed about: user/rider location, destination, possibility whether easy or difficult
-5. driver will submit whether he/she accept/agree to take the user
-6. if driver agree driver will pick the user
-7. user and driver go to destination
-8. along the way to destination, both will be informed of rate (3000 / km )
-9. Upon arrive in destination, trx complete and driver will charge the user and apply discount
-10. Nebengjek apps will take 5% fee of trx in no. 9
-
-Assumption :
-
-driver can switch on/off of location activation
-
-## Environment Variables
-
-| Variable                          | Description                                                                                                                                                   |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SMS_SERVICE_URL`                 | Base URL for the SMS provider endpoint that delivers OTP messages.                                                                                            |
-| `OTP_SIMULATION_ACCESS_TOKEN`     | Static token that authorizes access to the OTP simulation SSE stream. Leave unset to disable the simulation endpoint.                                         |
-| `TRIP_TRACKING_FLUSH_INTERVAL_MS` | Interval (in milliseconds) that controls how often the trip-tracking job flushes accumulated locations to persistent storage. Defaults to `60000` when unset. |
-
-## Architecture Design Document
-
-1. High-Level Design (HLD)
-
-1.1 Overview
-
-This architecture simplifies the system by using a Monolithic API that connects to:
-• Redis for two purposes:
-• Geospatial indexing (Redis GEO)
-• Event bus (Redis Streams)
-• PostgreSQL / MySQL for persistent relational storage
-• Background Workers that process Redis Streams asynchronously
-• SSE (Server-Sent Events) for notifying clients in real-time
-
-The architecture prioritizes simplicity, fast development, and moderate scalability.
-
-1.2 HLD Diagram (Mermaid)
-
+### HLD Diagram
 <!-- prettier-ignore -->
 :::mermaid
 graph TD
-  A[Client Mobile/Web] --> B[Monolith API Service]
+  A[Client Mobile/Web] --> B[Monolith API]
   B --> C[Redis]
-  B --> D[PostgreSQL - MySQL]
+  B --> D[PostgreSQL / MySQL]
   C --> E[Background Workers]
   C -->|GEO| B
-  C -->|Stream| E
-  E -->|Stream| C
+  C -->|Streams| E
+  E -->|Streams| C
   B --> F[SSE Clients]
 :::
 
-⸻
+## Core Modules (LLD Overview)
 
-2. Low-Level Design (LLD)
+### 1) Gateway Module
+- Single public entrypoint under `/gateway/v1/*` for riders and drivers.
+- Orchestrates authentication, location updates, ride lifecycle, and payment/webhook callbacks via domain services.
+- Publishes realtime events to SSE streams (ride status, OTP simulation) and delegates long-running tasks to Redis queues.
 
-2.1 Components and Responsibilities
+### 2) IAM Module
+- OTP-based authentication that issues access/refresh tokens; logout and token-rotation flows are supported.
+- Role-aware guards/decorators enforce rider vs. driver authorization on endpoints.
+- Centralizes token parsing and cookie handling so downstream handlers receive verified identities.
 
-2.1.1 Monolith API
-• Handles HTTP requests (e.g., POST /order)
-• Writes geospatial data with GEOADD
-• Emits events to Redis Streams using XADD
-• Maintains SSE connections to push updates to clients
+### 3) Location Module
+- Accepts periodic driver pings, writing coordinates to Redis GEO for proximity search.
+- Background processors clean up stale drivers and manage BullMQ queues for location updates.
+- Exposes nearby-driver lookups used by ride matching and ETA calculations.
 
-2.1.2 Redis
-• Stores location data using GEOADD, queried via GEORADIUS / GEOSEARCH
-• Streams events like order_created and order_completed
+### 4) Rides Module
+- **Ride management:** create/cancel rides, collect driver candidates, and manage status transitions (requested → assigned → accepted → enroute → completed/cancelled).
+- **Ride tracking:** buffer trip locations, flush batched paths to persistent storage, and refresh metrics/geo caches.
+- **Ride payment:** create payment intents, publish outbox events to PSPs, ingest webhooks, and settle rider/driver balances.
 
-2.1.3 Background Workers
-• Read messages from Redis Streams via XREADGROUP
-• Perform business logic (e.g., match driver, process payments)
-• Write back results to another Redis Stream or Pub/Sub
+### 5) Notifications Module
+- Unified publisher for OTPs, ride events, and rider/driver alerts.
+- Supports SSE subscriptions and can extend to SMS/push/email channels.
 
-2.1.4 SSE Manager (in Monolith)
-• Holds client connections in memory (Map<userId, Response>)
-• Pushes messages to clients when events are consumed from Redis Stream
+## Key LLD Flows
 
-2.2 LLD Diagram (Mermaid)
-
+### 1) Authentication & Authorization
 <!-- prettier-ignore -->
 ```mermaid
-graph TD
-  subgraph Client
-    A1[POST /order] --> B1
-    A2[SSE Connected] <-- B4
-  end
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Gateway
+    participant IAM
 
-  subgraph API (Monolith)
-    B1[Receive Order Request] --> C1[XADD order_created]
-    C2[XREADGROUP order_completed] --> B3[Push to SSE]
-    B3 --> B4[SSE Stream to Client]
-  end
+    Client->>Gateway: POST /gateway/v1/auth/otp (phone)
+    Gateway->>IAM: Issue OTP & nonce
+    IAM-->>Client: OTP sent (SMS or SSE simulation)
 
-  subgraph Redis
-    C1
-    C2
-  end
+    Client->>Gateway: POST /gateway/v1/auth/verify (phone, otp)
+    Gateway->>IAM: Validate OTP, create session
+    IAM-->>Client: access & refresh tokens (cookies/headers)
 
-  subgraph Worker
-    D1[XREADGROUP order_created] --> D2[Process Order]
-    D2 --> C2[XADD order_completed]
-  end
+    Client->>Gateway: Protected request
+    Gateway->>IAM: Decode & verify tokens, check role guard
+    IAM-->>Gateway: Authorized identity (rider or driver)
 ```
 
-⸻
+### 2) Driver Updates Location
+<!-- prettier-ignore -->
+```mermaid
+flowchart LR
+  D[Driver App] -->|POST /gateway/v1/location| G[Gateway]
+  G -->|Upsert GEO location| R[(Redis GEO)]
+  G -->|Enqueue location job| Q[BullMQ]
+  Q --> W[Location Worker]
+  W -->|Cleanup stale entries| R
+```
 
-3. Technology Stack
-
-Component Technology
-API Server NestJS / Express
-Event Bus Redis Streams
-Geospatial Index Redis GEO
-Persistence PostgreSQL / MySQL
-Background Jobs Node.js Worker
-Realtime Updates Server-Sent Events
-
-# Ride Creation-to-Acceptance Flow
-
+### 3) Rider Creates a Ride
 <!-- prettier-ignore -->
 ```mermaid
 sequenceDiagram
     autonumber
     participant Rider
-    participant Gateway as Gateway API
-    participant Queue as BullMQ Queue
-    participant Driver
+    participant Gateway
+    participant Rides
+    participant Queue as BullMQ
 
-    Rider->>Gateway: POST /gateway/v1/rides
-    Gateway->>Gateway: Persist ride (status: requested)
-    Gateway->>Queue: Enqueue route-estimate job
-    Queue-->>Gateway: Distance, duration, fare
-    Gateway->>Queue: Enqueue ProcessSelection job
-    Queue-->>Gateway: Transition to assigned
-    Gateway-->>Driver: Notify ride matched
-    Gateway-->>Rider: Notify ride matched
-
-    Driver->>Gateway: POST /gateway/v1/rides/:id/driver-accept
-    Gateway->>Gateway: Validate driver & status
-    Gateway->>Gateway: Transition requested/candidates->assigned (if needed)
-    Gateway-->>Driver: Notify ride matched (idempotent)
-    Gateway->>Gateway: Transition assigned->accepted
-    Gateway-->>Rider: Notify driver accepted
-
-    Rider->>Gateway: POST /gateway/v1/rides/:id/rider-accept
-    Gateway->>Gateway: Validate rider & status (must be accepted)
-    Gateway->>Gateway: Transition accepted->enroute
-    Gateway-->>Driver: Notify rider confirmed
+    Rider->>Gateway: POST /gateway/v1/rides (pickup, dropoff)
+    Gateway->>Rides: Create ride (status=requested)
+    Rides->>Queue: Enqueue route-estimate job
+    Queue-->>Rides: Distance/duration/fare estimate
+    Rides->>Queue: Enqueue driver-selection job
+    Queue-->>Rides: Candidate drivers found
+    Rides-->>Rider: Notify match via SSE/notification
 ```
 
-<!-- prettier-ignore -->
-```mermaid
-flowchart LR
-  subgraph client
-    A1[Rider App] -->|Location ping every 5s| G
-    A2[Driver App] -->|Location ping every 3s| G
-  end
+### 4) Driver Starts the Trip
+- Driver accepts the assignment (`POST /gateway/v1/rides/:id/driver-accept`), transitioning the ride to **accepted** and notifying the rider.
+- When the driver arrives and begins the ride (`POST /gateway/v1/rides/:id/start`), the ride transitions to **enroute** and tracking starts, pushing status updates via SSE.
 
-  subgraph backend[Backend Services]
-    G[Gateway Service]
-    Q[Redis Stream/PubSub ride-location-stream]
-    T[Trip Tracker Service]
-    DB[(PostgreSQL or MongoDB - trip_history)]
-    C[Cache Redis GeoIndex - active_drivers]
-  end
+### 5) Driver Completes the Trip
+- Driver ends the ride (`POST /gateway/v1/rides/:id/complete`), capturing final route metrics.
+- Trip-tracking worker flushes buffered locations to persistent storage and triggers fare finalization.
+- Notifications module emits completion events to rider and driver channels.
 
-  G --> Q
-  Q --> T
-  T -->|Write batch| DB
-  T -->|Update metrics| C
-
-
-```
-
+### 6) Payment Process
 <!-- prettier-ignore -->
 ```mermaid
 sequenceDiagram
   autonumber
-  participant API as NebengJek API
-  participant DB as Postgres
-  participant OB as Outbox Poller (BullMQ producer)
-  participant 3P as 3rd-Party PSP
-  participant WH as Webhook Handler (BullMQ consumer)
-  participant SVC as Billing/Order Svc
+  participant API as Gateway/Rides API
+  participant DB as DB
+  participant OB as Outbox Producer
+  participant PSP as Payment Provider
+  participant WH as Webhook Handler
 
-  API->>DB: BEGIN TX: create PaymentIntent(status=PENDING)
-  API->>DB: INSERT outbox (event=PaymentRequested, payload)
-  API->>DB: COMMIT
+  API->>DB: Create PaymentIntent(status=PENDING)
+  API->>DB: Insert outbox event (PaymentRequested)
   OB->>DB: Poll outbox (FOR UPDATE SKIP LOCKED)
-  OB->>3P: POST /payments (with idempotency-key)
-  3P-->>OB: 200/202 (request accepted)
-  OB->>DB: Mark outbox sent, update intent(status=PROCESSING)
-  3P-->>WH: Webhook callback (event=payment.succeeded)
-  WH->>DB: Insert webhook_inbox (dedup by event_id)
-  WH->>DB: Upsert payment_intents (status=SUCCEEDED), append audit
-  WH->>SVC: Publish internal event (PaymentSucceeded) via outbox
-  ```
+  OB->>PSP: POST /payments (idempotency key)
+  PSP-->>OB: Ack accepted
+  OB->>DB: Mark outbox sent; intent=status PROCESSING
+  PSP-->>WH: Webhook (payment.succeeded/failed)
+  WH->>DB: Upsert intent status; store webhook inbox
+  WH-->>API: Emit PaymentSucceeded/Failed events
+```
+
+## Technology Stack
+- **Framework:** NestJS (Express) with modular domain boundaries.
+- **Queues/Events:** Redis Streams + BullMQ for job orchestration and outbox polling.
+- **Geospatial:** Redis GEO commands for nearby-driver discovery.
+- **Datastores:** PostgreSQL or MySQL for transactional data; optional MongoDB for trip history.
+- **Realtime:** Server-Sent Events (SSE) for OTP simulation and ride/driver status updates.
+- **Logging:** `nestjs-pino` for structured application logs.
+
+## Environment Variables
+| Variable | Description |
+| --- | --- |
+| `SMS_SERVICE_URL` | Base URL for the SMS provider endpoint that delivers OTP messages. |
+| `OTP_SIMULATION_ACCESS_TOKEN` | Static token authorizing access to the OTP simulation SSE stream. Leave unset to disable the simulation endpoint. |
+| `TRIP_TRACKING_FLUSH_INTERVAL_MS` | Interval (ms) controlling how often the trip-tracking job flushes accumulated locations to persistent storage. Defaults to `60000` when unset. |
