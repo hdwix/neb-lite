@@ -152,15 +152,15 @@ export class GeolocationRepository implements OnModuleDestroy {
       activeDriverIds.push(driverId);
     });
 
-    if (activeDriverIds.length === 0) {
-      return [];
-    }
-
     const activeDriverSet = new Set(activeDriverIds);
 
     const metadataResults = activeDriverIds.length
       ? await this.redis.hmget(DRIVER_METADATA_HASH_KEY, ...activeDriverIds)
       : [];
+
+    if (activeDriverIds.length === 0) {
+      return [];
+    }
 
     const metadataMap = new Map<string, GeospatialQueryResult['metadata']>();
     activeDriverIds.forEach((driverId, index) => {

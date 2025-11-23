@@ -5,6 +5,7 @@ import {
   ACTIVE_DRIVER_LOC_ZSET,
   DRIVER_LOC_GEO_KEY,
   DRIVER_LOC_HASH_PREFIX,
+  DRIVER_METADATA_HASH_KEY,
 } from './location.types';
 import { GeolocationRepository } from './geolocation.repository';
 
@@ -76,6 +77,23 @@ describe('GeolocationRepository', () => {
     jest.resetAllMocks();
   });
 
+  it('logs redis connection errors from the error event', () => {
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
+    repository = new GeolocationRepository(
+      configService as unknown as ConfigService,
+    );
+
+    const errorHandler = redisInstance.on.mock.calls[0][1];
+    errorHandler(new Error('boom'));
+
+    expect(redisInstance.on).toHaveBeenCalledWith(
+      'error',
+      expect.any(Function),
+    );
+    expect(errorSpy).toHaveBeenCalledWith('Redis connection error: Error: boom');
+  });
+
   it('stores driver locations with pipeline and default TTL', async () => {
     const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
 
@@ -131,8 +149,45 @@ describe('GeolocationRepository', () => {
     );
   });
 
+  it('uses current timestamp when eventTimestamp is not provided', async () => {
+    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2025-03-04T05:06:07.000Z'));
+
+    repository = new GeolocationRepository(
+      configService as unknown as ConfigService,
+    );
+
+    await repository.storeDriverLocation('driver-3', {
+      longitude: 1,
+      latitude: 2,
+    });
+
+    expect(pipeline.hset).toHaveBeenCalledWith(
+      `${DRIVER_LOC_HASH_PREFIX}driver-3`,
+      expect.objectContaining({
+        updatedAt: '2025-03-04T05:06:07.000Z',
+      }),
+    );
+    expect(pipeline.publish).toHaveBeenCalledWith(
+      'drivers:loc:updates',
+      JSON.stringify({
+        driverId: 'driver-3',
+        longitude: 1,
+        latitude: 2,
+        accuracyMeters: undefined,
+        updatedAt: '2025-03-04T05:06:07.000Z',
+      }),
+    );
+    expect(logSpy).toHaveBeenCalledWith(
+      'success store update location data for driverId: driver-3',
+    );
+
+    jest.useRealTimers();
+  });
+
   it('clamps TTL when configured below threshold and handles quit errors', async () => {
-    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
     configService.get = jest.fn((key: string, defaultValue?: any) => {
       const map: Record<string, any> = {
         DRIVER_LOCATION_TTL_SECONDS: '120',
@@ -158,7 +213,7 @@ describe('GeolocationRepository', () => {
 
     quitMock.mockRejectedValueOnce(new Error('fail quit'));
     await repository.onModuleDestroy();
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       'Failed to close redis connection: Error: fail quit',
     );
   });
@@ -187,8 +242,33 @@ describe('GeolocationRepository', () => {
     );
   });
 
+  it('returns empty list when georadius has no results', async () => {
+    repository = new GeolocationRepository(
+      configService as unknown as ConfigService,
+    );
+    georadiusMock.mockResolvedValueOnce(null);
+
+    const results = await repository.getNearbyDrivers(1, 1, 100, 1);
+
+    expect(results).toEqual([]);
+  });
+
+  it('skips score lookup when georadius entries lack driver ids', async () => {
+    repository = new GeolocationRepository(
+      configService as unknown as ConfigService,
+    );
+
+    georadiusMock.mockResolvedValueOnce([[123, '50', ['10', '20']]]);
+
+    const results = await repository.getNearbyDrivers(0, 0, 100, 1);
+
+    expect(results).toEqual([]);
+    expect(zmscoreMock).not.toHaveBeenCalled();
+    expect(hmgetMock).not.toHaveBeenCalled();
+  });
+
   it('maps nearby driver results and filters invalid entries', async () => {
-    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
     repository = new GeolocationRepository(
       configService as unknown as ConfigService,
     );
@@ -221,10 +301,191 @@ describe('GeolocationRepository', () => {
         metadata: { accuracyMeters: 7, updatedAt: 't2' },
       },
     ]);
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining(
         'Unable to parse metadata for driver driver-legacy',
       ),
     );
+  });
+
+  it('queries scores and metadata for active drivers', async () => {
+    repository = new GeolocationRepository(
+      configService as unknown as ConfigService,
+    );
+    georadiusMock.mockResolvedValueOnce([
+      ['driver-1', '25', ['10', '20']],
+      ['driver-2', '30', ['11', '21']],
+    ]);
+    zmscoreMock.mockResolvedValueOnce([1_000_100, 1_000_100]);
+    hmgetMock.mockResolvedValueOnce([
+      JSON.stringify({ accuracyMeters: 1, updatedAt: 'now' }),
+      JSON.stringify({ accuracyMeters: 2, updatedAt: 'later' }),
+    ]);
+
+    const results = await repository.getNearbyDrivers(0, 0, 100, 2);
+
+    expect(zmscoreMock).toHaveBeenCalledWith(
+      ACTIVE_DRIVER_LOC_ZSET,
+      'driver-1',
+      'driver-2',
+    );
+    expect(hmgetMock).toHaveBeenCalledWith(
+      DRIVER_METADATA_HASH_KEY,
+      'driver-1',
+      'driver-2',
+    );
+    expect(results).toEqual([
+      {
+        driverId: 'driver-1',
+        distanceMeters: 25,
+        location: { longitude: 10, latitude: 20 },
+        metadata: { accuracyMeters: 1, updatedAt: 'now' },
+      },
+      {
+        driverId: 'driver-2',
+        distanceMeters: 30,
+        location: { longitude: 11, latitude: 21 },
+        metadata: { accuracyMeters: 2, updatedAt: 'later' },
+      },
+    ]);
+  });
+
+  it('returns distance as zero when raw distance is invalid', async () => {
+    repository = new GeolocationRepository(
+      configService as unknown as ConfigService,
+    );
+    georadiusMock.mockResolvedValueOnce([
+      ['driver-1', 'NaN', ['10', '20']],
+    ]);
+    zmscoreMock.mockResolvedValueOnce([1_000_100]);
+    hmgetMock.mockResolvedValueOnce([
+      JSON.stringify({ accuracyMeters: 1, updatedAt: 'now' }),
+    ]);
+
+    const results = await repository.getNearbyDrivers(0, 0, 100, 1);
+
+    expect(results).toEqual([
+      {
+        driverId: 'driver-1',
+        distanceMeters: 0,
+        location: { longitude: 10, latitude: 20 },
+        metadata: { accuracyMeters: 1, updatedAt: 'now' },
+      },
+    ]);
+  });
+
+  it('ignores entries with non-array coordinates even when driver is active', async () => {
+    repository = new GeolocationRepository(
+      configService as unknown as ConfigService,
+    );
+    georadiusMock.mockResolvedValueOnce([
+      ['driver-good', '10', ['1', '2']],
+      ['driver-weird', '20', 'not-array'],
+    ]);
+    zmscoreMock.mockResolvedValueOnce([1_000_100, 1_000_100]);
+    hmgetMock.mockResolvedValueOnce([
+      JSON.stringify({ accuracyMeters: 1, updatedAt: 'now' }),
+      JSON.stringify({ accuracyMeters: 2, updatedAt: 'later' }),
+    ]);
+
+    const results = await repository.getNearbyDrivers(0, 0, 100, 2);
+
+    expect(results).toEqual([
+      {
+        driverId: 'driver-good',
+        distanceMeters: 10,
+        location: { longitude: 1, latitude: 2 },
+        metadata: { accuracyMeters: 1, updatedAt: 'now' },
+      },
+    ]);
+  });
+
+  it('ignores drivers whose scores are below the active cutoff', async () => {
+    repository = new GeolocationRepository(
+      configService as unknown as ConfigService,
+    );
+    georadiusMock.mockResolvedValueOnce([
+      ['driver-1', '100', ['10', '20']],
+    ]);
+    zmscoreMock.mockResolvedValueOnce([600_000]);
+
+    const results = await repository.getNearbyDrivers(0, 0, 100, 1);
+
+    expect(results).toEqual([]);
+  });
+
+  it('skips missing metadata but still returns active drivers', async () => {
+    repository = new GeolocationRepository(
+      configService as unknown as ConfigService,
+    );
+    georadiusMock.mockResolvedValueOnce([
+      ['driver-1', '50', ['10', '20']],
+    ]);
+    zmscoreMock.mockResolvedValueOnce([1_000_100]);
+    hmgetMock.mockResolvedValueOnce([null]);
+
+    const results = await repository.getNearbyDrivers(0, 0, 100, 1);
+
+    expect(results).toEqual([
+      {
+        driverId: 'driver-1',
+        distanceMeters: 50,
+        location: { longitude: 10, latitude: 20 },
+        metadata: undefined,
+      },
+    ]);
+  });
+
+  it('filters out entries for inactive drivers and invalid coordinates', async () => {
+    repository = new GeolocationRepository(
+      configService as unknown as ConfigService,
+    );
+    georadiusMock.mockResolvedValueOnce([
+      ['driver-active', '10', ['1', '2']],
+      ['driver-inactive', '20', ['3', '4']],
+      ['driver-bad-coords', '30', ['bad', 'coords']],
+    ]);
+    zmscoreMock.mockResolvedValueOnce([
+      1_000_100,
+      null,
+      1_000_100,
+    ]);
+    hmgetMock.mockResolvedValueOnce([
+      JSON.stringify({ accuracyMeters: 1, updatedAt: 'now' }),
+      null,
+      JSON.stringify({ accuracyMeters: 2, updatedAt: 'later' }),
+    ]);
+
+    const results = await repository.getNearbyDrivers(0, 0, 100, 3);
+
+    expect(results).toEqual([
+      {
+        driverId: 'driver-active',
+        distanceMeters: 10,
+        location: { longitude: 1, latitude: 2 },
+        metadata: { accuracyMeters: 1, updatedAt: 'now' },
+      },
+    ]);
+  });
+
+  it('skips metadata lookup when no drivers remain active after filtering', async () => {
+    repository = new GeolocationRepository(
+      configService as unknown as ConfigService,
+    );
+    georadiusMock.mockResolvedValueOnce([
+      ['driver-1', '10', ['1', '2']],
+      ['driver-2', '20', ['3', '4']],
+    ]);
+    zmscoreMock.mockResolvedValueOnce([null, undefined]);
+
+    const results = await repository.getNearbyDrivers(0, 0, 100, 2);
+
+    expect(zmscoreMock).toHaveBeenCalledWith(
+      ACTIVE_DRIVER_LOC_ZSET,
+      'driver-1',
+      'driver-2',
+    );
+    expect(hmgetMock).not.toHaveBeenCalled();
+    expect(results).toEqual([]);
   });
 });
