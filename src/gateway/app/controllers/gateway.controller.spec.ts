@@ -14,6 +14,7 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationStreamAdapter } from '../services/notification-stream.adapter';
 import { ClientService } from '../../../client/domain/services/client.service';
 import { ERideStatus } from '../../../rides/domain/constants/ride-status.enum';
+import { RideResponseService } from '../../../rides/domain/services/ride-response.service';
 
 describe('GatewayController', () => {
   let controller: GatewayController;
@@ -50,6 +51,9 @@ describe('GatewayController', () => {
     signupDriver: jest.fn(),
     signupRider: jest.fn(),
   } as ClientServiceMock;
+  let rideResponseServiceMock: jest.Mocked<
+    Pick<RideResponseService, 'toRideResponse'>
+  >;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -77,6 +81,9 @@ describe('GatewayController', () => {
     notificationStreamServiceMock = {
       subscribe: jest.fn(),
     } as jest.Mocked<Pick<NotificationStreamAdapter, 'subscribe'>>;
+    rideResponseServiceMock = {
+      toRideResponse: jest.fn((ride) => ({ id: ride.id })),
+    } as jest.Mocked<Pick<RideResponseService, 'toRideResponse'>>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [GatewayController],
@@ -114,6 +121,10 @@ describe('GatewayController', () => {
         {
           provide: ClientService,
           useValue: clientServiceMock as unknown as ClientService,
+        },
+        {
+          provide: RideResponseService,
+          useValue: rideResponseServiceMock,
         },
       ],
     }).compile();
@@ -310,55 +321,23 @@ describe('GatewayController', () => {
     });
   });
 
-  describe('getRide / toRideResponse math & candidates', () => {
-    it('includes computed fare fields and candidates when ride not completed', async () => {
+  describe('getRide', () => {
+    it('delegates ride formatting to RideResponseService and fetches candidates when applicable', async () => {
       const ride = {
         id: 'ride-1',
-        riderId: 'r1',
-        driverId: 'd1',
-        pickupLongitude: 106.8,
-        pickupLatitude: -6.2,
-        dropoffLongitude: 106.9,
-        dropoffLatitude: -6.3,
         status: ERideStatus.CANDIDATES_COMPUTED,
-        fareEstimated: 10000,
-        fareFinal: null,
-        distanceEstimatedKm: 3.2,
-        durationEstimatedSeconds: 600,
-        distanceActualKm: 2.345, // triggers base fare calculation path
-        discountPercent: null,
-        discountAmount: 500, // driver discount (number or string OK)
-        appFeeAmount: '1000', // string to exercise parseCurrency normalization
-        paymentUrl: null,
-        paymentStatus: null,
-        createdAt: new Date('2025-01-01T00:00:00Z'),
-      };
+      } as any;
+      const candidates = [{ driverId: '1' } as any];
 
-      const candidates = [
-        {
-          driverId: 'D-01',
-          status: 'PENDING',
-          reason: null,
-          distanceMeters: 321,
-          respondedAt: new Date('2025-01-01T00:05:00Z'),
-          createdAt: new Date('2025-01-01T00:01:00Z'),
-        },
-        {
-          driverId: 'D-02',
-          status: 'REJECTED',
-          reason: 'Far',
-          distanceMeters: 700,
-          respondedAt: null,
-          createdAt: new Date('2025-01-01T00:02:00Z'),
-        },
-      ];
-
-      // service mocks
       const ridesManagement = (controller as any).ridesManagementService as any;
       ridesManagement.getRideById = jest.fn().mockResolvedValue(ride);
       ridesManagement.listRideCandidates = jest
         .fn()
         .mockResolvedValue(candidates);
+      rideResponseServiceMock.toRideResponse.mockReturnValue({
+        id: ride.id,
+        formatted: true,
+      } as any);
 
       const req = {
         [REQUEST_CLIENT_KEY]: { sub: 'r1', role: EClientType.RIDER },
@@ -366,64 +345,35 @@ describe('GatewayController', () => {
 
       const res = await controller.getRide(req, 'ride-1');
 
-      // Default fare rate per km in ctor is 3000 (from getNumberConfig fallback)
-      // baseFare = 2.345 * 3000 = 7035 -> 7035.00 after toFixed(2)
-      // fareAfterDiscount = 7035 - 500 = 6535
-      // finalFare = fareAfterDiscount + appFee(1000) = 7535 -> '7535.00'
-      expect(res.data.baseFare).toBe('7035.00');
-      expect(res.data.fareRatePerKm).toBe(3000);
-      expect(res.data.discountAmountByDriver).toBe('500.00');
-      expect(res.data.fareAfterDiscount).toBe('6535.00');
-      expect(res.data.finalFare).toBe('7535.00');
-
-      // candidates mapped & iso strings handled
-      expect(res.data.candidates).toEqual([
-        {
-          driverId: 'D-01',
-          status: 'PENDING',
-          reason: null,
-          distanceMeters: 321,
-          respondedAt: '2025-01-01T00:05:00.000Z',
-          createdAt: '2025-01-01T00:01:00.000Z',
-        },
-        {
-          driverId: 'D-02',
-          status: 'REJECTED',
-          reason: 'Far',
-          distanceMeters: 700,
-          respondedAt: null,
-          createdAt: '2025-01-01T00:02:00.000Z',
-        },
-      ]);
+      expect(ridesManagement.listRideCandidates).toHaveBeenCalledWith('ride-1');
+      expect(rideResponseServiceMock.toRideResponse).toHaveBeenCalledWith(
+        ride,
+        candidates,
+      );
+      expect(res.data).toEqual({ id: 'ride-1', formatted: true });
     });
 
-    it('omits candidates section when ride is completed', async () => {
+    it('skips candidate lookup for completed rides', async () => {
       const ride = {
         id: 'ride-2',
-        riderId: 'r1',
-        driverId: 'd1',
-        pickupLongitude: 1,
-        pickupLatitude: 1,
-        dropoffLongitude: 2,
-        dropoffLatitude: 2,
-        status: ERideStatus.COMPLETED, // completed => should NOT fetch / include candidates
-        distanceActualKm: null, // keeps base fare path disabled
-        createdAt: '2025-01-02T00:00:00Z',
-      };
+        status: ERideStatus.COMPLETED,
+      } as any;
 
       const ridesManagement = (controller as any).ridesManagementService as any;
       ridesManagement.getRideById = jest.fn().mockResolvedValue(ride);
-      ridesManagement.listRideCandidates = jest.fn(); // should not be called
+      ridesManagement.listRideCandidates = jest.fn();
 
       const req = {
         [REQUEST_CLIENT_KEY]: { sub: 'r1', role: EClientType.RIDER },
       } as any;
 
-      const res = await controller.getRide(req, 'ride-2');
+      await controller.getRide(req, 'ride-2');
 
       expect(ridesManagement.listRideCandidates).not.toHaveBeenCalled();
-      expect(res.data.candidates).toBeUndefined(); // no candidates section
-      expect(res.data.baseFare).toBeUndefined(); // no base fare when distanceActualKm is null
+      expect(rideResponseServiceMock.toRideResponse).toHaveBeenCalledWith(
+        ride,
+        undefined,
+      );
     });
 
     it('floors negative fareAfterDiscount and converts nullables to strings', async () => {
@@ -917,217 +867,5 @@ describe('GatewayController', () => {
         '999',
       );
     });
-  });
-
-  /*
-   * ===== ADD: getNumberConfig branches (lines 663, 667-669) =====
-   * Rebuild the module to control the ConfigService return for constructor.
-   */
-  describe('getNumberConfig branches (constructor defaultFareRatePerKm)', () => {
-    const makeCtrl = async (configGet: (k: string) => any) => {
-      const module = await Test.createTestingModule({
-        controllers: [GatewayController],
-        providers: [
-          { provide: AuthenticationService, useValue: authServiceMock },
-          { provide: LocationService, useValue: locationServiceMock },
-          {
-            provide: RidesManagementService,
-            useValue: {
-              createRide: jest.fn(),
-              getRideById: jest.fn(),
-              listRideCandidates: jest.fn(),
-            },
-          },
-          {
-            provide: RidesTrackingService,
-            useValue: {
-              startRide: jest.fn(),
-              recordTripLocation: jest.fn(),
-              completeRide: jest.fn(),
-            },
-          },
-          {
-            provide: RidesPaymentService,
-            useValue: {
-              proceedRidePayment: jest.fn(),
-              handlePaymentNotification: jest.fn(),
-            },
-          },
-          {
-            provide: NotificationStreamAdapter,
-            useValue: notificationStreamServiceMock,
-          },
-          { provide: ClientService, useValue: clientServiceMock },
-          { provide: ConfigService, useValue: { get: jest.fn(configGet) } },
-        ],
-      }).compile();
-      return module.get<GatewayController>(GatewayController);
-    };
-
-    const computeBaseFare = async (ctrl: GatewayController, rate: number) => {
-      // Force a ride with distanceActualKm to exercise baseFare = distance * rate
-      const ride = {
-        id: 'r',
-        riderId: 'x',
-        driverId: 'y',
-        pickupLongitude: 0,
-        pickupLatitude: 0,
-        dropoffLongitude: 0,
-        dropoffLatitude: 0,
-        status: ERideStatus.CANDIDATES_COMPUTED,
-        distanceActualKm: 2,
-        createdAt: '2025-01-01T00:00:00Z',
-      };
-      (ctrl as any).ridesManagementService.getRideById = jest
-        .fn()
-        .mockResolvedValue(ride);
-      (ctrl as any).ridesManagementService.listRideCandidates = jest
-        .fn()
-        .mockResolvedValue([]);
-
-      const res = await ctrl.getRide(
-        { [REQUEST_CLIENT_KEY]: { sub: 'x', role: EClientType.RIDER } } as any,
-        'r',
-      );
-      return res.data.baseFare; // string with 2 decimals
-    };
-
-    it('uses numeric config value directly (line 663)', async () => {
-      const ctrl = await makeCtrl((k) =>
-        k === 'DEFAULT_FARE_RATE_PER_KM' ? 4000 : undefined,
-      );
-      const baseFare = await computeBaseFare(ctrl, 4000);
-      expect(baseFare).toBe('8000.00'); // 2 * 4000
-    });
-
-    it('parses string number config (line 663 string branch)', async () => {
-      const ctrl = await makeCtrl((k) =>
-        k === 'DEFAULT_FARE_RATE_PER_KM' ? '3500' : undefined,
-      );
-      const baseFare = await computeBaseFare(ctrl, 3500);
-      expect(baseFare).toBe('7000.00'); // 2 * 3500
-    });
-
-    it('falls back to default on invalid/undefined (lines 667-669)', async () => {
-      const ctrl = await makeCtrl((k) =>
-        k === 'DEFAULT_FARE_RATE_PER_KM' ? 'oops' : undefined,
-      );
-      // default is 3000
-      const baseFare = await computeBaseFare(ctrl, 3000);
-      expect(baseFare).toBe('6000.00'); // 2 * 3000
-    });
-  });
-
-  it('returns null for non-finite currency values (Number.isFinite guard)', async () => {
-    const ride = {
-      id: 'ride-nan',
-      riderId: 'r1',
-      driverId: 'd1',
-      pickupLongitude: 0,
-      pickupLatitude: 0,
-      dropoffLongitude: 0,
-      dropoffLatitude: 0,
-      status: ERideStatus.CANDIDATES_COMPUTED,
-      distanceActualKm: null, // disables base fare path
-      fareFinal: 'oops', // triggers parseCurrency -> Number('oops') => NaN
-      createdAt: '2025-01-05T00:00:00Z',
-    };
-
-    const ridesManagement = (controller as any).ridesManagementService as any;
-    ridesManagement.getRideById = jest.fn().mockResolvedValue(ride);
-    ridesManagement.listRideCandidates = jest.fn().mockResolvedValue([]);
-
-    const req = {
-      [REQUEST_CLIENT_KEY]: { sub: 'r1', role: EClientType.RIDER },
-    } as any;
-
-    const res = await controller.getRide(req, 'ride-nan');
-
-    // computed 'finalFare' is only set when baseFare !== null -> here it's undefined
-    expect(res.data.finalFare).toBeUndefined();
-
-    // raw copy remains on 'fareFinal'
-    expect(res.data.fareFinal).toBe('oops');
-
-    // also ensure base fare block didn't run
-    expect(res.data.baseFare).toBeUndefined();
-  });
-
-  it('handles negative currency (becomes null/0) and string/undefined candidate timestamps', async () => {
-    const ride = {
-      id: 'ride-neg',
-      riderId: 'r1',
-      driverId: 'd1',
-      pickupLongitude: 106.7,
-      pickupLatitude: -6.2,
-      dropoffLongitude: 106.8,
-      dropoffLatitude: -6.3,
-      status: ERideStatus.CANDIDATES_COMPUTED, // ensures candidates are included
-      distanceActualKm: 1, // baseFare path enabled (1 * 3000)
-      discountAmount: -200, // parseCurrency -> rounded < 0 => null -> ?? 0
-      appFeeAmount: -100, // parseCurrency -> null -> (appFeeAmount ?? 0) = 0
-      createdAt: '2025-01-06T00:00:00Z',
-    };
-
-    const candidates = [
-      // string timestamps: exercises `?.toISOString?.() ?? candidate.respondedAt`
-      {
-        driverId: 'D-STR',
-        status: 'PENDING',
-        reason: null,
-        distanceMeters: 123,
-        respondedAt: '2025-01-06T00:05:00.000Z', // string, not Date
-        createdAt: '2025-01-06T00:01:00.000Z', // string, not Date
-      },
-      // undefined timestamps: exercises final `?? null`
-      {
-        driverId: 'D-UNDEF',
-        status: 'REJECTED',
-        reason: 'Busy',
-        distanceMeters: 456,
-        respondedAt: undefined,
-        createdAt: undefined,
-      },
-    ];
-
-    const ridesManagement = (controller as any).ridesManagementService as any;
-    ridesManagement.getRideById = jest.fn().mockResolvedValue(ride);
-    ridesManagement.listRideCandidates = jest
-      .fn()
-      .mockResolvedValue(candidates);
-
-    const req = {
-      [REQUEST_CLIENT_KEY]: { sub: 'r1', role: EClientType.RIDER },
-    } as any;
-
-    const res = await controller.getRide(req, 'ride-neg');
-
-    // Base fare from 1 km * default 3000
-    expect(res.data.baseFare).toBe('3000.00');
-    // Negative discount becomes null via parseCurrency, then `?? 0` => 0.00 shown
-    expect(res.data.discountAmountByDriver).toBe('0.00');
-    // App fee negative -> null -> `?? 0` => fareAfterDiscount = baseFare + 0
-    expect(res.data.fareAfterDiscount).toBe('3000.00');
-    expect(res.data.finalFare).toBe('3000.00');
-
-    // Candidate timestamps: string passthrough and undefined -> null
-    expect(res.data.candidates).toEqual([
-      {
-        driverId: 'D-STR',
-        status: 'PENDING',
-        reason: null,
-        distanceMeters: 123,
-        respondedAt: '2025-01-06T00:05:00.000Z', // kept as string
-        createdAt: '2025-01-06T00:01:00.000Z', // kept as string
-      },
-      {
-        driverId: 'D-UNDEF',
-        status: 'REJECTED',
-        reason: 'Busy',
-        distanceMeters: 456,
-        respondedAt: null, // undefined -> null by `?? null`
-        createdAt: null, // undefined -> null by `?? null`
-      },
-    ]);
   });
 });
