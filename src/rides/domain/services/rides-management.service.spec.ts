@@ -459,6 +459,22 @@ describe('RidesManagementService.createRide', () => {
     );
   });
 
+  it('swallows queue cleanup errors when createRide fails', async () => {
+    rideRepository.findUnfinishedRideByRiderId.mockResolvedValue(null);
+    rideQueue.remove.mockRejectedValueOnce(new Error('remove boom'));
+    stubRouteEstimates(async () => {
+      throw new Error('explode');
+    });
+
+    await expect(
+      service.createRide(riderId, { pickup, dropoff }),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+
+    expect(rideQueue.remove).toHaveBeenCalledWith(
+      `ride-request-${riderId}-${FIXED_NOW}-route-estimation`,
+    );
+  });
+
   it('logs unknown errors and wraps as InternalServerErrorException', async () => {
     rideRepository.findUnfinishedRideByRiderId.mockResolvedValue(null);
     const logSpy = jest.spyOn((service as any).logger, 'error');
@@ -2550,6 +2566,26 @@ describe('RidesManagementService helpers', () => {
     expect(logSpy).toHaveBeenCalled();
   });
 
+  it('requestRouteEstimatesThroughQueue ignores remove errors before enqueue', async () => {
+    const jobResult = { distanceKm: 2, durationSeconds: 3 };
+    const waitUntilFinished = jest.fn().mockResolvedValue(jobResult);
+    const job = { waitUntilFinished } as any;
+    rideQueue.remove.mockRejectedValueOnce(new Error('rm fail'));
+    rideQueue.add.mockResolvedValue(job);
+    jest
+      .spyOn<any, any>(service as any, 'createQueueEvents')
+      .mockResolvedValue({ close: jest.fn().mockResolvedValue(undefined) });
+
+    const result = await (service as any).requestRouteEstimatesThroughQueue(
+      'job-rm',
+      { longitude: 1, latitude: 2 },
+      { longitude: 3, latitude: 4 },
+    );
+
+    expect(rideQueue.remove).toHaveBeenCalledWith('job-rm');
+    expect(result).toEqual(jobResult);
+  });
+
   it('requestRouteSummary builds request and parses response', async () => {
     const { of } = require('rxjs');
     configService.get
@@ -2755,6 +2791,20 @@ describe('RidesManagementService helpers', () => {
     fail.waitUntilReady.mockRejectedValue(err);
     await expect((service as any).createQueueEvents()).rejects.toBe(err);
     expect(fail.close).toHaveBeenCalled();
+  });
+
+  it('createQueueEvents swallows close errors when wait fails', async () => {
+    const QueueEventsMock = require('bullmq').QueueEvents as jest.Mock;
+    QueueEventsMock.mockReset();
+    const failing = { waitUntilReady: jest.fn(), close: jest.fn() };
+    QueueEventsMock.mockImplementationOnce(() => failing as any);
+
+    const err = new Error('wait-fail');
+    failing.waitUntilReady.mockRejectedValue(err);
+    failing.close.mockRejectedValue(new Error('close-fail'));
+
+    await expect((service as any).createQueueEvents()).rejects.toBe(err);
+    expect(failing.close).toHaveBeenCalled();
   });
 
   it('logRouteEstimationJobError covers different shapes', () => {
