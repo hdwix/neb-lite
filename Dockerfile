@@ -1,4 +1,4 @@
-FROM node:24.11.0-alpine3.21
+FROM --platform=linux/amd64 node:24.11.0-alpine3.21
 
 # test
 WORKDIR /usr/src/app
@@ -16,5 +16,7 @@ RUN npm ci
 COPY . .
 
 RUN npm run build
+
+EXPOSE 3000
 
 CMD [ "node", "dist/main.js" ]
