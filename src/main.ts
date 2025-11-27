@@ -11,9 +11,11 @@ import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { ResponseInterceptor } from './app/interceptors/response.interceptor';
 import { CustomExceptionFilter } from './app/filters/custom-exception.filter';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(NebengliteModule);
+  const app =
+    await NestFactory.create<NestExpressApplication>(NebengliteModule);
   const excludedPaths = ['/healthz', '/metrics'];
   const moduleRef = app.select(NebengliteModule);
   const reflector = moduleRef.get(Reflector);
@@ -30,6 +32,7 @@ async function bootstrap() {
       'Content-Type, Authorization, msisdn, x-otp-simulation-token', // Specify any additional allowed headers if needed,
     credentials: true,
   });
+  app.set('trust proxy', 1);
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,

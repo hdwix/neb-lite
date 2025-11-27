@@ -11,6 +11,7 @@ import { HttpModule } from '@nestjs/axios';
 import { LocationModule } from './location/location.module';
 import { RidesModule } from './rides/rides.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
@@ -27,6 +28,14 @@ import { RedisModule } from './infrastructure/redis/redis.module';
         };
       },
       isGlobal: true,
+    }),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          ttl: 60000,
+          limit: 10,
+        },
+      ],
     }),
     DatabaseModule,
     IamModule,

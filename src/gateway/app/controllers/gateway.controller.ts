@@ -554,7 +554,7 @@ export class GatewayController {
   }
 
   private extractClientIp(request: Request): string {
-    const remoteAddress = request.socket?.remoteAddress;
+    const remoteAddress = request.ip;
 
     if (remoteAddress) {
       return remoteAddress;
