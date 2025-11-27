@@ -36,7 +36,7 @@ import axios from 'axios';
           entities: [RiderProfile, DriverProfile],
           migrations: [__dirname + '/../migrations/*{.ts,.js}'],
           autoLoadEntities: true,
-          synchronize: configService.get<boolean>('DB_SYNCHRONIZE') || false,
+          synchronize: configService.get('DB_SYNCHRONIZE') === 'true' || false,
           logging: false,
           ssl: sslConfig, // false for local, CA for non-local
         };
