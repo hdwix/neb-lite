@@ -11,7 +11,8 @@ import { HttpModule } from '@nestjs/axios';
 import { LocationModule } from './location/location.module';
 import { RidesModule } from './rides/rides.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -48,6 +49,11 @@ import { ThrottlerModule } from '@nestjs/throttler';
     RedisModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class NebengliteModule {}

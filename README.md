@@ -1,8 +1,8 @@
 # Project Nebengjek
 
-Nebengjek is an application to unite rider/consumer and driver for ride haling service, with following logic
+Neblite is an application to unite rider/consumer and driver for ride haling service, with following logic
 
-Nebengjek Logic
+Neblite Logic
 
 1. user/rider activate order ⇒ being informed of all drivers within range
 2. driver ⇒ always send location data
@@ -202,3 +202,7 @@ sequenceDiagram
   WH->>DB: Upsert payment_intents (status=SUCCEEDED), append audit
   WH->>SVC: Publish internal event (PaymentSucceeded) via outbox
   ```
+
+## API Documentation
+
+https://documenter.getpostman.com/view/7867486/2sB3dLSqs7

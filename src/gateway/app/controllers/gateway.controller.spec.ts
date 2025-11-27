@@ -434,6 +434,28 @@ describe('GatewayController', () => {
       expect(res.messageResponse).toMatch(/OID-1/);
     });
 
+    it('handlePaymentNotification prioritizes x-forwarded-for header', async () => {
+      const ridesPayment = (controller as any).ridesPaymentService as any;
+      ridesPayment.handlePaymentNotification = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      const req = {
+        headers: { 'x-forwarded-for': '203.0.113.10, 10.0.0.1' },
+        socket: { remoteAddress: '10.1.2.3' },
+        ip: '1.2.3.4',
+      } as any;
+
+      const payload = { order_id: 'OID-4' } as any;
+
+      await controller.handlePaymentNotification(req, payload);
+
+      expect(ridesPayment.handlePaymentNotification).toHaveBeenCalledWith(
+        payload,
+        '203.0.113.10',
+      );
+    });
+
     it('handlePaymentNotification falls back to request.ip when socket address missing', async () => {
       const ridesPayment = (controller as any).ridesPaymentService as any;
       ridesPayment.handlePaymentNotification = jest
