@@ -90,7 +90,7 @@ async function bootstrap() {
   });
 
   const port = Number(configService.get<string>('APP_PORT') ?? '3000');
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   logger.log(`${serviceName} is running on port ${port}`);
 }
 bootstrap();
