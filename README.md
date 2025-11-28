@@ -148,6 +148,11 @@ sequenceDiagram
   WH->>DB: Insert webhook_inbox (dedup by event_id)
   WH->>DB: Upsert payment_intents (status=SUCCEEDED), append audit
   WH->>SVC: Publish internal event (PaymentSucceeded) via outbox
+  ```
+
+## API Documentation
+
+https://documenter.getpostman.com/view/7867486/2sB3dLSqs7
 ```
 
 ## Technology Stack

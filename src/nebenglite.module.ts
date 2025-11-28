@@ -11,6 +11,8 @@ import { HttpModule } from '@nestjs/axios';
 import { LocationModule } from './location/location.module';
 import { RidesModule } from './rides/rides.module';
 import { RedisModule } from './infrastructure/redis/redis.module';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -28,6 +30,14 @@ import { RedisModule } from './infrastructure/redis/redis.module';
       },
       isGlobal: true,
     }),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          ttl: 60000,
+          limit: 10,
+        },
+      ],
+    }),
     DatabaseModule,
     IamModule,
     RedisWorkerModule,
@@ -39,6 +49,11 @@ import { RedisModule } from './infrastructure/redis/redis.module';
     RedisModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class NebengliteModule {}
