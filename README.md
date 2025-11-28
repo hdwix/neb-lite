@@ -150,11 +150,6 @@ sequenceDiagram
   WH->>SVC: Publish internal event (PaymentSucceeded) via outbox
   ```
 
-## API Documentation
-
-https://documenter.getpostman.com/view/7867486/2sB3dLSqs7
-```
-
 ## Technology Stack
 
 - **Framework:** NestJS (Express) with modular domain boundaries.
@@ -163,6 +158,8 @@ https://documenter.getpostman.com/view/7867486/2sB3dLSqs7
 - **Datastores:** PostgreSQL for transactional data.
 - **Realtime:** Server-Sent Events (SSE) for OTP simulation and ride/driver status updates.
 - **Logging:** built in logger function in nestjs for structured application logs.
+- **Geo Mapping:** [Open Route Service](https://maps.openrouteservice.org/) for actual route estimation
+- **Containerization:** Docker used for containerization
 
 ## Environment Variables
 
@@ -197,3 +194,7 @@ https://documenter.getpostman.com/view/7867486/2sB3dLSqs7
 | `OTP_SIMULATION_ACCESS_TOKEN`     | Static token authorizing access to the OTP simulation SSE stream. Leave unset to disable the simulation endpoint. | Optional                               |
 | `OTP_TTL_SEC`                     | OTP cache TTL (seconds).                                                                                          | Required                               |
 | `SKIP_SMS_NOTIF`                  | If `true`, bypass sending OTP SMS and rely only on simulation events.                                             | `false`                                |
+
+## API Documentation
+
+https://documenter.getpostman.com/view/7867486/2sB3dLSqs7
