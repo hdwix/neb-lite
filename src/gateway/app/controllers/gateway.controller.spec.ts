@@ -420,6 +420,9 @@ describe('GatewayController', () => {
         .mockResolvedValue(undefined);
 
       const req = {
+        headers: {
+          'x-forwarded-for': '10.1.1.1',
+        },
         socket: { remoteAddress: '10.1.2.3' },
         ip: '1.2.3.4',
       } as any;
@@ -429,7 +432,7 @@ describe('GatewayController', () => {
 
       expect(ridesPayment.handlePaymentNotification).toHaveBeenCalledWith(
         payload,
-        '10.1.2.3',
+        '10.1.1.1',
       );
       expect(res.messageResponse).toMatch(/OID-1/);
     });
@@ -462,7 +465,11 @@ describe('GatewayController', () => {
         .fn()
         .mockResolvedValue(undefined);
 
-      const req = { socket: {}, ip: '1.2.3.4' } as any;
+      const req = {
+        headers: { 'x-forwarded-for': '' },
+        socket: {},
+        ip: '1.2.3.4',
+      } as any;
       const payload = { order_id: 'OID-2' } as any;
 
       await controller.handlePaymentNotification(req, payload);
@@ -479,7 +486,11 @@ describe('GatewayController', () => {
         .fn()
         .mockResolvedValue(undefined);
 
-      const req = { socket: {}, ip: undefined } as any;
+      const req = {
+        headers: { 'x-forwarded-for': '' },
+        socket: {},
+        ip: undefined,
+      } as any;
       const payload = { order_id: 'OID-3' } as any;
 
       await controller.handlePaymentNotification(req, payload);
@@ -487,6 +498,28 @@ describe('GatewayController', () => {
       expect(ridesPayment.handlePaymentNotification).toHaveBeenCalledWith(
         payload,
         '',
+      );
+    });
+    it('handlePaymentNotification passes remote-address ip info', async () => {
+      const ridesPayment = (controller as any).ridesPaymentService as any;
+      ridesPayment.handlePaymentNotification = jest
+        .fn()
+        .mockResolvedValue(undefined);
+
+      const req = {
+        headers: { 'x-forwarded-for': '' },
+        socket: {
+          remoteAddress: '1.1.1.1',
+        },
+        ip: undefined,
+      } as any;
+      const payload = { order_id: 'OID-3' } as any;
+
+      await controller.handlePaymentNotification(req, payload);
+
+      expect(ridesPayment.handlePaymentNotification).toHaveBeenCalledWith(
+        payload,
+        '1.1.1.1',
       );
     });
   });
