@@ -554,14 +554,21 @@ export class GatewayController {
   }
 
   private extractClientIp(request: Request): string {
-    const remoteAddress = request.socket?.remoteAddress;
+    const forwardedFor = request.headers['x-forwarded-for'];
+    if (typeof forwardedFor === 'string') {
+      const [first] = forwardedFor.split(',');
+      if (first?.trim()) {
+        return first.trim();
+      }
+    }
 
+    const remoteAddress = request.socket?.remoteAddress?.trim();
     if (remoteAddress) {
       return remoteAddress;
     }
 
-    if (typeof request.ip === 'string') {
-      return request.ip;
+    if (typeof request.ip === 'string' && request.ip.trim()) {
+      return request.ip.trim();
     }
 
     return '';
