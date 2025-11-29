@@ -1,6 +1,14 @@
-# Nebengjek (neb-lite)
+# NEBLITE
 
-Nebengjek is a monolithic ride-hailing backend built with NestJS. It couples a thin HTTP/SSE edge with Redis-backed queues and a relational store to keep ride operations simple while still supporting realtime updates, payments, and notifications.
+Neblite is a monolithic ride-hailing backend built with NestJS. It couples a thin HTTP/SSE edge with Redis-backed queues and a relational store to keep ride operations simple while still supporting realtime updates, payments, and notifications.
+
+## Developer Docs
+
+- `docs-for-developers/README.md`: index for engineering docs.
+- `docs-for-developers/developer-onboarding.md`: setup, coding conventions, testing, and git workflow.
+- `docs-for-developers/enum-organization.md`: guidance on where enums belong and avoiding cross-module coupling.
+- `docs-for-developers/k6-loadtest-script/*.js`: k6 scenarios for driver location throughput and trip updates.
+- `docs-for-developers/postman-collection/nebengjek.postman_collection.json`: Postman collection for Gateway endpoints.
 
 ## High-Level Design (HLD)
 
@@ -149,6 +157,47 @@ sequenceDiagram
   WH->>DB: Upsert payment_intents (status=SUCCEEDED), append audit
   WH->>SVC: Publish internal event (PaymentSucceeded) via outbox
   ```
+
+### 7) Ride Creation-to-Acceptance Flow
+
+<!-- prettier-ignore -->
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Rider
+    participant Gateway as Gateway API
+    participant Queue as BullMQ Queue
+    participant Driver
+
+    Rider->>Gateway: POST /gateway/v1/rides
+    Gateway->>Gateway: Persist ride (status: requested)
+    Gateway->>Queue: Enqueue route-estimate job
+    Queue-->>Gateway: Distance, duration, fare
+    Gateway->>Queue: Enqueue ProcessSelection job
+    Queue-->>Gateway: Transition to assigned
+    Gateway-->>Driver: Notify ride matched
+    Gateway-->>Rider: Notify ride matched
+
+    Driver->>Gateway: POST /gateway/v1/rides/:id/driver-accept
+    Gateway->>Gateway: Validate driver & status
+    Gateway->>Gateway: Transition requested/candidates->assigned (if needed)
+    Gateway-->>Driver: Notify ride matched (idempotent)
+    Gateway->>Gateway: Transition assigned->accepted
+    Gateway-->>Rider: Notify driver accepted
+
+    Rider->>Gateway: POST /gateway/v1/rides/:id/rider-accept
+    Gateway->>Gateway: Validate rider & status (must be accepted)
+    Gateway->>Gateway: Transition accepted->enroute
+    Gateway-->>Driver: Notify rider confirmed
+```
+
+The flow shows how the gateway coordinates ride creation, background queue processing, and the mutual handshake between driver and rider before the trip starts.
+
+**Handling multiple driver candidates**
+
+- Current workflow targets a single driver per ride: `CreateRideDto` requires `driverId`, and the workflow transitions the ride to `ASSIGNED` for that specific driver before notifying both parties.
+- Notifications (`ride.matched`, `ride.driver.accepted`, `ride.rider.confirmed`, cancellations) use the single `driverId` on the ride entity; there is no fan-out to other drivers and no “losing” candidate notification.
+- Supporting several eligible drivers would require additional state (e.g., candidate table/array of driverIds), fan-out via `NotificationPublisher.emit('driver', candidateId, ...)`, and cleanup notifications to candidates once one accepts. None of that logic exists today.
 
 ## Technology Stack
 
