@@ -1,6 +1,5 @@
-FROM --platform=linux/amd64 node:24.11.0-alpine3.21
+FROM node:24.11.0-alpine3.21
 
-# test
 WORKDIR /usr/src/app
 
 COPY package*.json ./

@@ -7,7 +7,6 @@ on:
       - development
 
 jobs:
-
   prepare:
     name: Prepare Setup
     runs-on: ubuntu-latest
@@ -71,5 +70,5 @@ jobs:
           ECR_REPOSITORY: ${{ secrets.AWS_REPOSITORY_NAME }}
           IMAGE_TAG: latest
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
